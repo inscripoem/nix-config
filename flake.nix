@@ -37,9 +37,10 @@
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
-            home-manager.sharedModules = [ plasma-manager.homeManagerModules.plasma-manager ];
+            home-manager.sharedModules = [ plasma-manager.homeModules.plasma-manager ];
+            home-manager.backupFileExtension = "backup";
 
-            home-manager.users.inscripoem = import ./home.nix;
+            home-manager.users.inscripoem = import ./home;
 
             # Pass flake inputs to home-manager
             home-manager.extraSpecialArgs = inputs;
@@ -57,9 +58,10 @@
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
-            home-manager.sharedModules = [ plasma-manager.homeManagerModules.plasma-manager ];
+            home-manager.sharedModules = [ plasma-manager.homeModules.plasma-manager ];
+            home-manager.backupFileExtension = "backup";
 
-            home-manager.users.inscripoem = import ./home.nix;
+            home-manager.users.inscripoem = import ./home;
 
             # Pass flake inputs to home-manager
             home-manager.extraSpecialArgs = inputs;

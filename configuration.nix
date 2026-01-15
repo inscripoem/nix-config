@@ -5,10 +5,9 @@
 { config, pkgs, ... }:
 
 {
-  publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyJUP8n6z8K95LFwLPZQ9jE4k+WmIzocTXkXvAUhRJG";
 
   imports =
-    [ 
+    [
     ];
 
   # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
@@ -36,6 +35,17 @@
       "zh_CN.UTF-8/UTF-8"
       "zh_TW.UTF-8/UTF-8"
     ];
+    inputMethod = {
+      type = "fcitx5";
+      enable = true;
+      fcitx5.waylandFrontend = true;
+      fcitx5.addons = with pkgs; [
+        fcitx5-gtk
+        qt6Packages.fcitx5-chinese-addons
+        fcitx5-rime
+        catppuccin-fcitx5
+      ];
+    };
   };
 
   # Enable the X11 windowing system.
@@ -48,7 +58,8 @@
 
   # Enable the KDE Plasma Desktop Environment.
   services.displayManager.sddm.enable = true;
-  services.displayManager.defaultSession = "plasmax11";
+  services.displayManager.sddm.wayland.enable = true;
+  services.displayManager.defaultSession = "plasma";
   services.desktopManager.plasma6.enable = true;
 
   # Configure keymap in X11
@@ -91,13 +102,13 @@
     #  thunderbird
     ];
     openssh.authorizedKeys.keys = [
-       publicKey
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyJUP8n6z8K95LFwLPZQ9jE4k+WmIzocTXkXvAUhRJG"
     ];
     shell = pkgs.fish;
   };
 
   users.users.root.openssh.authorizedKeys.keys = [
-    publicKey
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyJUP8n6z8K95LFwLPZQ9jE4k+WmIzocTXkXvAUhRJG"
   ];
 
   # Install firefox.
@@ -117,9 +128,9 @@
 
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
-    substituters = [ 
-      "https://mirrors.ustc.edu.cn/nix-channels/store"
-      "https://mirrors.tuna.tsinghua.edu.cn/nix-channel/store" 
+    substituters = [
+      #"https://mirrors.ustc.edu.cn/nix-channels/store"
+      #"https://mirrors.tuna.tsinghua.edu.cn/nix-channel/store"
       "https://cache.nixos.org/"
     ];
   };
