@@ -6,5 +6,6 @@
     ./editors
     ./browsers
     ./desktop
+    ./social
   ];
 }
