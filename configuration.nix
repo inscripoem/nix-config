@@ -6,9 +6,8 @@
 
 {
 
-  imports =
-    [
-    ];
+  imports = [
+  ];
 
   # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
 
@@ -90,16 +89,17 @@
   # Enable touchpad support (enabled default in most desktopManager).
   # services.xserver.libinput.enable = true;
 
-
-
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.inscripoem = {
     isNormalUser = true;
     description = "Brandon Chang";
-    extraGroups = [ "networkmanager" "wheel" ];
+    extraGroups = [
+      "networkmanager"
+      "wheel"
+    ];
     packages = with pkgs; [
       kdePackages.kate
-    #  thunderbird
+      #  thunderbird
     ];
     openssh.authorizedKeys.keys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyJUP8n6z8K95LFwLPZQ9jE4k+WmIzocTXkXvAUhRJG"
@@ -127,7 +127,10 @@
   nixpkgs.config.allowUnfree = true;
 
   nix.settings = {
-    experimental-features = [ "nix-command" "flakes" ];
+    experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
     substituters = [
       #"https://mirrors.ustc.edu.cn/nix-channels/store"
       #"https://mirrors.tuna.tsinghua.edu.cn/nix-channel/store"
