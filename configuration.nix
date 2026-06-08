@@ -51,14 +51,9 @@
   # You can disable this if you're only using the Wayland session.
   services.xserver.enable = true;
 
-  # For VMware
-  services.xserver.videoDrivers = [ "vmware" ];
-  virtualisation.vmware.guest.enable = true;
-
   # Enable the KDE Plasma Desktop Environment.
   services.displayManager.sddm.enable = true;
   services.displayManager.sddm.wayland.enable = true;
-  services.displayManager.defaultSession = "plasma";
   services.desktopManager.plasma6.enable = true;
 
   # Configure keymap in X11
@@ -120,7 +115,7 @@
     enable = true;
     clean.enable = true;
     clean.extraArgs = "--keep-since 4d --keep 3";
-    flake = "/home/inscripoem/nix-config";
+    flake = "/home/inscripoem/dev/nix-config";
   };
 
   # Allow unfree packages
@@ -132,8 +127,8 @@
       "flakes"
     ];
     substituters = [
-      #"https://mirrors.ustc.edu.cn/nix-channels/store"
-      #"https://mirrors.tuna.tsinghua.edu.cn/nix-channel/store"
+      "https://mirrors.ustc.edu.cn/nix-channels/store"
+      "https://mirrors.tuna.tsinghua.edu.cn/nix-channel/store"
       "https://cache.nixos.org/"
     ];
   };

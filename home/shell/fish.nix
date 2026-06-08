@@ -4,7 +4,6 @@
     shellAliases = {
       nhs = "nh os switch . -- --show-trace";
       ze = "zeditor .";
-      z = "zoxide";
     };
   };
 }

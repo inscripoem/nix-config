@@ -22,7 +22,7 @@
   };
 
   home.packages = with pkgs; [
-    neofetch
+    fastfetch
     zip
     xz
     unzip

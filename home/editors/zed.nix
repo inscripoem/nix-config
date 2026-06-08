@@ -15,7 +15,6 @@
   # LSP requirements
   home.packages = with pkgs; [
     # nix
-    nil
     nixd
     nixfmt
   ];
