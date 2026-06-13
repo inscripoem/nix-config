@@ -145,10 +145,11 @@
       "flakes"
     ];
     substituters = [
+      "https://cache.nixos.org/"
       "https://mirrors.ustc.edu.cn/nix-channels/store"
       "https://mirrors.tuna.tsinghua.edu.cn/nix-channel/store"
-      "https://cache.nixos.org/"
     ];
+    fallback = true;
   };
   # List packages installed in system profile. To search, run:
   # $ nix search wget
