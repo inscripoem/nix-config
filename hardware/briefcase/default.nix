@@ -20,5 +20,11 @@
   hardware.nvidia.modesetting.enable = true;
   hardware.nvidia.powerManagement.enable = true;
 
+  # KWin 6.5 + NVIDIA 580 explicit sync (linux-drm-syncobj-v1) workaround.
+  # Symptoms: login freezes on SDDM/KSplash until a VT switch, or session
+  # silently dies back to SDDM mid-startup. See docs/nvidia.md §4 for the
+  # full diagnosis and the conditions under which this can be removed.
+  environment.sessionVariables.KWIN_DRM_DISABLE_EXPLICIT_SYNC = "1";
+
   networking.hostName = "briefcase";
 }

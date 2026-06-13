@@ -141,6 +141,7 @@ services.xserver.videoDrivers = [ "nvidia" ];
 hardware.nvidia.open = false;
 hardware.nvidia.modesetting.enable = true;
 hardware.nvidia.powerManagement.enable = true;
+environment.sessionVariables.KWIN_DRM_DISABLE_EXPLICIT_SYNC = "1";  # see §4
 ```
 
 Things to check if symptoms come back:
@@ -150,4 +151,116 @@ Things to check if symptoms come back:
 | Auto-logout / KWin freezes | `journalctl --user -b -1 | grep -iE 'kwin|plasmashell'` and `dmesg | grep -i nvidia` |
 | Wake-up flicker | confirm `cat /proc/cmdline | grep PreserveVideoMemory` shows `=1`, and `systemctl status nvidia-resume.service` is active |
 | Cannot start Wayland session | check `modesetting.enable = true` is still in the config |
+| Login screen frozen until VT switch | §4 — KWin explicit sync workaround |
 | Driver version | `cat /proc/driver/nvidia/version` |
+
+---
+
+## 4. Why `KWIN_DRM_DISABLE_EXPLICIT_SYNC=1`
+
+### Symptoms it solves
+
+A cluster of three superficially-different failures that all share the
+same root cause. Observed in June 2026 on this box (KWin 6.5.4, NVIDIA
+580.119.02, kernel 6.12.x):
+
+1. **Login screen freezes after entering the password.** SDDM greeter
+   disappears, KSplash never finishes, screen stays on the last greeter
+   frame. Switching to a TTY (Ctrl+Alt+F3) and back unfreezes it
+   immediately and the session is otherwise fine.
+2. **Session "logs out" mid-startup.** You enter the password, KWin and
+   KSplash start, then ~10 s later you're back at SDDM. The journal
+   shows a clean PAM `Closing session` — no KWin crash, no coredump.
+3. **Hard freeze on the second login attempt** after force-rebooting
+   from case (1) or (2). Looks identical to a hung kernel: caps-lock
+   LED unresponsive, only fix is the power button.
+
+### Root cause
+
+KWin 6.5 enables the Wayland **explicit synchronization** protocol
+(`linux-drm-syncobj-v1`) by default. The flow is:
+
+1. KWin submits an atomic DRM commit with an `OUT_FENCE_FD`.
+2. NVIDIA's DRM driver is supposed to signal that fence (or fire a
+   page-flip event) once the buffer is on screen.
+3. KWin's render loop waits for that fence/event before submitting the
+   next frame.
+
+On NVIDIA 580.x the very first atomic commit after a DRM master change
+(SDDM greeter → user-session KWin, or cold init, or resume) **sometimes
+never signals**. KWin's render loop blocks forever on the fence:
+
+- If KWin blocks before plasmashell maps its first surface → symptom (1).
+- If KWin times out and `qFatal`s → KWin exits 15 (SIGTERM via the
+  watchdog) → `startplasma-wayland` tears the session down cleanly →
+  symptom (2). This is exactly what the journal showed for boot −3:
+  ```
+  sddm-helper-start-wayland: wayland compositor finished 15 QProcess::NormalExit
+  sddm-helper: [PAM] Closing session
+  ```
+  i.e. a *clean* exit, which is why there's no coredump to find.
+- Symptom (3) is a consequence of force-rebooting in state (1)/(2):
+  ATX standby keeps PCIe at 3.3 V, the GPU never fully power-cycles,
+  the next boot's `nvidia.ko` init hits `i2c timeout error e0000000`
+  in dmesg, and the wedged state propagates into the new KWin instance.
+
+A TTY switch rescues case (1) because logind drops and re-grants DRM
+master, which forces KWin to redo modeset and resets the broken
+page-flip state machine.
+
+### The workaround
+
+Setting `KWIN_DRM_DISABLE_EXPLICIT_SYNC=1` makes KWin fall back to the
+classic implicit-sync path (kernel-managed dma-buf reservation
+objects). NVIDIA 580 implements the implicit path correctly; only the
+new explicit syncobj path is racy.
+
+In NixOS:
+
+```nix
+environment.sessionVariables.KWIN_DRM_DISABLE_EXPLICIT_SYNC = "1";
+```
+
+`environment.sessionVariables` (not `environment.variables`) is the
+correct knob — KWin is started by the per-user systemd manager via
+`startplasma-wayland`, and `sessionVariables` is what lands in
+`/etc/profile` + the systemd user environment.
+
+### Cost
+
+- A small (usually unmeasurable on a single 1080p screen) latency
+  increase: implicit sync forces a CPU-side wait point where explicit
+  sync could let the GPU pipeline overlap.
+- No correctness or stability downside on this driver.
+
+### When to remove it
+
+This whole class of bugs is tracked upstream as
+"KWin 6 + NVIDIA explicit sync first-frame hang". To safely drop the
+env var you want **all** of:
+
+1. NVIDIA driver ≥ a release whose changelog mentions a fix for
+   `linux-drm-syncobj-v1` / first-frame page-flip. As of 580.119.02
+   this is not yet the case; watch for it in the 590/600 series.
+2. KWin ≥ a release that bumps its required NVIDIA version or that
+   includes a "explicit sync resilience" / "first-frame timeout
+   recovery" commit.
+3. After removing the var, force the failure scenario on purpose
+   (SDDM → login → KSplash) **five times in a row** without freeze
+   before declaring it fixed. The bug is racy, not deterministic.
+
+If any of those is not true, leave the workaround on. It is cheap.
+
+### If the var doesn't help
+
+Then the real cause is probably **not** explicit sync. Next things to
+try, in order:
+
+1. Disable the SDDM Wayland greeter (`services.displayManager.sddm.wayland.enable = false;`)
+   to avoid the greeter-→-session DRM master handoff entirely. Session
+   stays Plasma Wayland.
+2. Cold-start the machine (pull the PSU plug for 30 s) to clear any
+   wedged GPU state — `reboot` alone doesn't power-cycle the PCIe slot.
+3. Collect `journalctl --user -b -1 | grep -iE 'kwin|qFatal|signal'`
+   and `coredumpctl list` to confirm whether KWin exited cleanly
+   (workaround territory) or actually crashed (driver bug territory).
