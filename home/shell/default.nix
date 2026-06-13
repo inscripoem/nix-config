@@ -1,12 +1,15 @@
 {
   imports = [
-    ./fish.nix
-    ./zsh.nix
-    ./starship.nix
-    ./zoxide.nix
-    ./bat.nix
     ./bash.nix
+    ./zsh.nix
+    ./fish.nix
+    ./starship.nix
+    ./bat.nix
     ./yazi.nix
-    ./cli.nix
+    ./atuin.nix
+    ./tealdeer.nix
+    ./pueue.nix
+    ./integrations.nix
+    ./packages.nix
   ];
 }

@@ -2,9 +2,15 @@
 {
   home.packages = with pkgs; [
     ripgrep
+    fd
     jq
     yq-go
-    eza
-    fzf
+    duf
+    dust
+    htop
+    glances
+    bottom
+    gping
+    lazygit
   ];
 }

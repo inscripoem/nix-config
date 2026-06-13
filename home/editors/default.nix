@@ -3,5 +3,6 @@
     ./vscode.nix
     ./zed.nix
     ./trae.nix
+    ./helix.nix
   ];
 }
