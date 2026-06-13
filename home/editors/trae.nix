@@ -1,7 +1,7 @@
 { pkgs, ... }:
 
 let
-  version = "2.3.18716";
+  version = "2.3.38425";
 
   trae-cn = pkgs.stdenv.mkDerivation {
     pname = "trae-cn";
