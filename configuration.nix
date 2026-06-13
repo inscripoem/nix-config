@@ -116,7 +116,7 @@
     openssh.authorizedKeys.keys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyJUP8n6z8K95LFwLPZQ9jE4k+WmIzocTXkXvAUhRJG"
     ];
-    shell = pkgs.fish;
+    shell = pkgs.zsh;
   };
 
   users.users.root.openssh.authorizedKeys.keys = [
@@ -127,6 +127,7 @@
   programs.firefox.enable = true;
 
   programs.fish.enable = true;
+  programs.zsh.enable = true;
 
   programs.nh = {
     enable = true;
