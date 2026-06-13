@@ -3,7 +3,7 @@
     enable = true;
     settings = {
       keybindings = "normal";
-      theme = "catppuccin-frappe";
+      theme = "catppuccin-macchiato";
       show_startup_tips = false;
     };
   };
