@@ -10,6 +10,14 @@
     userSettings = {
       colorize_brackets = true;
       autosave = "on_focus_change";
+      languages = {
+        "Nix" = {
+          language_servers = [
+            "nixd"
+            "!nil"
+          ];
+        };
+      };
     };
   };
   # LSP requirements

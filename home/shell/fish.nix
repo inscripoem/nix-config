@@ -2,7 +2,7 @@
   programs.fish = {
     enable = true;
     shellAliases = {
-      nhs = "nh os switch . -- --show-trace";
+      nhs = "nh os switch -- --show-trace";
       ze = "zeditor .";
     };
   };

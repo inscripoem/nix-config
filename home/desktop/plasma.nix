@@ -1,7 +1,7 @@
 { pkgs, ... }:
 
 {
-  nixGL.vulkan.enable = true;
+  targets.genericLinux.nixGL.vulkan.enable = true;
 
   programs.plasma = {
     enable = true;
@@ -11,6 +11,9 @@
       command = "wezterm";
     };
     configFile."kwinrc"."Wayland"."VirtualKeyboard" = "org.fcitx.Fcitx5";
+    # Let gnome-keyring own org.freedesktop.secrets; KWallet stays
+    # only for KDE-internal features (NetworkManager, KMail, etc.)
+    configFile."kwalletrc"."org.freedesktop.secrets"."apiEnabled" = false;
   };
   xdg.portal = {
     enable = true;

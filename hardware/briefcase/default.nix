@@ -11,10 +11,14 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # NVIDIA driver configuration
+  # NVIDIA driver configuration — see docs/nvidia.md for the rationale
+  # behind every flag (open=false on TU106, modesetting for Wayland,
+  # powerManagement to avoid resume-time flicker).
   hardware.graphics.enable = true;
   services.xserver.videoDrivers = [ "nvidia" ];
-  hardware.nvidia.open = true;
+  hardware.nvidia.open = false;
+  hardware.nvidia.modesetting.enable = true;
+  hardware.nvidia.powerManagement.enable = true;
 
   networking.hostName = "briefcase";
 }

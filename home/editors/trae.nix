@@ -91,18 +91,17 @@ let
 
       # Create launcher script
       if [ -f "$out/share/trae/trae-cn" ]; then
-        echo '#!/bin/sh' > $out/bin/trae
-        echo 'export ELECTRON_FORCE_IS_PACKAGED=1' >> $out/bin/trae
-        echo 'export ELECTRON_DISABLE_SANDBOX=1' >> $out/bin/trae
-        echo 'export DISABLE_GPU_SANDBOX=1' >> $out/bin/trae
-        echo "exec $out/share/trae/trae-cn --no-sandbox \"\$@\"" >> $out/bin/trae
-        chmod +x $out/bin/trae
+        echo '#!/bin/sh' > $out/bin/trae-cn
+        echo 'export ELECTRON_FORCE_IS_PACKAGED=1' >> $out/bin/trae-cn
+        echo 'export ELECTRON_DISABLE_SANDBOX=1' >> $out/bin/trae-cn
+        echo 'export DISABLE_GPU_SANDBOX=1' >> $out/bin/trae-cn
+        echo "exec $out/share/trae/trae-cn --no-sandbox \"\$@\"" >> $out/bin/trae-cn
+        chmod +x $out/bin/trae-cn
       fi
 
       # Fix desktop file
       if [ -f "$out/share/applications/trae-cn.desktop" ]; then
-        sed -i "s|Exec=.*|Exec=$out/bin/trae|g" $out/share/applications/trae-cn.desktop
-        mv $out/share/applications/trae-cn.desktop $out/share/applications/trae.desktop
+        sed -i "s|Exec=.*|Exec=$out/bin/trae-cn|g" $out/share/applications/trae-cn.desktop
       fi
 
       runHook postInstall
@@ -113,7 +112,7 @@ let
       homepage = "https://www.trae.com.cn";
       license = licenses.unfree;
       platforms = platforms.linux;
-      mainProgram = "trae";
+      mainProgram = "trae-cn";
     };
   };
 in
