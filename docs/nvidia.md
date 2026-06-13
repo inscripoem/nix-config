@@ -1,8 +1,11 @@
 # NVIDIA on `briefcase`
 
-Notes for the RTX 2060 SUPER setup on this machine. These explain **why**
-the config in `hardware/briefcase/default.nix` looks the way it does, so
-the choices don't get "optimised" back into trouble later.
+A bug log for the NVIDIA cards that have lived in this machine. The
+**configuration** is in `hardware/briefcase/gpu/<profile>.nix`; this
+file explains **why** each knob is set the way it is, so a future
+"clean up" doesn't quietly re-introduce a known failure mode.
+
+The current profile is `hardware/briefcase/gpu/nvidia-turing.nix`.
 
 Card: **NVIDIA GeForce RTX 2060 SUPER** (Turing, TU106, 8 GB VRAM)
 Driver: **proprietary `nvidia` 580.x**, `modesetting=1`, `powerManagement=1`
@@ -131,32 +134,7 @@ Worth it.
 
 ---
 
-## 3. Quick reference
-
-Current state in `hardware/briefcase/default.nix`:
-
-```nix
-hardware.graphics.enable = true;
-services.xserver.videoDrivers = [ "nvidia" ];
-hardware.nvidia.open = false;
-hardware.nvidia.modesetting.enable = true;
-hardware.nvidia.powerManagement.enable = true;
-environment.sessionVariables.KWIN_DRM_DISABLE_EXPLICIT_SYNC = "1";  # see §4
-```
-
-Things to check if symptoms come back:
-
-| Symptom | First place to look |
-|---|---|
-| Auto-logout / KWin freezes | `journalctl --user -b -1 | grep -iE 'kwin|plasmashell'` and `dmesg | grep -i nvidia` |
-| Wake-up flicker | confirm `cat /proc/cmdline | grep PreserveVideoMemory` shows `=1`, and `systemctl status nvidia-resume.service` is active |
-| Cannot start Wayland session | check `modesetting.enable = true` is still in the config |
-| Login screen frozen until VT switch | §4 — KWin explicit sync workaround |
-| Driver version | `cat /proc/driver/nvidia/version` |
-
----
-
-## 4. Why `KWIN_DRM_DISABLE_EXPLICIT_SYNC=1`
+## 3. Why `KWIN_DRM_DISABLE_EXPLICIT_SYNC=1`
 
 ### Symptoms it solves
 
