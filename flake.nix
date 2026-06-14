@@ -29,6 +29,12 @@
     # Intentionally NOT following our nixpkgs: upstream pins its own
     # nixpkgs-unstable to guarantee binary-cache hits via cache.numtide.com.
     llm-agents.url = "github:numtide/llm-agents.nix";
+
+    zen-browser = {
+      url = "github:0xc000022070/zen-browser-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.home-manager.follows = "home-manager";
+    };
   };
 
   outputs = { nixpkgs, home-manager, plasma-manager, disko, ... }@inputs: {
@@ -42,7 +48,10 @@
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
-            home-manager.sharedModules = [ plasma-manager.homeModules.plasma-manager ];
+            home-manager.sharedModules = [
+              plasma-manager.homeModules.plasma-manager
+              inputs.zen-browser.homeModules.beta
+            ];
             home-manager.backupFileExtension = "backup";
 
             home-manager.users.inscripoem = import ./home;
@@ -63,7 +72,10 @@
           {
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
-            home-manager.sharedModules = [ plasma-manager.homeModules.plasma-manager ];
+            home-manager.sharedModules = [
+              plasma-manager.homeModules.plasma-manager
+              inputs.zen-browser.homeModules.beta
+            ];
             home-manager.backupFileExtension = "backup";
 
             home-manager.users.inscripoem = import ./home;
