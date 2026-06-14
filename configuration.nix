@@ -4,6 +4,10 @@
 
 { config, pkgs, ... }:
 
+let
+  publicKey = builtins.readFile ./keys/ssh-ed25519.pub;
+in
+
 {
 
   imports = [
@@ -114,15 +118,11 @@
       kdePackages.kate
       #  thunderbird
     ];
-    openssh.authorizedKeys.keys = [
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyJUP8n6z8K95LFwLPZQ9jE4k+WmIzocTXkXvAUhRJG"
-    ];
+    openssh.authorizedKeys.keys = [ publicKey ];
     shell = pkgs.zsh;
   };
 
-  users.users.root.openssh.authorizedKeys.keys = [
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyJUP8n6z8K95LFwLPZQ9jE4k+WmIzocTXkXvAUhRJG"
-  ];
+  users.users.root.openssh.authorizedKeys.keys = [ publicKey ];
 
   # Install firefox.
   programs.firefox.enable = true;

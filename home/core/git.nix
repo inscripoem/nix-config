@@ -1,7 +1,7 @@
 { pkgs, lib, ... }:
 
 let
-  signingKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOyJUP8n6z8K95LFwLPZQ9jE4k+WmIzocTXkXvAUhRJG";
+  signingKey = builtins.readFile ../../keys/ssh-ed25519.pub;
   allowedSigners = pkgs.writeText "git-allowed-signers" ''
     changxuben@gmail.com ${signingKey}
   '';
