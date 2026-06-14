@@ -9,5 +9,6 @@
     ./secrets
     ./social
     ./ai
+    ./toolchains
   ];
 }
