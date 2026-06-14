@@ -39,3 +39,8 @@ The user runs `nhs` themselves. Don't trigger a real rebuild unsolicited.
 ## 4. Language
 
 Reply in Simplified Chinese. Code, paths, and commands stay English.
+
+## 5. Commit hygiene
+
+- A single file's changes must land in one commit. Never split them
+  across commits — partial rollback would otherwise break evaluation.
