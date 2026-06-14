@@ -1,5 +1,8 @@
 {
   imports = [
-    ./bun.nix
+    ./misc.nix
+    ./node.nix
+    ./python.nix
+    ./rust.nix
   ];
 }
