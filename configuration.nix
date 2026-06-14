@@ -145,10 +145,22 @@
       "nix-command"
       "flakes"
     ];
+    # Users allowed to push extra substituters / require-sigs=false / etc.
+    # Required so flakes (e.g. llm-agents.nix) can be built without warnings.
+    trusted-users = [
+      "root"
+      "inscripoem"
+    ];
     substituters = [
       "https://cache.nixos.org/"
+      # Real binary caches inside CERNET (verified nix-cache-info reachable).
       "https://mirrors.ustc.edu.cn/nix-channels/store"
-      "https://mirrors.tuna.tsinghua.edu.cn/nix-channel/store"
+      "https://mirror.sjtu.edu.cn/nix-channels/store"
+      # numtide binary cache for llm-agents.nix (claude-code, codex, opencode, ...)
+      "https://cache.numtide.com"
+    ];
+    trusted-public-keys = [
+      "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
     ];
     fallback = true;
   };
