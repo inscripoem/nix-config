@@ -8,5 +8,6 @@
     ./desktop
     ./secrets
     ./social
+    ./ai
   ];
 }

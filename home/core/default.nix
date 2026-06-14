@@ -23,18 +23,15 @@
     xz
     unzip
     p7zip
-    
+
     # nix related
     nix-output-monitor
-    
+
     # system tools
     sysstat
-    lm_sensors 
+    lm_sensors
     ethtool
-    pciutils 
+    pciutils
     usbutils
-    
-    # Vibe Coding
-    gemini-cli
   ];
 }
