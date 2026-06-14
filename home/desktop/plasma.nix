@@ -3,6 +3,14 @@
 {
   targets.genericLinux.nixGL.vulkan.enable = true;
 
+  # Ensure DISPLAY/WAYLAND_DISPLAY are available in the systemd user
+  # session so that KRunner-launched apps (which go through systemd)
+  # inherit them and don't crash with "no DISPLAY environment variable".
+  systemd.user.sessionVariables = {
+    DISPLAY = ":0";
+    WAYLAND_DISPLAY = "wayland-0";
+  };
+
   programs.plasma = {
     enable = true;
     hotkeys.commands."launch-wezterm" = {
