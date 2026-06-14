@@ -7,6 +7,7 @@
 {
 
   imports = [
+    ./system/1password.nix
   ];
 
   # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.

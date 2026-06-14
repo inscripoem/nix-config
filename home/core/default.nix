@@ -3,6 +3,7 @@
 {
   imports = [
     ./git.nix
+    ./ssh.nix
   ];
 
   home.username = "inscripoem";

@@ -6,6 +6,7 @@
     ./editors
     ./browsers
     ./desktop
+    ./secrets
     ./social
   ];
 }
