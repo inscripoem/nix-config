@@ -44,3 +44,10 @@ Reply in Simplified Chinese. Code, paths, and commands stay English.
 
 - A single file's changes must land in one commit. Never split them
   across commits — partial rollback would otherwise break evaluation.
+- Commit messages follow `scope: description` format. Scope is the
+  affected area (e.g. `installer`, `home/creative`, `toolchain/node`,
+  `wezterm`). Description is lowercase, no period at the end.
+  Examples:
+  - `installer: add headless ISO builder and centralize SSH public key`
+  - `home/creative: add zrythm`
+  - `toolchain/node: add node, pnpm and yarn`
