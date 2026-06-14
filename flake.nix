@@ -24,6 +24,11 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # AI coding agents (claude-code, codex, opencode, antigravity-cli, rtk, ...).
+    # Intentionally NOT following our nixpkgs: upstream pins its own
+    # nixpkgs-unstable to guarantee binary-cache hits via cache.numtide.com.
+    llm-agents.url = "github:numtide/llm-agents.nix";
   };
 
   outputs = { nixpkgs, home-manager, plasma-manager, disko, ... }@inputs: {
