@@ -10,5 +10,6 @@
     ./social
     ./ai
     ./toolchains
+    ./creative
   ];
 }
