@@ -9,6 +9,12 @@
       };
       scrolling.multiplier = 5;
       selection.save_to_clipboard = true;
+      terminal = {
+        shell = {
+          program = "/etc/profiles/per-user/inscripoem/bin/zellij";
+          args = [ "attach" "--index" "1" "--create" ];
+        };
+      };
     };
   };
 }
