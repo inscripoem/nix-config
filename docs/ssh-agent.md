@@ -462,3 +462,123 @@ rm  ~/.config/1Password/ssh/agent.toml.gui.bak
 ```
 
 1Password picks up changes to the file live; no app restart needed.
+
+## 10. Future-proofing: this config and other hosts (WSL, vm, headless)
+
+This module is currently shared by every entry in `flake.nix`
+(`briefcase`, `vm`) because both point at the same `./configuration.nix`
+and `./home`. That works *today* by accident — `briefcase` is the only
+host where 1Password is exercised in earnest. Three future scenarios
+where this assumption will break, and what to do about each:
+
+### 10.1 The `vm` host
+
+The configuration evaluates fine on `vm` (verified: `nix eval
+.#nixosConfigurations.vm.config.system.build.toplevel.drvPath`
+exits 0). What runtime behaviour you get depends on what `vm` is
+*for*:
+
+- Used as a desktop clone of `briefcase` (same plasma, same account):
+  works after a one-shot `1password` GUI sign-in inside the VM. Same
+  vault `加密密钥` must be reachable on whatever 1P account you
+  sign in with, or `agent.toml` needs an override.
+- Used as a short-lived test bed for nix changes: 1P GUI starts, but
+  you almost certainly never sign in to it, so `~/.1password/agent.sock`
+  never appears. Anything calling `$SSH_AUTH_SOCK` (git push,
+  `ssh somewhere`, `op-ssh-sign`) hangs or fails. Eval / build /
+  dry-activate paths are unaffected — pure-nix tasks are fine.
+- Used as a headless server (no desktop session at all): the closure
+  still pulls in plasma-shaped X dependencies via `_1password-gui`
+  but nothing ever uses them. ~500 MB of dead weight in the store
+  per generation, no functional damage.
+
+So `vm` is "harmless but wasteful" today. The fix-when-it-matters
+plan is in §10.3.
+
+### 10.2 A future WSL host
+
+WSL is a fundamentally different shape: there is *no Linux 1Password
+GUI*. The agent lives on the Windows host; WSL forwards SSH requests
+across the wsl-interop boundary. Two officially supported paths
+(see [the 1Password WSL docs](https://developer.1password.com/docs/ssh/integrations/wsl/)):
+
+| Path | Who runs ssh | `$SSH_AUTH_SOCK` | When to pick it |
+|------|--------------|------------------|-----------------|
+| **`ssh.exe` alias** (1P-recommended) | Windows OpenSSH, invoked from WSL via interop | unset; just `alias ssh=ssh.exe` and `git config --global core.sshCommand ssh.exe` | pure-WSL workflows, no devcontainers |
+| **socat + npiperelay bridge** | WSL's own `ssh` | `/tmp/1password-agent.sock` (a UNIX socket fronted by `socat` relaying to `\\.\pipe\openssh-ssh-agent`) | you go into docker/devcontainers from WSL, or want a single `ssh` UX |
+
+In **neither** path is the current `home/secrets/1password.nix` reusable
+as-is. Concretely the breakages are:
+
+| Current config | Breakage on WSL |
+|----------------|-----------------|
+| `system/1password.nix` (GUI module) | not applicable, must be skipped |
+| `SSH_AUTH_SOCK = ~/.1password/agent.sock` | wrong path; the socket lives at `/tmp/1password-agent.sock` (bridge) or doesn't exist at all (alias path) |
+| `IdentityAgent ~/.1password/agent.sock` in ssh.nix | same path issue; or, alias path makes `IdentityAgent` irrelevant since `ssh.exe` reads `%USERPROFILE%/.ssh/config` instead of `~/.ssh/config` |
+| `gpg.ssh.program = op-ssh-sign` (from `pkgs._1password-gui`) | the binary doesn't exist (no GUI package on WSL); signing must go through `op-ssh-sign.exe` on the Windows side, or via `core.sshCommand = ssh.exe` |
+| `agent.toml` allowlist | meaningless; the only `agent.toml` that matters lives in `%LOCALAPPDATA%\1Password\config\ssh\agent.toml` on Windows |
+| `gcr-ssh-agent` mask | harmless no-op (gnome-keyring isn't in WSL anyway) |
+
+### 10.3 The migration plan (do this when a second host actually needs
+*different* behaviour, not before)
+
+Today the repo is single-host-shaped:
+
+```
+nix-config/
+├── configuration.nix      # shared body
+├── system/1password.nix   # shared, imported by configuration.nix
+├── home/                  # shared, imported per-host in flake.nix
+└── hardware/
+    ├── briefcase/
+    └── vm/
+```
+
+The reshape that gives clean per-host divergence:
+
+```
+nix-config/
+├── hosts/
+│   ├── briefcase/
+│   │   ├── default.nix          # imports ../../shared + the 1P modules
+│   │   └── home.nix
+│   ├── vm/
+│   │   ├── default.nix          # imports ../../shared, NOT the 1P modules
+│   │   └── home.nix
+│   └── <wsl-host>/
+│       ├── default.nix          # imports ../../shared + 1password-wsl
+│       └── home.nix
+├── shared/
+│   ├── system/                  # everything every host gets
+│   └── home/
+├── system/
+│   ├── 1password.nix            # briefcase-only (Linux GUI flavour)
+│   └── 1password-wsl.nix        # wsl-only (interop + bridge flavour)
+└── home/
+    └── secrets/
+        ├── 1password-linux.nix  # what we have today
+        └── 1password-wsl.nix    # socat bridge + ssh.exe aliases
+```
+
+`flake.nix` then picks `./hosts/<host>/default.nix` instead of the
+flat `./configuration.nix`.
+
+This is **YAGNI** today: there is no WSL host, and `vm` doesn't
+*need* per-host divergence, it just *wastes some closure* without it.
+The right trigger to actually do this work is *"I am sitting in front
+of a WSL machine and need it set up tonight"* — not now.
+
+What to **not** do in the meantime:
+
+- Don't pre-emptively wrap modules in `lib.mkIf isWsl ...`. Nix
+  only evaluates the branch your host hits, so the other branch is
+  untestable dead code that rots silently. By the time you switch
+  on WSL the assumed paths / binary names / 1P pipe name will all
+  have drifted.
+- Don't build a `options.mySsh.agent.backend = enum [ ... ]`
+  abstraction for one real backend. Abstractions earn their cost
+  only when there's actual variation to factor.
+
+The cheapest hedge today (which we've already paid the cost of):
+keep this section of the doc up to date so future-you doesn't have
+to re-derive what breaks where.
