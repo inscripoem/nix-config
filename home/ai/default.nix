@@ -1,5 +1,6 @@
 {
   imports = [
+    ./aichat.nix
     ./cc-switch.nix
     ./claude-code.nix
     # ./codex.nix

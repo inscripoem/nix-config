@@ -11,5 +11,9 @@
     ./ai
     ./toolchains
     ./creative
+    ./productivity
+    ./media
+    ./gaming
+    ./compat
   ];
 }
