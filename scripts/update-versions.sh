@@ -2,11 +2,11 @@
 # Update trae-cn and cc-switch to their latest upstream versions.
 # Usage: ./update-versions.sh [--dry-run]
 #
-# Requirements: curl, jq, nix-prefetch-url, sed, gh (for cc-switch)
+# Requirements: curl, jq, nix-prefetch-url, sed
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DRY_RUN=false
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
 
@@ -61,7 +61,25 @@ fi
 
 echo ""
 echo "==> Checking cc-switch ..."
-cc_version=$(gh api repos/farion1231/cc-switch/releases/latest --jq '.tag_name' | sed 's/^v//')
+if command -v gh &>/dev/null; then
+  cc_version=$(gh api repos/farion1231/cc-switch/releases/latest --jq '.tag_name' | sed 's/^v//')
+else
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    cc_json=$(curl -sf --max-time 10 -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/farion1231/cc-switch/releases/latest" || true)
+  else
+    cc_json=$(curl -sf --max-time 10 "https://api.github.com/repos/farion1231/cc-switch/releases/latest" || true)
+  fi
+  if [[ -z "$cc_json" ]]; then
+    echo "    ERROR: Failed to reach GitHub API. Check your network or set GITHUB_TOKEN."
+    exit 1
+  fi
+  if echo "$cc_json" | jq -e '.message' >/dev/null 2>&1; then
+    echo "    ERROR: GitHub API request failed: $(echo "$cc_json" | jq -r '.message')"
+    echo "    Try again later, set GITHUB_TOKEN, or install gh CLI."
+    exit 1
+  fi
+  cc_version=$(echo "$cc_json" | jq -r '.tag_name' | sed 's/^v//')
+fi
 
 cc_nix="$REPO_ROOT/home/ai/cc-switch.nix"
 cc_current=$(grep 'version = ' "$cc_nix" | head -1 | grep -oP '[\d.]+')
@@ -100,7 +118,7 @@ fi
 
 echo ""
 if [[ "$changed" == true ]]; then
-  echo "Done. Run 'sudo nixos-rebuild dry-activate --flake .#briefcase' to verify."
+  echo "Done."
 elif [[ "$DRY_RUN" == true ]]; then
   echo "Dry run complete. No files changed."
 else
