@@ -234,11 +234,14 @@ If any of those is not true, leave the workaround on. It is cheap.
 Then the real cause is probably **not** explicit sync. Next things to
 try, in order:
 
-1. Disable the SDDM Wayland greeter (`services.displayManager.sddm.wayland.enable = false;`)
+1. Check if `WAYLAND_DISPLAY` is hardcoded in
+   `systemd.user.sessionVariables` — this breaks SDDM regardless of
+   GPU driver. See `docs/sddm-wayland-display.md`.
+2. Disable the SDDM Wayland greeter (`services.displayManager.sddm.wayland.enable = false;`)
    to avoid the greeter-→-session DRM master handoff entirely. Session
    stays Plasma Wayland.
-2. Cold-start the machine (pull the PSU plug for 30 s) to clear any
+3. Cold-start the machine (pull the PSU plug for 30 s) to clear any
    wedged GPU state — `reboot` alone doesn't power-cycle the PCIe slot.
-3. Collect `journalctl --user -b -1 | grep -iE 'kwin|qFatal|signal'`
+4. Collect `journalctl --user -b -1 | grep -iE 'kwin|qFatal|signal'`
    and `coredumpctl list` to confirm whether KWin exited cleanly
    (workaround territory) or actually crashed (driver bug territory).
