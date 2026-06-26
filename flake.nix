@@ -35,9 +35,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
+
+    # niri - scrollable-tiling Wayland compositor
+    niri = {
+      url = "github:sodiboo/niri-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { nixpkgs, home-manager, plasma-manager, disko, ... }@inputs: {
+  outputs = { nixpkgs, home-manager, plasma-manager, disko, niri, ... }@inputs: {
     nixosConfigurations = {
       vm = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
@@ -66,10 +72,13 @@
         system = "x86_64-linux";
         modules = [
           disko.nixosModules.disko
+          niri.nixosModules.niri
           ./hardware/briefcase/default.nix
           ./configuration.nix
           home-manager.nixosModules.home-manager
           {
+            nixpkgs.overlays = [ niri.overlays.niri ];
+
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
             home-manager.sharedModules = [

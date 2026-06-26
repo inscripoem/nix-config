@@ -62,6 +62,25 @@ in
   services.displayManager.sddm.wayland.enable = true;
   services.desktopManager.plasma6.enable = true;
 
+  # Enable COSMIC desktop environment (parallel install with KDE Plasma).
+  services.desktopManager.cosmic.enable = true;
+
+  # Enable niri - scrollable-tiling Wayland compositor
+  programs.niri.enable = true;
+
+  # Enable DankMaterialShell - desktop shell for niri.
+  # NOTE: systemd.enable is intentionally false. The upstream module would
+  # bind dms.service to graphical-session.target, which is also activated by
+  # KDE Plasma and COSMIC sessions, causing the niri taskbar to appear on
+  # top of those desktops. We start dms from niri's spawn-at-startup
+  # instead (see home/desktop/niri.nix) so it only runs inside niri.
+  programs.dms-shell = {
+    enable = true;
+    systemd.enable = false;
+    enableSystemMonitoring = true;
+    enableDynamicTheming = true;
+  };
+
   # Use gnome-keyring as the Secret Service provider (org.freedesktop.secrets)
   # so libsecret-based apps (trae-cn, vivaldi, chromium, vscode, git) get an
   # auto-unlocked keyring at login. KWallet stays for KDE-internal use only.
@@ -74,9 +93,11 @@ in
   # Wayland: "No such interface org.freedesktop.portal.RemoteDesktop").
   # Force every interface on a KDE session to the kde backend; KWin provides
   # RemoteDesktop via libei.
+  # COSMIC session will use xdg-desktop-portal-cosmic automatically.
   xdg.portal = {
     enable = true;
     config.kde.default = [ "kde" ];
+    config.cosmic.default = [ "cosmic" ];
   };
 
   # Configure keymap in X11
