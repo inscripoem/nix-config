@@ -11,5 +11,6 @@
     ./pueue.nix
     ./integrations.nix
     ./packages.nix
+    ./glances.nix
   ];
 }

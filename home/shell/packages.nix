@@ -8,7 +8,6 @@
     duf
     dust
     htop
-    glances
     bottom
     gping
     lazygit
