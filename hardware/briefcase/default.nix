@@ -15,4 +15,10 @@
   boot.loader.efi.canTouchEfiVariables = true;
 
   networking.hostName = "briefcase";
+
+  # Enable Tailscale client-side routing tweaks (rp_filter = loose).
+  # Required for using a peer as exit node or accepting subnet routes
+  # advertised by other tailnet nodes. See system/tailscale.nix for the
+  # shared portion of the configuration.
+  services.tailscale.useRoutingFeatures = "client";
 }
