@@ -16,6 +16,11 @@
 
   networking.hostName = "briefcase";
 
+  # Pull in linux-firmware so Intel AX210 (and friends) get iwlwifi-*.ucode.
+  # Without this the PCIe Wi-Fi half of the card fails to probe even though
+  # USB-side Bluetooth keeps working with in-tree btusb.
+  hardware.enableRedistributableFirmware = true;
+
   # Enable Tailscale client-side routing tweaks (rp_filter = loose).
   # Required for using a peer as exit node or accepting subnet routes
   # advertised by other tailnet nodes. See system/tailscale.nix for the
