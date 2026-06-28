@@ -1,18 +1,18 @@
 { pkgs, ... }:
 
 let
-  version = "3.16.3";
+  version = "3.16.4";
 
   src =
     if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then
       pkgs.fetchurl {
         url = "https://github.com/farion1231/cc-switch/releases/download/v${version}/CC-Switch-v${version}-Linux-x86_64.deb";
-        hash = "sha256-j7ObojgTwKZ3IC8O/+28dq2KqoG8KQR8eWGQhxk97B4=";
+        hash = "sha256-CGN1thG7nLwo4GjzbbqQJmubS2BQd9lO+7l/R5hst9g=";
       }
     else if pkgs.stdenv.hostPlatform.system == "aarch64-linux" then
       pkgs.fetchurl {
         url = "https://github.com/farion1231/cc-switch/releases/download/v${version}/CC-Switch-v${version}-Linux-arm64.deb";
-        hash = "sha256-Hn5tGXz8bQ6Rj6HD+ztPOrk+9pQtFOlSJSBrzMkUdQc=";
+        hash = "sha256-XhbYIaQsDXETeniOZSvWaDya82uAjDg/dEwBVPlJ820=";
       }
     else
       throw "cc-switch: unsupported system ${pkgs.stdenv.hostPlatform.system}";
