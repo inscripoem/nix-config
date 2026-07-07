@@ -2,16 +2,16 @@
 
 A bug log for the SiYuan note-taking app packaged in
 `home/productivity/siyuan.nix`. The **configuration** lives there; this
-file explains **why** there is a `siyuan-prelaunch` shim that `chmod`s
-part of the workspace on every start, so a future "clean up" doesn't
-quietly reintroduce the crash.
+file explains **why** the kernel binary is rebuilt from source with a
+targeted `substituteInPlace` patch to vendored `gulu`, so a future
+"clean up" doesn't quietly drop the patch and reintroduce the crash.
 
 Package: **siyuan 3.7.1**, hybrid build — frontend/Electron layer
 repackaged locally from the upstream `.deb` via `dpkg-deb --extract` +
 `autoPatchelfHook` (same shape as `home/ai/cc-switch.nix` /
 `home/ai/trae-cn.nix`); the **kernel binary** is built from source
 with `buildGoModule` against the matching `v${version}` git tag and
-symlinked over the one shipped in the `.deb`. See §4.2.
+symlinked over the one shipped in the `.deb`. See §4.
 
 Upstream: <https://github.com/siyuan-note/siyuan>.
 
@@ -140,49 +140,15 @@ originates in user-writable territory:
 So the fix scope is provably narrow: **only `conf/appearance/`**
 carries the read-only contagion.
 
-## 4. Fix
+## 4. Fix — source-level `gulu.File.Copy` patch
 
-Two layers, both live in `home/productivity/siyuan.nix`.
+We build the SiYuan kernel from source and neutralise the offending
+`os.Chmod(dest, sourceinfo.Mode())` line inside vendored `gulu` at
+Go-module fetch time. This is the **only** cure. See §4.1 below for
+why we intentionally do **not** carry a runtime `chmod` shim as a
+second line of defence.
 
-### 4.1 Prelaunch shim (first cure, cold-start scope)
-
-Wrap the real SiYuan binary in a tiny prelaunch shim (see
-`home/productivity/siyuan.nix`, `prelaunch` let-binding and the
-`postFixup` that installs it as `$out/libexec/siyuan-prelaunch`).
-Effective content, after `substituteInPlace` fills in the store path:
-
-```bash
-#!/nix/store/…/bash
-ws="${SIYUAN_WORKSPACE:-$HOME/SiYuan}"
-if [ -d "$ws/conf/appearance" ]; then
-    chmod -R u+w "$ws/conf/appearance" 2>/dev/null || true
-fi
-exec "/nix/store/…-siyuan-3.7.1/opt/SiYuan/siyuan" "$@"
-```
-
-`makeWrapper` then wraps the shim instead of the raw binary, so the
-`gappsWrapperArgs` / `LD_LIBRARY_PATH` setup still applies unchanged.
-
-Why this shape:
-
-- `SIYUAN_WORKSPACE` fallback matches the upstream default
-  (`~/SiYuan`) documented in `kernel/util/working.go initWorkspaceDir`.
-- `chmod -R u+w` — user-write is all the kernel needs; group / other
-  bits are left alone.
-- `|| true` swallows failures for the case where the workspace lives
-  on a filesystem that ignores POSIX modes (SMB, exFAT). The kernel
-  won't hit EACCES there anyway.
-- `exec` replaces the shim process so the pid, controlling tty, and
-  signal handling all belong to the real binary — no orphan wrapper.
-
-### 4.2 Source-level `gulu.File.Copy` patch (second cure, runtime scope)
-
-The shim above only fires **before `exec siyuan`**, so it cannot help
-the mid-session `os.Exit(26)` triggered by the appearance HTTP
-handler (see §1). To cover that path we build the kernel from source
-and neutralise the offending `os.Chmod` at the vendored `gulu` layer.
-
-Effective moving parts in `home/productivity/siyuan.nix`:
+### 4.1 Moving parts in `home/productivity/siyuan.nix`
 
 - `srcTag` — `pkgs.fetchFromGitHub` of the matching `v${version}` git
   tag. Kept separate from `srcDeb` so upstream binary release and
@@ -227,27 +193,41 @@ Effective moving parts in `home/productivity/siyuan.nix`:
 
 Provenance is `[ binaryNativeCode fromSource ]` — hybrid.
 
-### Why keep both cures
+### 4.2 Why we deliberately do **not** carry a prelaunch shim
 
-The shim is not redundant. It defends against:
+An earlier iteration of this derivation wrapped `siyuan` in a bash
+prelaunch shim that ran `chmod -R u+w "$ws/conf/appearance"` before
+`exec siyuan`. It was originally introduced as belt-and-braces on top
+of the source patch. We removed it deliberately, and adding it back
+would be a regression. Reasoning:
 
-- **Regressions in our own patch**: if a future upgrade silently
-  breaks the `substituteInPlace` (e.g. upstream renames the field to
-  `srcInfo.Mode()`), `--replace-fail` catches it in the build, but if
-  the new copy site is somewhere the patch doesn't reach, the shim's
-  cold-start `chmod` still keeps the app launchable.
-- **New store-source copy paths in the kernel**: §3 documents that
-  today only `conf/appearance/` is store-sourced. A future feature
-  could add another (e.g. bundled snippet library). The shim's
-  workspace-scope `chmod` is easier to widen than tracking down and
-  patching every new source location.
-- **Filesystems that ignore POSIX modes** (SMB, exFAT): the patch is
-  a no-op there anyway; the shim's `|| true` is also a no-op.
+- **The shim would mask silent patch failures.** If a future upgrade
+  makes `--replace-fail` still succeed but the patched line no longer
+  actually feeds every `gulu.File.Copy` call (e.g. upstream adds a
+  new helper `copyFileWithPerms` and routes `InitAppearance` through
+  it), the kernel would once again write `0444` files into
+  `conf/appearance/`. A shim would then quietly `chmod` them back
+  before each cold start, so the app keeps working and we never
+  learn the patch is dead. The only remaining failure signal —
+  mid-session theme switch crashing (see §1) — needs a human to
+  manually trigger it and is easy to miss.
+- **Without the shim, exit 26 on the second cold start is a loud,
+  automatic canary.** The kernel writing `0444` into the workspace
+  becomes visible on the very next launch, no user action required.
+  This trades a small "app broken until human diagnoses" window for
+  a much sharper feedback loop — worth it, because the diagnosis
+  path is already written down in §8 and §9.3.
+- **The shim's other supposed benefits are cheaper without it.**
+  New store-source copy paths are surfaced by the `find` command in
+  §6 step 3, so widening the patch is a reactive but adequate
+  response. Filesystems that ignore POSIX modes (SMB, exFAT) never
+  hit EACCES in the first place, so no defence is needed there.
 
-Cost is one extra `os.Chmod` syscall per copied file at kernel level
-and one filesystem walk per launch at shim level. Not measurable.
+If you disagree with this call, reintroduce the shim as its own
+commit alongside a doc update flipping this section — do not sneak
+it back "just in case".
 
-### Why we did not go j4ger's full-source route
+### 4.3 Why we did not go j4ger's full-source route
 
 `j4ger/nix-packages` builds the **entire** SiYuan app (Electron
 frontend included) from source, using `pnpm` + `electron-builder`
@@ -265,15 +245,13 @@ revisit this trade-off.
 
 ## 5. Cost
 
-- One extra `bash` process per SiYuan launch, `exec`ed away
-  immediately. Not measurable.
-- One extra `chmod -R u+w` walk over `~/SiYuan/conf/appearance/`
-  every start. The directory is ~2 MB / a few hundred files; the
-  walk is dominated by filesystem cache and typically <20 ms.
-- If the user manually chmod's a specific theme file to read-only
-  hoping SiYuan won't touch it, we override that intent. SiYuan
-  itself would overwrite it anyway on the next start, so this is not
-  a regression.
+- One extra `os.Chmod(_, 0644)` syscall per file copied by
+  `gulu.File.Copy`, versus upstream's `os.Chmod(_, sourceinfo.Mode())`.
+  Same number of syscalls, different constant. Not measurable.
+- Every SiYuan version bump requires re-deriving `vendorHash` (see
+  §9). One human-in-the-loop probe per release.
+- If upstream renames the patched line, `nix build` hard-fails at
+  `substituteInPlace` — the intended, loud outcome (see §9.3).
 
 ## 6. Upgrading SiYuan
 
@@ -288,48 +266,43 @@ the only Nix-store-sourced copy target.** Practically:
 1. `nhs` to the new version.
 2. `rm -rf ~/SiYuan-test && SIYUAN_WORKSPACE=~/SiYuan-test siyuan`,
    let it initialise, then close.
-3. `find ~/SiYuan-test -not -perm -u+w -type f | head` — if this
-   surfaces files **outside** `conf/appearance/`, upstream added
-   another store-source copy path. Decide whether to widen the
-   shim's `chmod` target or extend the source patch to cover that
-   call site too.
-4. Open and close the app a few times; switch theme once. No
+3. `find ~/SiYuan-test -not -perm -u+w -type f | head` — this must
+   come back empty. Any hit is evidence that the source patch is
+   **not** covering some new store-source copy path; extend
+   `modPostBuild` (or add a companion patch) to reach that call site
+   before shipping.
+4. Open and close the app a few times, then switch theme once. No
    "数据损坏" modal on cold start **or** during the theme switch.
 
-## 7. When to remove the shim
+## 7. When to remove the source patch
 
-The §4.2 source patch is now the primary cure. The shim stays as
-belt-and-braces (see "Why keep both cures" under §4.2). Drop the
-shim only once **all** of the following are true:
-
-- The `gulu.File.Copy` source patch has ridden through **two
-  consecutive minor SiYuan version bumps** without needing manual
-  intervention (i.e. `--replace-fail` never fired during
-  `update-versions.sh siyuan`, and manual cold-start + theme-switch
-  smoke test passed on both bumps).
-- `find ~/SiYuan-test -not -perm -u+w -type f` after step 2 of §6
-  comes back empty on those same two bumps — proving the patch
-  fully covers every store-source copy path we care about.
-- No new store-source copy target has been discovered in the
-  intervening two releases.
-
-Alternative shortcuts, if any of these happens upstream we can drop
-both the shim **and** the source patch:
+Drop `modPostBuild` and revert to a plain `.deb`-shipped kernel once
+**any** of the following becomes true:
 
 - Upstream `88250/gulu` releases a version where `File.Copy` no
   longer calls `os.Chmod(dest, sourceinfo.Mode())` (or explicitly
   masks user-write back in), **and** SiYuan bumps to it. Track:
   <https://github.com/88250/gulu/blob/master/file.go>.
 - Upstream SiYuan starts skipping `InitAppearance`'s copy when the
-  destination already exists and is newer than the source. Track:
+  destination already exists and is newer than the source (a
+  reasonable optimisation they may land independently). Track:
   <https://github.com/siyuan-note/siyuan/blob/master/kernel/model/appearance.go>.
 
-Until then, keep both. They are cheap.
+If either lands, verify by:
 
-## 8. If the shim doesn't help
+1. Applying the version bump **without** the patch (temporarily
+   comment out `modPostBuild`).
+2. Running the §6 checklist.
+3. If clean, drop `modPostBuild`, `srcTag`, `siyuan-kernel`, and the
+   `postFixup` symlink; the frontend `.deb` will ship a fixed kernel
+   directly.
 
-Then the failing copy path is no longer `conf/appearance/`. Order of
-suspicion:
+Until then, keep the patch.
+
+## 8. If exit 26 comes back
+
+The failing copy path may no longer be `conf/appearance/`, or the
+patch may have silently stopped covering it. Order of suspicion:
 
 1. Cold-start the kernel directly, outside Electron, with stderr
    attached:
@@ -340,12 +313,14 @@ suspicion:
    ```
    The last `F filelock.go` / `F …` line names the exact
    `dest=/…` path that failed.
-2. Widen the shim's `chmod` to the parent directory named in that
-   log line, one level at a time.
-3. If the log shows a *non-*EACCES fatal (e.g. `no such file`,
-   `invalid argument`), it's not this class of bug — do **not** just
-   widen `chmod` blindly; go read the specific kernel path that
-   `ReportFileSysFatalError`'d.
+2. If the failing dest is under `conf/appearance/`, the source patch
+   itself has stopped working — jump to §9.3.
+3. If the failing dest is elsewhere, upstream added a new
+   store-sourced copy target. Widen `modPostBuild` (or add another
+   `substituteInPlace` targeting the new call site), rebuild, retry.
+4. If the log shows a *non-*EACCES fatal (e.g. `no such file`,
+   `invalid argument`), it's not this class of bug — go read the
+   specific kernel path that `ReportFileSysFatalError`'d.
 
 Related exit codes for reference (all from `main.js`
 `kernelProcess.on("close")`):
