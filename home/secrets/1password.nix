@@ -25,7 +25,7 @@
 # Full design rationale, layer model, recovery procedures: see
 # docs/ssh-agent.md.
 
-{ ... }:
+{ pkgs, ... }:
 
 {
   # See item (1) above.
@@ -46,6 +46,18 @@
   # 1Password offers them in vault insertion order; if we ever hit
   # MaxAuthTries=6 against some server, promote specific items above
   # the vault entry here.
+  #
+  # The autostart entry starts the 1Password GUI at graphical session
+  # login, minimised to the tray via `--silent`. Same XDG autostart
+  # mechanism as home/desktop/deskflow.nix: any .desktop file dropped
+  # into ~/.config/autostart/ is honoured by every XDG-compliant DE
+  # (KDE Plasma, GNOME, ...) during session startup.
+  #
+  # Rather than inlining a full copy of the desktop entry, we take the
+  # one shipped by pkgs._1password-gui and rewrite only its Exec line
+  # to append `--silent`. This way any upstream change to Name / Icon /
+  # MimeType / Categories flows through automatically on the next `nhs`
+  # -- our diff against upstream stays surgical (one flag, one line).
   xdg.configFile = {
     "systemd/user/gcr-ssh-agent.socket".text = "";
     "systemd/user/gcr-ssh-agent.service".text = "";
@@ -56,5 +68,14 @@
       [[ssh-keys]]
       vault = "加密密钥"
     '';
+
+    "autostart/1password.desktop".source = pkgs.substitute {
+      src = "${pkgs._1password-gui}/share/applications/1password.desktop";
+      substitutions = [
+        "--replace-fail"
+        "Exec=1password"
+        "Exec=1password --silent"
+      ];
+    };
   };
 }
