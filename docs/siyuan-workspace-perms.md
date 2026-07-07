@@ -1,6 +1,6 @@
 # SiYuan on NixOS: workspace permissions & exit code 26
 
-A bug log for the SiYuan note-taking app packaged in
+A downstream-adaptation log for the SiYuan note-taking app packaged in
 `home/productivity/siyuan.nix`. The **configuration** lives there; this
 file explains **why** the kernel binary is rebuilt from source with a
 targeted `substituteInPlace` patch to vendored `gulu`, so a future
@@ -45,7 +45,31 @@ Two important not-facts that misled early diagnosis:
 - Passing `--workspace ~/SiYuan --lang zh-CN` on the command line
   does **not** help — the modal is not about argv.
 
-## 2. Root cause (three layers)
+## 1.1 Framing: adaptation, not upstream bug fix
+
+Before the diagnosis: the patch documented in §4 is a **downstream
+adaptation** for a specific interaction between three independently
+correct designs, not a fix for an upstream bug. Upstream issue
+trackers ([siyuan-note/siyuan](https://github.com/siyuan-note/siyuan/issues)
+and [88250/gulu](https://github.com/88250/gulu)) carry no report of
+this failure mode, and there is no reason to expect one.
+
+- **SiYuan kernel view**: `os.Exit(26)` on detected permission
+  anomalies is a deliberate data-protection shutdown, not a defect —
+  it refuses to continue when the workspace looks unsafe.
+- **gulu view**: `File.Copy` preserving `sourceinfo.Mode()` is
+  standard POSIX copy semantics for a general-purpose file utility;
+  hard-coding `0644` would break unrelated callers.
+- **NixOS view**: `/nix/store` entries are mode `0444`/`0555` by
+  design — the read-only, content-addressed store is the core
+  guarantee of the platform.
+
+All three are individually correct. The failure exists **only** at
+their intersection (source of copy = a read-only store path), which
+makes it the **packager's** responsibility to bridge, not any
+upstream's to change. That is what §4 does.
+
+## 2. Why it happens on NixOS — three interacting designs
 
 ### 2.1 App layer: `InitAppearance` runs on every boot
 
@@ -137,14 +161,14 @@ originates in user-writable territory:
   archives into a tempdir first, then `filelock.Copy` from there —
   source is user-writable, no store contamination.
 
-So the fix scope is provably narrow: **only `conf/appearance/`**
+So the adaptation scope is provably narrow: **only `conf/appearance/`**
 carries the read-only contagion.
 
-## 4. Fix — source-level `gulu.File.Copy` patch
+## 4. Downstream adaptation — source-level `gulu.File.Copy` patch
 
 We build the SiYuan kernel from source and neutralise the offending
 `os.Chmod(dest, sourceinfo.Mode())` line inside vendored `gulu` at
-Go-module fetch time. This is the **only** cure. See §4.1 below for
+Go-module fetch time. This is the **only** patch we carry. See §4.1 below for
 why we intentionally do **not** carry a runtime `chmod` shim as a
 second line of defence.
 
@@ -189,7 +213,7 @@ second line of defence.
   `${siyuan-kernel}/bin/SiYuan-Kernel` in its place. Everything else
   from the `.deb` (Electron app, `pandoc`, resources, `.desktop`,
   icons) is kept as-is — no need to rebuild the frontend from source
-  just to fix a kernel bug.
+  just to carry a NixOS-specific kernel patch.
 
 Provenance is `[ binaryNativeCode fromSource ]` — hybrid.
 
@@ -239,7 +263,7 @@ and give us the gulu patch for free, but the frontend build:
 - ships its own `pandoc` binary that needs another Nix wrapper,
 - rebuilds several hundred MB of JS on every version bump.
 
-For a kernel-only bug fix the hybrid `.deb`-frontend + source-kernel
+For a kernel-only downstream patch the hybrid `.deb`-frontend + source-kernel
 shape is cheaper. If we ever need to patch frontend behaviour we
 revisit this trade-off.
 
@@ -319,7 +343,7 @@ patch may have silently stopped covering it. Order of suspicion:
    store-sourced copy target. Widen `modPostBuild` (or add another
    `substituteInPlace` targeting the new call site), rebuild, retry.
 4. If the log shows a *non-*EACCES fatal (e.g. `no such file`,
-   `invalid argument`), it's not this class of bug — go read the
+   `invalid argument`), it's not this class of failure — go read the
    specific kernel path that `ReportFileSysFatalError`'d.
 
 Related exit codes for reference (all from `main.js`
@@ -413,7 +437,7 @@ doesn't match anything in file "vendor/github.com/88250/gulu/file.go"
 ```
 
 upstream `gulu` moved the offending line. Do **not** just delete the
-`substituteInPlace` — that reintroduces the exit-26 bug. Instead:
+`substituteInPlace` — that reintroduces the exit-26 failure mode. Instead:
 
 1. `nix flake prefetch --json github:88250/gulu/${GULU_REV}` where
    `${GULU_REV}` is what the new SiYuan `kernel/go.mod` pins.
