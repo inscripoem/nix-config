@@ -62,7 +62,7 @@ Manage **multiple heterogeneous machines** spanning different platforms, archite
 ### 3.1 Single Source of Truth
 
 - **Host declaration table**: All host metadata (architecture, class, deploy config) centralized in `vars/` or at the top of `outputs/nixos.nix`
-- **User identity**: Username, email, SSH public keys centralized in `vars/default.nix`, passed via `specialArgs`
+- **User identity**: Username, email, SSH public keys, stateVersion centralized in `vars/default.nix`, passed via `specialArgs`
 - **Custom packages**: All custom derivations centralized in `pkgs/`, exposed as `pkgs.<name>` via overlay
 
 ### 3.2 File Existence Criterion
@@ -94,9 +94,11 @@ nixosHosts = {
 The generator `lib/mkNixos.nix` accepts a host spec and produces `nixosSystem { ... }`, with built-in:
 - `specialArgs = { inherit inputs vars; }`
 - Always imports `modules/nixos/base`
-- Imports the corresponding profile directory per class
+- Imports the corresponding profile directory per class (see §3.4)
 - Imports `hosts/<name>/` per host
 - Integrates home-manager (sharing `vars` with base)
+
+**Generators must be generic**: `mkNixos` must not hardcode any class-specific modules (e.g. plasma-manager, zen-browser). Class-specific NixOS modules and HM sharedModules are auto-imported based on `spec.classes`, keeping the generator pure and reusable across desktop, server, WSL, and VM hosts.
 
 ### 3.4 Layered Composition
 
@@ -105,16 +107,34 @@ Modules compose in three layers:
 ```
 base (shared across all NixOS hosts)
   ↓
-class (desktop / server / wsl / vm)
+class (desktop / server / wsl / vm) — auto-imported by mkNixos based on spec.classes
   ↓
 host (per-host specifics)
 ```
+
+**NixOS system modules** (auto-imported per class):
 
 - `modules/nixos/base/`: nix-daemon, i18n, users, networking, ssh, nh
 - `modules/nixos/desktop/`: SDDM/Plasma/niri, audio, fonts, xdg-portal, printing
 - `modules/nixos/server/`: SSH hardening, firewall, monitoring, docker/containers (reserved)
 - `modules/nixos/wsl/`: nixos-wsl wrapper (reserved)
 - `modules/nixos/vm/`: VM guest integration
+
+**Home-manager modules** (auto-imported per class):
+
+- `home/base/`: Cross-platform HM modules (CLI/shell/git) — split from existing groups
+- `home/desktop/`: Desktop-specific HM modules (plasma-manager, zen-browser sharedModules, etc.)
+- `home/server/`: Server-specific HM modules (reserved)
+- `home/hosts/`: Per-host HM overrides (e.g. briefcase adds gaming+creative; wsl minimal)
+
+**Auto-import mechanism**: `mkNixos` reads `spec.classes` (e.g. `[ "desktop" ]`) and automatically imports:
+- `modules/nixos/<class>/` for each class (NixOS modules)
+- `home/<class>/` for each class (HM modules, added to `hmSharedModules`)
+
+This keeps the host declaration table declarative — hosts only declare their classes, not the modules those classes contain.
+
+**Per-host specifics**:
+
 - `hosts/<name>/`: Hardware config + host-level overrides
 
 ### 3.5 Deployment Tool Choice
@@ -170,6 +190,9 @@ nix-config/
 │   ├── darwin/           # Reserved: nix-darwin modules by domain
 │   └── shared/           # Reserved: cross-platform shared
 ├── home/
+│   ├── base/             # Cross-platform HM modules (CLI/shell/git) — split from existing groups
+│   ├── desktop/          # Desktop-specific HM sharedModules (plasma-manager, zen-browser, etc.)
+│   ├── server/           # Server-specific HM modules (reserved)
 │   ├── <group>/          # Keep existing 15 groups, but cleaned per file existence criterion
 │   └── hosts/            # Per-host HM overrides (e.g. briefcase adds gaming+creative; wsl minimal)
 ├── pkgs/
@@ -211,6 +234,7 @@ Package-related changes use `nix build --dry-run`.
 - Create `lib/`, `vars/`, `outputs/`
 - Change flake.nix to one-line outputs: `outputs = inputs: import ./outputs inputs;`
 - Don't delete old `configuration.nix`; new outputs temporarily 100% equivalent to old
+- **Minimal skeleton only**: `outputs/default.nix` is a single file (not yet split into `nixos.nix` / `darwin.nix` / `colmena.nix` / `deploy.nix`); `lib/default.nix` is a placeholder (no `autoImport` etc. yet); class auto-import is not implemented (that's P5)
 - **Risk**: Medium (flake evaluation can break). **Rollback**: `git restore flake.nix`
 
 ### P3: Split configuration.nix
@@ -290,5 +314,10 @@ When adding a new platform (e.g. macOS):
 
 ---
 
-**Document version**: v1.0 (2026-07-08)  
-**Status**: Pending implementation
+**Document version**: v1.1 (2026-07-08)  
+**Status**: In progress (P1 done, P2 in progress)
+
+### Changelog
+
+- **v1.1**: Clarified generator purity (§3.3), class auto-import mechanism (§3.4), HM class layer (§3.4), P2 minimal scope (§5), stateVersion in vars (§3.1)
+- **v1.0**: Initial document
