@@ -19,9 +19,16 @@ let
 in
 nixpkgs.lib.nixosSystem {
   system = arch;
+  specialArgs = {
+    inherit vars;
+  };
   modules = extraModules ++ [
     hardwarePath
-    ../configuration.nix
+    ../modules/nixos/base
+    ../modules/nixos/desktop  # Only for desktop hosts; will be conditional in P5
+    ../modules/nixos/1password.nix
+    ../modules/nixos/gaming.nix
+    ../modules/nixos/tailscale.nix
     home-manager.nixosModules.home-manager
     {
       nixpkgs.overlays = [ (import ../pkgs) ];
