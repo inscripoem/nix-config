@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs }:
 
 let
   version = "2.3.50209";
@@ -116,6 +116,4 @@ let
     };
   };
 in
-{
-  home.packages = [ trae-cn ];
-}
+trae-cn

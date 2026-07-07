@@ -3,7 +3,7 @@
     ./nvim.nix
     ./vscode.nix
     ./zed.nix
-    ./trae.nix
+    ./trae-cn.nix
     ./helix.nix
   ];
 }

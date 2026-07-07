@@ -34,7 +34,7 @@ trae_json=$(curl -sf "https://api.trae.com.cn/icube/api/v1/native/version/trae/c
 trae_version=$(echo "$trae_json" | jq -r '.data.manifest.linux.version')
 trae_url=$(echo "$trae_json" | jq -r '.data.manifest.linux.download[0]."x64.deb"')
 
-trae_nix="$REPO_ROOT/home/editors/trae.nix"
+trae_nix="$REPO_ROOT/pkgs/trae-cn.nix"
 trae_current=$(grep 'version = ' "$trae_nix" | head -1 | grep -oP '[\d.]+')
 
 echo "    current : $trae_current"
@@ -81,7 +81,7 @@ else
   cc_version=$(echo "$cc_json" | jq -r '.tag_name' | sed 's/^v//')
 fi
 
-cc_nix="$REPO_ROOT/home/ai/cc-switch.nix"
+cc_nix="$REPO_ROOT/pkgs/cc-switch.nix"
 cc_current=$(grep 'version = ' "$cc_nix" | head -1 | grep -oP '[\d.]+')
 
 echo "    current : $cc_current"
@@ -138,7 +138,7 @@ else
   siyuan_version=$(echo "$siyuan_json" | jq -r '.tag_name' | sed 's/^v//')
 fi
 
-siyuan_nix="$REPO_ROOT/home/productivity/siyuan.nix"
+siyuan_nix="$REPO_ROOT/pkgs/siyuan.nix"
 siyuan_current=$(grep 'version = ' "$siyuan_nix" | head -1 | grep -oP '[\d.]+')
 
 echo "    current : $siyuan_current"

@@ -175,7 +175,7 @@ nix-config/
 ├── pkgs/
 │   ├── default.nix       # Overlay collector
 │   ├── siyuan.nix
-│   ├── trae.nix
+│   ├── trae-cn.nix
 │   ├── cc-switch.nix
 │   └── glances.nix
 ├── docs/                 # Unchanged

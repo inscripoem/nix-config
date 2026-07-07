@@ -52,6 +52,8 @@
           ./configuration.nix
           home-manager.nixosModules.home-manager
           {
+            nixpkgs.overlays = [ (import ./pkgs) ];
+
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
             home-manager.sharedModules = [
@@ -77,7 +79,7 @@
           ./configuration.nix
           home-manager.nixosModules.home-manager
           {
-            nixpkgs.overlays = [ niri.overlays.niri ];
+            nixpkgs.overlays = [ niri.overlays.niri (import ./pkgs) ];
 
             home-manager.useGlobalPkgs = true;
             home-manager.useUserPackages = true;
