@@ -59,14 +59,6 @@ let
     };
   };
 
-  prelaunch = pkgs.writeShellScript "siyuan-prelaunch" ''
-    ws="''${SIYUAN_WORKSPACE:-$HOME/SiYuan}"
-    if [ -d "$ws/conf/appearance" ]; then
-      chmod -R u+w "$ws/conf/appearance" 2>/dev/null || true
-    fi
-    exec "@siyuan_bin@" "$@"
-  '';
-
   siyuan = pkgs.stdenv.mkDerivation {
     pname = "siyuan";
     inherit version;
@@ -158,11 +150,7 @@ let
       rm -f "$kernel_dest"
       ln -s ${siyuan-kernel}/bin/SiYuan-Kernel "$kernel_dest"
 
-      install -Dm755 ${prelaunch} $out/libexec/siyuan-prelaunch
-      substituteInPlace $out/libexec/siyuan-prelaunch \
-        --replace-fail "@siyuan_bin@" "$siyuan_bin"
-
-      makeWrapper $out/libexec/siyuan-prelaunch $out/bin/siyuan \
+      makeWrapper "$siyuan_bin" $out/bin/siyuan \
         "''${gappsWrapperArgs[@]}" \
         --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath [ pkgs.libappindicator-gtk3 pkgs.libnotify ]}"
 
