@@ -3,7 +3,14 @@
 let
   version = "3.7.1";
 
-  src =
+  srcTag = pkgs.fetchFromGitHub {
+    owner = "siyuan-note";
+    repo = "siyuan";
+    rev = "v${version}";
+    hash = "sha256-K31h2noDpTn7vCXj16K2dxRPww5z+HC/nA4Gn5MAVms=";
+  };
+
+  srcDeb =
     if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then
       pkgs.fetchurl {
         url = "https://github.com/siyuan-note/siyuan/releases/download/v${version}/siyuan-${version}-linux.deb";
@@ -17,9 +24,53 @@ let
     else
       throw "siyuan: unsupported system ${pkgs.stdenv.hostPlatform.system}";
 
+  siyuan-kernel = pkgs.buildGoModule {
+    pname = "siyuan-kernel";
+    inherit version;
+    src = srcTag;
+    sourceRoot = "${srcTag.name}/kernel";
+    vendorHash = "sha256-fZLVqrWTWUHo6BhixB6+krXaM7WCiZpusHA8T2SicgQ=";
+
+    ldflags = [
+      "-s"
+      "-w"
+      "-X"
+      "github.com/siyuan-note/siyuan/kernel/util.Mode=prod"
+    ];
+    tags = [ "fts5" ];
+    doCheck = false;
+
+    modPostBuild = ''
+      chmod +w vendor/github.com/88250/gulu
+      substituteInPlace vendor/github.com/88250/gulu/file.go \
+        --replace-fail "os.Chmod(dest, sourceinfo.Mode())" "os.Chmod(dest, 0644)"
+    '';
+
+    postInstall = ''
+      mv $out/bin/kernel $out/bin/SiYuan-Kernel
+      rm -f $out/bin/harmony
+    '';
+
+    meta = with pkgs.lib; {
+      description = "SiYuan kernel built from source with gulu file-mode patch";
+      homepage = "https://b3log.org/siyuan/";
+      license = licenses.agpl3Plus;
+      platforms = [ "x86_64-linux" "aarch64-linux" ];
+    };
+  };
+
+  prelaunch = pkgs.writeShellScript "siyuan-prelaunch" ''
+    ws="''${SIYUAN_WORKSPACE:-$HOME/SiYuan}"
+    if [ -d "$ws/conf/appearance" ]; then
+      chmod -R u+w "$ws/conf/appearance" 2>/dev/null || true
+    fi
+    exec "@siyuan_bin@" "$@"
+  '';
+
   siyuan = pkgs.stdenv.mkDerivation {
     pname = "siyuan";
-    inherit version src;
+    inherit version;
+    src = srcDeb;
 
     nativeBuildInputs = with pkgs; [
       autoPatchelfHook
@@ -99,7 +150,19 @@ let
         exit 1
       fi
 
-      makeWrapper "$siyuan_bin" $out/bin/siyuan \
+      kernel_dest="$out/opt/SiYuan/resources/kernel/SiYuan-Kernel"
+      if [ ! -f "$kernel_dest" ]; then
+        echo "siyuan: expected pre-built kernel at $kernel_dest, but it is missing" >&2
+        exit 1
+      fi
+      rm -f "$kernel_dest"
+      ln -s ${siyuan-kernel}/bin/SiYuan-Kernel "$kernel_dest"
+
+      install -Dm755 ${prelaunch} $out/libexec/siyuan-prelaunch
+      substituteInPlace $out/libexec/siyuan-prelaunch \
+        --replace-fail "@siyuan_bin@" "$siyuan_bin"
+
+      makeWrapper $out/libexec/siyuan-prelaunch $out/bin/siyuan \
         "''${gappsWrapperArgs[@]}" \
         --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath [ pkgs.libappindicator-gtk3 pkgs.libnotify ]}"
 
@@ -117,7 +180,7 @@ let
       license = licenses.agpl3Plus;
       platforms = [ "x86_64-linux" "aarch64-linux" ];
       mainProgram = "siyuan";
-      sourceProvenance = with sourceTypes; [ binaryNativeCode ];
+      sourceProvenance = with sourceTypes; [ binaryNativeCode fromSource ];
     };
   };
 in
