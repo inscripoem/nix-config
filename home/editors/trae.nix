@@ -1,7 +1,7 @@
 { pkgs, ... }:
 
 let
-  version = "2.3.46696";
+  version = "2.3.50209";
 
   trae-cn = pkgs.stdenv.mkDerivation {
     pname = "trae-cn";
@@ -9,7 +9,7 @@ let
 
     src = pkgs.fetchurl {
       url = "https://lf-cdn.trae.com.cn/obj/trae-com-cn/pkg/app/releases/stable/${version}/linux/Trae_CN-linux-x64.deb";
-      hash = "sha256-gWh24ydCp6e5khua1VYhFBCrjebBpoook3EGvbTzeBc=";
+      hash = "sha256-noVRW0tBz+A1Ok9bpbF7gh7CJ7/pI1K456djZGEjdhM=";
     };
 
     nativeBuildInputs = with pkgs; [
