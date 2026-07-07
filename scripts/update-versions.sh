@@ -171,10 +171,40 @@ else
     x64_hash=$(nix hash to-sri --extra-experimental-features nix-command "sha256:$x64_raw" 2>/dev/null | tail -1)
     arm64_hash=$(nix hash to-sri --extra-experimental-features nix-command "sha256:$arm64_raw" 2>/dev/null | tail -1)
 
+    echo "    prefetching source tree (fetchFromGitHub v${siyuan_version}) ..."
+    src_hash=$(nix --extra-experimental-features 'nix-command flakes' flake prefetch --json "github:siyuan-note/siyuan/v${siyuan_version}" 2>/dev/null | jq -r '.hash')
+    if [[ -z "$src_hash" || "$src_hash" == "null" ]]; then
+      echo "    ERROR: nix flake prefetch failed for github:siyuan-note/siyuan/v${siyuan_version}"
+      exit 1
+    fi
+
     update_nix_field "$siyuan_nix" "version" "$siyuan_version"
 
+    # src tree hash (fetchFromGitHub) — the first `hash = "..."` line, sits
+    # inside srcTag near the top of siyuan.nix.
+    sed -i "0,/hash = \".*\"/{s|hash = \".*\"|hash = \"${src_hash}\"|}" "$siyuan_nix"
+
+    # .deb hashes for x86_64 and aarch64 (unchanged pattern).
     sed -i "/siyuan-\${version}-linux\.deb/{n;s|hash = \".*\"|hash = \"${x64_hash}\"|;}" "$siyuan_nix"
     sed -i "/siyuan-\${version}-linux-arm64\.deb/{n;s|hash = \".*\"|hash = \"${arm64_hash}\"|;}" "$siyuan_nix"
+
+    # vendorHash: reset to zero-hash so the next `nix build` will fail with the
+    # correct one. We probe automatically and copy it back in.
+    zero_hash="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    sed -i "s|vendorHash = \".*\"|vendorHash = \"${zero_hash}\"|" "$siyuan_nix"
+    echo "    probing vendorHash (this triggers one build attempt that is expected to fail) ..."
+    vendor_probe_output=$(nix --extra-experimental-features 'nix-command flakes' build \
+      --no-link --no-warn-dirty \
+      --impure --expr \
+      "let f = builtins.getFlake (toString \"$REPO_ROOT\"); m = f.nixosConfigurations.briefcase.config.home-manager.users.inscripoem.home.packages; in builtins.head (builtins.filter (p: p.pname or \"\" == \"siyuan\") m)" \
+      2>&1 || true)
+    vendor_hash=$(echo "$vendor_probe_output" | awk '/got:/{print $2; exit}')
+    if [[ -z "$vendor_hash" ]]; then
+      echo "    ERROR: could not extract vendorHash from probe output. Last 20 lines:"
+      echo "$vendor_probe_output" | tail -20
+      exit 1
+    fi
+    sed -i "s|vendorHash = \".*\"|vendorHash = \"${vendor_hash}\"|" "$siyuan_nix"
 
     echo "    done: $siyuan_current → $siyuan_version"
     changed=true
