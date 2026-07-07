@@ -231,6 +231,12 @@ in
   # Or disable the firewall altogether.
   # networking.firewall.enable = false;
 
+  # LocalSend needs port 53317 on both TCP (file transfer) and UDP
+  # (multicast peer discovery). Without this, receiving works only via
+  # manual IP entry and other devices cannot auto-discover this host.
+  networking.firewall.allowedTCPPorts = [ 53317 ];
+  networking.firewall.allowedUDPPorts = [ 53317 ];
+
   # This value determines the NixOS release from which the default
   # settings for stateful data, like file locations and database versions
   # on your system were taken. It‘s perfectly fine and recommended to leave
