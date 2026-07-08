@@ -1,11 +1,11 @@
 # NVIDIA on `briefcase`
 
 A bug log for the NVIDIA cards that have lived in this machine. The
-**configuration** is in `hardware/briefcase/gpu/<profile>.nix`; this
+**configuration** is in `hosts/briefcase/gpu/<profile>.nix`; this
 file explains **why** each knob is set the way it is, so a future
 "clean up" doesn't quietly re-introduce a known failure mode.
 
-The current profile is `hardware/briefcase/gpu/nvidia-turing.nix`.
+The current profile is `hosts/briefcase/gpu/nvidia-turing.nix`.
 
 Card: **NVIDIA GeForce RTX 2060 SUPER** (Turing, TU106, 8 GB VRAM)
 Driver: **proprietary `nvidia` 580.x**, `modesetting=1`, `powerManagement=1`

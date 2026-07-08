@@ -24,7 +24,7 @@ The user runs `nhs` themselves. Don't trigger a real rebuild unsolicited.
 ## 2. Layout
 
 - `configuration.nix` — system-level (services, kernel, networking, PAM, firewall)
-- `hardware/<host>/` — per-host hardware
+- `hosts/<host>/` — per-host hardware
 - `home/<group>/` — home-manager modules; add a new file and import it in
   the group's `default.nix`
 - `docs/` — long-form rationale for non-obvious decisions (e.g. `docs/nvidia.md`).

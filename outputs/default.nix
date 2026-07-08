@@ -14,7 +14,8 @@ let
   nixosHosts = {
     briefcase = {
       arch = "x86_64-linux";
-      hardwarePath = ../hardware/briefcase;
+      hardwarePath = ../hosts/briefcase;
+      hmEntryPoint = ../home/hosts/briefcase.nix;
       extraModules = [
         disko.nixosModules.disko
         niri.nixosModules.niri
@@ -24,7 +25,8 @@ let
     };
     vm = {
       arch = "x86_64-linux";
-      hardwarePath = ../hardware/vm;
+      hardwarePath = ../hosts/vm;
+      hmEntryPoint = ../home/hosts/vm.nix;
       extraModules = [ ];
       hmSharedModules = desktopHmModules;
     };
@@ -37,7 +39,7 @@ let
   nixosConfigurations = nixpkgs.lib.mapAttrs (name: spec:
     mkNixos {
       inherit name;
-      inherit (spec) arch hardwarePath extraModules hmSharedModules;
+      inherit (spec) arch hardwarePath extraModules hmSharedModules hmEntryPoint;
     }
   ) nixosHosts;
 in

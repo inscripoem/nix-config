@@ -529,7 +529,7 @@ nix-config/
 ├── configuration.nix      # shared body
 ├── system/1password.nix   # shared, imported by configuration.nix
 ├── home/                  # shared, imported per-host in flake.nix
-└── hardware/
+└── hosts/
     ├── briefcase/
     └── vm/
 ```

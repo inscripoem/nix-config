@@ -1,5 +1,5 @@
 { inputs, vars, nixpkgs, home-manager }:
-{ name, arch, hardwarePath, extraModules ? [ ], hmSharedModules ? [ ] }:
+{ name, arch, hardwarePath, extraModules ? [ ], hmSharedModules ? [ ], hmEntryPoint ? ../home/desktop.nix }:
 
 let
   # Generic home-manager wiring block — only universal settings.
@@ -11,7 +11,7 @@ let
       sharedModules = hmSharedModules;
       backupFileExtension = "backup";
 
-      users.${vars.username} = import ../home;
+      users.${vars.username} = import hmEntryPoint;
 
       extraSpecialArgs = inputs;
     };

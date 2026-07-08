@@ -31,7 +31,7 @@
 # on hosts without an NVIDIA card the directory is either empty or
 # holds mesa libs, so the suffix is a harmless no-op. This keeps the
 # module portable across briefcase (NVIDIA Pascal, see
-# hardware/briefcase/gpu/nvidia-pascal.nix) and vm (vmware guest).
+# hosts/briefcase/gpu/nvidia-pascal.nix) and vm (vmware guest).
 #
 # AMD / Intel monitoring is intentionally not enabled: neither host
 # has a card that would benefit from pyamdgpuinfo / intel_gpu_top.

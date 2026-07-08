@@ -21,7 +21,7 @@ Manage **multiple heterogeneous machines** spanning different platforms, archite
 |---|---|---|---|---|
 | `briefcase` | NixOS | x86_64-linux | Primary dev + gaming | disko, NVIDIA, desktop environment |
 | `vm` | NixOS | x86_64-linux | Testing | VMware guest tools |
-| `wsl-dev` (reserved) | NixOS (WSL) | x86_64-linux | Dev only, no GUI | nixos-wsl, no desktop |
+| `wsl` (reserved) | NixOS (WSL) | x86_64-linux | Dev only, no GUI | nixos-wsl, no desktop |
 | `darwin-*` (reserved) | macOS | aarch64-darwin | Package mgmt + system settings | nix-darwin |
 | `srv-*` (reserved) | NixOS | x86_64 / aarch64 | Servers | Immutable system, remote deploy via deploy-rs/colmena |
 
@@ -86,7 +86,7 @@ nixosHosts = {
   briefcase = { class = [ "desktop" ]; arch = "x86_64-linux"; deploy = false; };
   vm        = { class = [ "vm" ];     arch = "x86_64-linux"; deploy = false; };
   # Reserved:
-  # wsl-dev  = { class = [ "wsl" ];  arch = "x86_64-linux"; deploy = true; };
+  # wsl      = { class = [ "wsl" ];  arch = "x86_64-linux"; deploy = true; };
   # srv-a    = { class = [ "server" "impermanence" ]; arch = "x86_64-linux";  deploy = true; tags = ["prod"]; };
 };
 ```
@@ -217,8 +217,8 @@ nix-config/
 ├── vars/
 │   └── default.nix       # username / fullName / email / sshKeys / stateVersion centralized
 ├── hosts/
-│   ├── briefcase/        # Current hardware/briefcase/* moved here
-│   ├── vm/               # Current hardware/vm/*
+│   ├── briefcase/        # hardware/briefcase/* moved here
+│   ├── vm/               # hardware/vm/* moved here
 │   ├── wsl/              # Reserved
 │   ├── darwin/           # Reserved
 │   └── servers/          # Reserved
@@ -301,7 +301,7 @@ Package-related changes use `nix build --dry-run`.
 
 - Split briefcase/vm content into `hosts/<name>/` + class modules
 - New briefcase/vm generated via `mkNixos` with `hmEntryPoint` parameter
-- Move old `hardware/<host>/` to `hosts/<host>/`
+- Moved old `hardware/<host>/` to `hosts/<host>/`
 - Reorganize `home/` into progressive entry points: `core/` → `tui/` → `desktop/`
 - Create entry files: `core.nix`, `tui.nix`, `desktop.nix`
 - Create `packs/creative.nix` for optional creative tools

@@ -9,7 +9,7 @@
 #   - `useRoutingFeatures` toggles kernel-level knobs (rp_filter on the
 #     firewall, net.ipv{4,6}.conf.all.forwarding sysctls), which are
 #     strictly system territory and host-specific. It is therefore set
-#     per host in hardware/<host>/default.nix instead of here.
+#     per host in hosts/<host>/default.nix instead of here.
 #
 # Post-rebuild bootstrap (manual, one-off per node):
 #   sudo tailscale up
