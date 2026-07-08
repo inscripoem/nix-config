@@ -1,4 +1,4 @@
-{ self, nixpkgs, home-manager, plasma-manager, disko, llm-agents, zen-browser, niri, ... }@inputs:
+{ self, nixpkgs, home-manager, plasma-manager, disko, llm-agents, zen-browser, niri, colmena, deploy-rs, ... }@inputs:
 let
   vars = import ../vars;
   lib = import ../lib { inherit (nixpkgs) lib; };
@@ -16,6 +16,7 @@ let
       arch = "x86_64-linux";
       hardwarePath = ../hosts/briefcase;
       hmEntryPoint = ../home/hosts/briefcase.nix;
+      deploy = false;
       extraModules = [
         disko.nixosModules.disko
         niri.nixosModules.niri
@@ -27,6 +28,7 @@ let
       arch = "x86_64-linux";
       hardwarePath = ../hosts/vm;
       hmEntryPoint = ../home/hosts/vm.nix;
+      deploy = false;
       extraModules = [ ];
       hmSharedModules = desktopHmModules;
     };
@@ -44,5 +46,7 @@ let
   ) nixosHosts;
 in
 {
-  inherit nixosConfigurations;
+  inherit nixosHosts nixosConfigurations;
+  colmena = import ./colmena.nix (inputs // { inherit nixosHosts; });
+  deploy = import ./deploy.nix (inputs // { inherit nixosHosts; });
 }
