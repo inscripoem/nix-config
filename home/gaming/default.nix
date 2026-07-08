@@ -1,5 +1,6 @@
+{ pkgs, ... }:
 {
-  imports = [
-    ./lutris.nix
+  home.packages = [
+    pkgs.lutris
   ];
 }

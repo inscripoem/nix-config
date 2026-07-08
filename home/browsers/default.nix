@@ -1,6 +1,10 @@
+{ pkgs, ... }:
 {
   imports = [
-    ./vivaldi.nix
     ./zen.nix
+  ];
+
+  home.packages = [
+    pkgs.vivaldi
   ];
 }

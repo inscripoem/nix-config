@@ -1,5 +1,6 @@
+{ pkgs, ... }:
 {
-  imports = [
-    ./bottles.nix
+  home.packages = [
+    pkgs.bottles
   ];
 }

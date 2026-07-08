@@ -1,12 +1,15 @@
+{ pkgs, llm-agents, ... }:
 {
   imports = [
     ./aichat.nix
     ./cc-switch.nix
-    ./claude-code.nix
-    # ./codex.nix
     ./opencode.nix
-    ./antigravity-cli.nix
-    ./rtk.nix
-    ./ck.nix
+  ];
+
+  home.packages = [
+    llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.antigravity-cli
+    llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.ck
+    llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.claude-code
+    llm-agents.packages.${pkgs.stdenv.hostPlatform.system}.rtk
   ];
 }

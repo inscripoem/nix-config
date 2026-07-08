@@ -1,5 +1,6 @@
+{ pkgs, ... }:
 {
-  imports = [
-    ./vlc.nix
+  home.packages = [
+    pkgs.vlc
   ];
 }

@@ -96,13 +96,15 @@ The generator `lib/mkNixos.nix` accepts a host spec and produces `nixosSystem { 
 - Always imports `modules/nixos/base`
 - Imports the corresponding profile directory per class (see §3.4)
 - Imports `hosts/<name>/` per host
-- Integrates home-manager (sharing `vars` with base)
+- Integrates home-manager via `hmEntryPoint` parameter (see §3.4)
 
 **Generators must be generic**: `mkNixos` must not hardcode any class-specific modules (e.g. plasma-manager, zen-browser). Class-specific NixOS modules and HM sharedModules are auto-imported based on `spec.classes`, keeping the generator pure and reusable across desktop, server, WSL, and VM hosts.
 
 ### 3.4 Layered Composition
 
-Modules compose in three layers:
+#### NixOS System Modules
+
+NixOS system modules compose in three layers:
 
 ```
 base (shared across all NixOS hosts)
@@ -112,30 +114,73 @@ class (desktop / server / wsl / vm) — auto-imported by mkNixos based on spec.c
 host (per-host specifics)
 ```
 
-**NixOS system modules** (auto-imported per class):
-
 - `modules/nixos/base/`: nix-daemon, i18n, users, networking, ssh, nh
 - `modules/nixos/desktop/`: SDDM/Plasma/niri, audio, fonts, xdg-portal, printing
 - `modules/nixos/server/`: SSH hardening, firewall, monitoring, docker/containers (reserved)
 - `modules/nixos/wsl/`: nixos-wsl wrapper (reserved)
 - `modules/nixos/vm/`: VM guest integration
 
-**Home-manager modules** (auto-imported per class):
+#### Home-Manager Modules: Progressive Entry Points
 
-- `home/base/`: Cross-platform HM modules (CLI/shell/git) — split from existing groups
-- `home/desktop/`: Desktop-specific HM modules (plasma-manager, zen-browser sharedModules, etc.)
-- `home/server/`: Server-specific HM modules (reserved)
-- `home/hosts/`: Per-host HM overrides (e.g. briefcase adds gaming+creative; wsl minimal)
+Home-manager modules use a **progressive entry point** system with 3 layers + optional packs:
 
-**Auto-import mechanism**: `mkNixos` reads `spec.classes` (e.g. `[ "desktop" ]`) and automatically imports:
-- `modules/nixos/<class>/` for each class (NixOS modules)
-- `home/<class>/` for each class (HM modules, added to `hmSharedModules`)
+```
+core (all hosts: shell, git, ssh, CLI editors, basic tools)
+  ↓
+tui (dev hosts: core + toolchains, AI CLI tools, task queues)
+  ↓
+desktop (GUI hosts: tui + GUI apps, browsers, terminals, desktop environment)
+```
 
-This keeps the host declaration table declarative — hosts only declare their classes, not the modules those classes contain.
+**Entry point files** (each imports all layers below it):
 
-**Per-host specifics**:
+- `home/core.nix` → imports `./core` (servers, minimal hosts)
+- `home/tui.nix` → imports `./core` + `./tui` (WSL, dev servers)
+- `home/desktop.nix` → imports `./core` + `./tui` + `./desktop` (desktop/laptop)
 
-- `hosts/<name>/`: Hardware config + host-level overrides
+**Layer contents**:
+
+| Layer | Contents | Hosts |
+|---|---|---|
+| `core/` | shell (bash/zsh/fish/starship/bat/yazi/atuin/tealdeer/fzf/eza/zoxide/carapace/direnv), git (SSH signing + delta), ssh (config), CLI editors (nvim/helix), basic CLI tools (ripgrep/fd/jq/yq-go/duf/dust/htop/bottom/lazygit/gping), compression tools (zip/xz/unzip/p7zip), fastfetch, nix-output-monitor | All hosts |
+| `tui/` | toolchains (devenv/tokei/bun/nodejs/pnpm/yarn/uv/rustup), AI CLI tools (aichat/opencode/claude-code/antigravity-cli/rtk/ck), pueue (task queue) | Dev hosts (WSL + desktop + dev servers) |
+| `desktop/` | GUI terminals (alacritty/wezterm/zellij), desktop environment (plasma/niri/deskflow/wl-clipboard), GUI editors (vscode/zed/trae-cn), browsers (vivaldi/zen), media (vlc), productivity (libreoffice/localsend/siyuan), social (qq), compat (bottles), gaming (lutris), 1password (GUI), glances (GPU monitoring) | Desktop/laptop only |
+
+**Optional packs** (per-host selection):
+
+| Pack | Contents | Description |
+|---|---|---|
+| `creative` | zrythm, ardour, audacity, gimp, godot_4, blender | Music + video + graphics production |
+
+Packs are imported per-host in `home/hosts/<name>.nix`.
+
+**Per-host overrides**: `home/hosts/<name>.nix` selects the entry point + packs + any host-specific extras:
+
+```nix
+# home/hosts/briefcase.nix
+{ imports = [ ../desktop.nix ../packs/creative.nix ]; }
+
+# home/hosts/vm.nix
+{ imports = [ ../tui.nix ]; }
+```
+
+**mkNixos integration**: `mkNixos` accepts an `hmEntryPoint` parameter (defaults to `../home/desktop.nix`):
+
+```nix
+# lib/mkNixos.nix
+{ ..., hmEntryPoint ? ../home/desktop.nix, ... }:
+{
+  home-manager.users.${vars.username} = import hmEntryPoint;
+}
+
+# outputs/default.nix
+nixosHosts = {
+  briefcase = { hmEntryPoint = ../home/desktop.nix; ... };
+  vm        = { hmEntryPoint = ../home/tui.nix;    ... };
+};
+```
+
+**Design rationale**: 3 layers is the community gold standard (validated by ryan4yin, TophC7, xander-4x, and 30+ other configs). 4+ layers are unnecessary for personal configs with <10 hosts. When a host needs something that doesn't fit the 3 layers, use packs or per-host overrides instead of adding a new layer.
 
 ### 3.5 Deployment Tool Choice
 
@@ -190,11 +235,14 @@ nix-config/
 │   ├── darwin/           # Reserved: nix-darwin modules by domain
 │   └── shared/           # Reserved: cross-platform shared
 ├── home/
-│   ├── base/             # Cross-platform HM modules (CLI/shell/git) — split from existing groups
-│   ├── desktop/          # Desktop-specific HM sharedModules (plasma-manager, zen-browser, etc.)
-│   ├── server/           # Server-specific HM modules (reserved)
-│   ├── <group>/          # Keep existing 15 groups, but cleaned per file existence criterion
-│   └── hosts/            # Per-host HM overrides (e.g. briefcase adds gaming+creative; wsl minimal)
+│   ├── core/              # Entry point 1: all hosts (shell, git, ssh, CLI editors, basic tools)
+│   ├── tui/               # Entry point 2: dev hosts (toolchains, AI CLI, task queues)
+│   ├── desktop/           # Entry point 3: GUI hosts (browsers, terminals, desktop env, GUI apps)
+│   ├── packs/             # Optional capability packs (creative, etc.)
+│   ├── core.nix           # Entry file: imports = [ ./core ]
+│   ├── tui.nix            # Entry file: imports = [ ./core ./tui ]
+│   ├── desktop.nix        # Entry file: imports = [ ./core ./tui ./desktop ]
+│   └── hosts/             # Per-host overrides (select entry point + packs + extras)
 ├── pkgs/
 │   ├── default.nix       # Overlay collector
 │   ├── siyuan.nix
@@ -249,11 +297,18 @@ Package-related changes use `nix build --dry-run`.
 - Unify naming
 - **Risk**: Low. **Rollback**: git restore specific files
 
-### P5: Reorganize host classes
+### P5: Reorganize host classes + home entry points
 
 - Split briefcase/vm content into `hosts/<name>/` + class modules
-- New briefcase/vm generated via `mkNixos`
+- New briefcase/vm generated via `mkNixos` with `hmEntryPoint` parameter
 - Move old `hardware/<host>/` to `hosts/<host>/`
+- Reorganize `home/` into progressive entry points: `core/` → `tui/` → `desktop/`
+- Create entry files: `core.nix`, `tui.nix`, `desktop.nix`
+- Create `packs/creative.nix` for optional creative tools
+- Create `home/hosts/<name>.nix` for per-host entry point selection
+- Move 1password from core to desktop (GUI only)
+- Move nvim/helix from current editors to core (CLI editors needed everywhere)
+- Move gping to core, cc-switch to desktop
 - **Risk**: Medium. **Rollback**: Restore paths and revert flake
 
 ### P6: colmena + deploy-rs outlet
@@ -298,12 +353,13 @@ Package-related changes use `nix build --dry-run`.
 
 When adding a new host:
 
-1. Add a row to the host declaration table in `vars/`
-2. Create `hosts/<name>/` directory with `default.nix` + `hardware-configuration.nix`
-3. If host-level HM overrides needed, create `home/hosts/<name>.nix`
-4. If deployable, set `deploy = true` + `hostname` + `sshUser` + `tags`
-5. Run `nix eval` to verify
-6. Run `colmena eval` or `deploy .#checks` to verify deploy config
+1. Add a row to the host declaration table in `outputs/default.nix`
+2. Set `hmEntryPoint` to the appropriate entry point (`core.nix` / `tui.nix` / `desktop.nix`)
+3. Create `hosts/<name>/` directory with `default.nix` + `hardware-configuration.nix`
+4. Create `home/hosts/<name>.nix` to select entry point + packs + per-host extras
+5. If deployable, set `deploy = true` + `hostname` + `sshUser` + `tags`
+6. Run `nix eval` to verify
+7. Run `colmena eval` or `deploy .#checks` to verify deploy config
 
 When adding a new platform (e.g. macOS):
 
@@ -314,10 +370,11 @@ When adding a new platform (e.g. macOS):
 
 ---
 
-**Document version**: v1.1 (2026-07-08)  
-**Status**: In progress (P1 done, P2 in progress)
+**Document version**: v1.2 (2026-07-08)  
+**Status**: In progress (P1-P4 done, P5 pending)
 
 ### Changelog
 
+- **v1.2**: Replaced parallel HM class layering with progressive entry points (core → tui → desktop) + optional packs; added hmEntryPoint parameter to mkNixos; added package mapping table; updated P5 scope
 - **v1.1**: Clarified generator purity (§3.3), class auto-import mechanism (§3.4), HM class layer (§3.4), P2 minimal scope (§5), stateVersion in vars (§3.1)
 - **v1.0**: Initial document

@@ -1,8 +1,13 @@
+{ pkgs, ... }:
 {
-  imports = [
-    ./misc.nix
-    ./node.nix
-    ./python.nix
-    ./rust.nix
+  home.packages = [
+    pkgs.devenv
+    pkgs.tokei
+    pkgs.bun
+    pkgs.nodejs_22
+    pkgs.pnpm
+    pkgs.yarn
+    pkgs.uv
+    pkgs.rustup
   ];
 }

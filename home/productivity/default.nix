@@ -1,7 +1,11 @@
+{ pkgs, ... }:
 {
   imports = [
-    ./libreoffice.nix
-    ./localsend.nix
     ./siyuan.nix
+  ];
+
+  home.packages = [
+    pkgs.libreoffice
+    pkgs.localsend
   ];
 }
