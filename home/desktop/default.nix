@@ -12,5 +12,6 @@
     ./1password.nix
     ./glances.nix
     ./cc-switch.nix
+    ./rime.nix
   ];
 }

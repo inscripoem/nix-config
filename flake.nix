@@ -62,6 +62,13 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # rime-wanxiang: track upstream directly for latest schemas/dicts.
+    # flake = false means we treat this as a plain source tree (not a flake).
+    rime-wanxiang = {
+      url = "github:amzxyz/rime_wanxiang/wanxiang";
+      flake = false;
+    };
   };
 
   outputs = inputs: import ./outputs inputs;

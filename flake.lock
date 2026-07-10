@@ -388,6 +388,23 @@
         "type": "github"
       }
     },
+    "rime-wanxiang": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1783666512,
+        "narHash": "sha256-3v/HdopKIJE7vz4zEUci59DWHKfS6uEWpWz+PJhe54k=",
+        "owner": "amzxyz",
+        "repo": "rime_wanxiang",
+        "rev": "3c61be66817e3c4da1a906acdc1a9a85e0148e70",
+        "type": "github"
+      },
+      "original": {
+        "owner": "amzxyz",
+        "ref": "wanxiang",
+        "repo": "rime_wanxiang",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "colmena": "colmena",
@@ -398,6 +415,7 @@
         "niri": "niri",
         "nixpkgs": "nixpkgs_2",
         "plasma-manager": "plasma-manager",
+        "rime-wanxiang": "rime-wanxiang",
         "sops-nix": "sops-nix",
         "zen-browser": "zen-browser"
       }

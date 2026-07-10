@@ -20,7 +20,7 @@ in
 nixpkgs.lib.nixosSystem {
   system = arch;
   specialArgs = {
-    inherit vars;
+    inherit vars inputs;
   };
   modules = extraModules ++ [
     hardwarePath
