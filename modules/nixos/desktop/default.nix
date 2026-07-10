@@ -8,5 +8,6 @@
     ./printing.nix
     ./audio.nix
     ./browser.nix
+    ./sunshine.nix
   ];
 }

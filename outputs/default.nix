@@ -1,4 +1,4 @@
-{ self, nixpkgs, home-manager, plasma-manager, disko, llm-agents, zen-browser, niri, colmena, deploy-rs, ... }@inputs:
+{ self, nixpkgs, home-manager, plasma-manager, disko, llm-agents, zen-browser, niri, colmena, deploy-rs, sops-nix, ... }@inputs:
 let
   vars = import ../vars;
   lib = import ../lib { inherit (nixpkgs) lib; };
@@ -35,7 +35,7 @@ let
   };
 
   mkNixos = import ../lib/mkNixos.nix {
-    inherit inputs vars nixpkgs home-manager;
+    inherit inputs vars nixpkgs home-manager sops-nix;
   };
 
   nixosConfigurations = nixpkgs.lib.mapAttrs (name: spec:

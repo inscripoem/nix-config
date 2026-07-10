@@ -1,0 +1,31 @@
+# SOPS key configuration. Each recipient listed below can decrypt the
+# secrets in `secrets/*.yaml`. The `.age` public keys are safe to
+# commit — they only encrypt. Decryption needs the corresponding
+# private key, which lives on each host (via /etc/ssh/ssh_host_ed25519_key)
+# and on the editor's workstation (`~/.config/sops/age/keys.txt`).
+#
+# Add a new host:
+#   1. SSH into the host: `ssh-to-age -i /etc/ssh/ssh_host_ed25519_key.pub`
+#   2. Append the age pubkey under `age:` below
+#   3. `sops updatekeys secrets/wifi.yaml` to re-encrypt for the new recipient
+#
+# Edit a secrets file: `sops secrets/wifi.yaml` (needs editor key).
+# See docs/secrets.md for the full workflow.
+keys:
+creation_rules:
+  - path_regex: secrets/.*\.yaml$
+    age:
+      # ═══ Recipients that can decrypt secrets ═══
+      #
+      # Editor key (daily use — age-keygen, ~/.config/sops/age/keys.txt).
+      - age1mhcwhew5svwp5dgfmq9pf9055r7jtxa59zh7sts8f826vfshha5swkzcq2
+      #
+      # Recovery key (last resort — derived from a personal SSH ed25519 key
+      # in 1Password via `ssh-to-age -i pub`). Use this only if your editor
+      # machine is lost; extract the SSH key from 1Password and run
+      # `ssh-to-age -private-key` to recover.
+      - age16h824wezx4qenw4zu4ed4pdes8vms5erf45fy0v2n9ct53r7tedsz8d7mv
+      #
+      # briefcase (host key — auto-decrypt on NixOS activation via
+      # /etc/ssh/ssh_host_ed25519_key).
+      - age1mu6fuurmsg0pys7gsnep3p8tvtu536mqjjy67egu35uljfjq75asglllvk

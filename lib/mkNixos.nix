@@ -1,4 +1,4 @@
-{ inputs, vars, nixpkgs, home-manager }:
+{ inputs, vars, nixpkgs, home-manager, sops-nix }:
 { name, arch, hardwarePath, extraModules ? [ ], hmSharedModules ? [ ], hmEntryPoint ? ../home/desktop.nix }:
 
 let
@@ -29,6 +29,7 @@ nixpkgs.lib.nixosSystem {
     ../modules/nixos/1password.nix
     ../modules/nixos/gaming.nix
     ../modules/nixos/tailscale.nix
+    sops-nix.nixosModules.sops
     home-manager.nixosModules.home-manager
     {
       nixpkgs.overlays = [ (import ../pkgs) ];

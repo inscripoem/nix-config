@@ -178,4 +178,10 @@
     enableZshIntegration = true;
     nix-direnv.enable = true;
   };
+
+  # SOPS needs to know where the editor's age private key lives so
+  # `sops secrets/...` can decrypt files for editing. The key itself
+  # lives at ~/.config/sops/age/keys.txt and is NEVER committed to
+  # git. See docs/secrets.md §2.
+  home.sessionVariables.SOPS_AGE_KEY_FILE = "$HOME/.config/sops/age/keys.txt";
 }

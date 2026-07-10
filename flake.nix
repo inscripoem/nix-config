@@ -53,6 +53,15 @@
       url = "github:serokell/deploy-rs";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # sops-nix - declarative secret management via SOPS (age-encrypted
+    # files decrypted at activation to /run/secrets). Used for WiFi PSKs
+    # and other host secrets that must not enter the Nix store or git
+    # history. See docs/secrets.md.
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs: import ./outputs inputs;
