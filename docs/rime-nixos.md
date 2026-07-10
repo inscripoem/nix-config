@@ -1,114 +1,128 @@
-# Rime 输入法在 NixOS 上的声明式管理
+# Declarative Rime Input Method Management on NixOS
 
-> 2026-07 · 调研结论 + 实施方案 + 操作手册
+> 2026-07 · Rationale + Implementation + Operations Guide
 
-## 选型理由
+## Why Wanxiang (rime-wanxiang)
 
-### 为什么放弃了微信输入法 / 搜狗输入法
+### Weixin IME / Sogou IME ruled out
 
-- **微信输入法**（Weixin Input Method）截至 2026-07 仅有 Windows 2.1.0 / macOS 2.2.0，**没有 Linux 版**。网上误传源自微信通讯软件（WeChat）Linux 4.0——那是聊天软件，不是输入法。
-- **搜狗输入法 Linux 版**虽然仍在更新（2026-06 发布 16.6），但底层基于 **fcitx4**，在 Wayland（KDE Plasma 6 / niri / Hyprland）下候选框闪烁、无法正常输入。且与 fcitx5 冲突，需要卸载后者。**在现代桌面环境没有可用性。**
+- **Weixin Input Method** (Tencent's standalone IME): as of 2026-07, Windows 2.1.0 and macOS 2.2.0 only. **No Linux release exists.** What you may have seen online about "WeChat IME on Linux" is the WeChat messaging client v4.0, not the IME.
+- **Sogou Pinyin for Linux**: still ships monthly releases (16.6 in 2026-06), but the engine is **fcitx4**, not fcitx5. Under Wayland (KDE Plasma 6 / niri / Hyprland) the candidate window flickers, input breaks, and fcitx5 must be uninstalled due to conflicts. **Unusable on modern desktops.**
 
-### 为什么选了万象拼音（rime-wanxiang）
+### Why rime-wanxiang over bare rime
 
-裸 Rime（luna_pinyin）有两个核心痛点：
-1. **词序不够现代**——静态词典权重，单字母简拼（如 `l` → 第一候选永远「里」而不是「了」）无法通过用户词频学习改变
-2. **长句不够自然**——没有 ngram 语言模型，上下文预测弱
+Stock rime (luna_pinyin) has two pain points:
+1. **Outdated word ordering**: static dictionary weights. Single-character abbreviations (e.g. typing `l` always puts 里 first, never 了) cannot be altered through user frequency learning.
+2. **Stiff long-form prediction**: no ngram language model; poor contextual suggestions.
 
-对比了三种 Rime 现代方案：
+Comparison of modern rime schemas:
 
-| 方案 | 词库构建 | ngram 语言模型 | 单字母置顶 | 社区活跃度 |
-|------|---------|--------------|----------|-----------|
-| **雾凇拼音**（rime-ice） | 人工精校 + 腾讯词向量 | 选配（需手动挂 LTS） | 内置 pin_cand_filter.lua | 18k★ |
-| **万象拼音**（rime-wanxiang） | AI 语料深度优化 + 调频标注 | **自带 LTS**（开箱即用） | 需手动配置 | 活跃 |
-| 白霜拼音（rime-frost） | 独立评测调优 | 可挂载多种 | 需手动配置 | 活跃 |
+| Schema | Dictionary | Ngram model | Single-char pinning | Community |
+|--------|-----------|-------------|---------------------|-----------|
+| **rime-ice** | Hand-curated + Tencent word vectors | Optional (manual LTS mount) | Built-in `pin_cand_filter.lua` | 18k★ |
+| **rime-wanxiang** | AI-optimized corpus + tone annotation | **Built-in LTS** (zero-config) | Manual config required | Active |
+| rime-frost | Benchmark-optimized | Multiple models supported | Manual config required | Active |
 
-**选中万象的核心理由**：自带 ngram 语言模型，长句体验更接近商业输入法。用户对「不够现代」的感知根源是裸 Rime 没有语言模型——万象原生解决这一点，且 nixpkgs 已有现成包，声明式接入成本极低。
+**Decision**: rime-wanxiang ships its own LTS ngram grammar model. The core complaint about bare rime—"doesn't feel modern"—comes from the lack of a language model. Wanxiang fixes this out of the box, and is already packaged in nixpkgs.
 
-## 声明式管理机制
+## Declarative management
 
-NixOS / home-manager 对 Rime 的声明式配置支持到 **~95%** 的覆盖度：
+NixOS / home-manager provides ~95% declarative coverage for rime configuration:
 
-### rimeDataPkgs 注入（系统级）
+### rimeDataPkgs injection (system-level)
 
 ```nix
 i18n.inputMethod.fcitx5.addons = with pkgs; [
   (fcitx5-rime.override {
     rimeDataPkgs = [
-      rime-data          # 官方基础方案合集
-      rime-wanxiang      # 万象拼音主方案
-      rime-zhwiki        # 维基百科词库
-      rime-moegirl       # 萌娘百科词库
+      rime-wanxiang
+      rime-zhwiki
+      rime-moegirl
     ];
   })
   # ...
 ];
 ```
 
-`rimeDataPkgs` 在 build 时将各包内容合并到 fcitx5-rime 的 `share/rime-data/` 目录，用户目录（`~/.local/share/fcitx5/rime/`）会覆盖/扩展系统级配置。
+`rimeDataPkgs` merges each package into fcitx5-rime's `share/rime-data/` at build time. The user directory (`~/.local/share/fcitx5/rime/`) overrides / extends the system-level data.
 
-### 方案选择 + 自定义 patch（用户级，home-manager）
+### Schema selection + custom patch (user-level, home-manager)
 
 ```nix
-# 启用万象
 xdg.dataFile."fcitx5/rime/default.custom.yaml".text = ''
   patch:
     __include: wanxiang_suggested_default:/
+    schema_list:
+      - schema: wanxiang
 '';
 ```
 
-`__include: wanxiang_suggested_default:/` 是万象上游把 `default.yaml` 改名的结果——避免和 `rime-data` 的 `default.yaml` 冲突。
+**Why `__include` + `schema_list` override?**
 
-### 无法声明式的部分（~5%）
+Wanxiang upstream renamed `default.yaml` to `wanxiang_suggested_default.yaml` to avoid collisions with other packages' `default.yaml`. The `__include` brings in wanxiang's global settings (menu, switcher, key_binder, ascii_composer, etc.). The explicit `schema_list` override on top ensures wanxiang is activated.
 
-| 项目 | 原因 | 处理方式 |
-|------|------|---------|
-| 万象 ngram 语法模型（`.gram`） | 上游用「覆盖式 LTS 标签」发布，同一 URL 指向不同内容，违反 Nix hash 不可变原则，nixpkgs 官方故意不打包 | `home.activation` 自动下载 + 手动 `update-wanxiang-gram` 刷新 |
-| 用户词库（`.userdb`） | Rime 运行期 ption生成，不能也不该声明式 | 自动生成，勿手动管理 |
-| 方案部署后触发重新加载 | 改了词库/方案文件后需 Rime 感知 | 在 fcitx5 托盘菜单点 Deploy，或执行 `rime_deployer --deploy` |
+**Critical pitfall**: do NOT include both `rime-data` and `rime-wanxiang` in `rimeDataPkgs`. `rime-data` provides its own `default.yaml` (with luna_pinyin, bopomofo schemas), and its `schema_list` takes priority over the patch's `__include`-merged version. This is a known collision in rime's patch merge semantics for arrays. The fix: use **only** `rime-wanxiang` + dictionary packages (`rime-zhwiki`, `rime-moegirl`), leaving `rime-data` out. When `rime-data` is absent, `fcitx5-rime` creates an empty `default.yaml` as the base, and wanxiang's `__include` + `schema_list` override applies cleanly.
 
-## 万象 ngram 语法模型（`.gram`）
+### Non-declarative leftovers (~5%)
 
-### 首次部署
+| Item | Why | Mitigation |
+|------|-----|------------|
+| Wanxiang `.gram` model | Upstream uses an overwriting LTS release tag; same URL points to different content over time, breaking Nix's hash immutability. nixpkgs intentionally does not package it. | `home.activation` auto-download on first deploy + manual `update-wanxiang-gram` |
+| User dictionary (`.userdb`) | Generated at runtime by rime; cannot and should not be declarative. | Auto-created, do not manage manually. |
+| Post-deploy schema reload | Rime must be notified after schema/dict changes. | Right-click fcitx5 tray → Deploy, or `rime_deployer --deploy` |
 
-仓库已在 `home.activation` 中配置自动下载：**换新机器时无需记忆任何步骤**，`home-manager switch`（或 `nixos-rebuild switch`）时会自动 curl 到 `~/.local/share/fcitx5/rime/wanxiang-lts-zh-hans.gram`。若网络不可用则在 stderr 警告并跳过，后续手动补。
+### Key bindings and the build cache
 
-### 手动更新到最新版
+Wanxiang defaults to `-` / `=` for page-up / page-down. `rime.nix` overrides this to `,` / `.` via `wanxiang.custom.yaml`.
+
+**Important**: when you add or modify any `*.custom.yaml` file, rime does not automatically recompile — even a manual Deploy may skip it if the `build/` directory already has compiled binary data that predates the change. This is rime's own deployment behavior (not specific to any package version). Clear the cache first:
+
+```bash
+rm -rf ~/.local/share/fcitx5/rime/build/
+# fcitx5 tray → Deploy
+```
+
+This was hit repeatedly during setup: `schema_list` overrides, `__include` patches, and key-binding patches all required a `build/` wipe before they took effect. The root cause is that rime's deployment logic prefers pre-compiled binary data in `build/` over re-processing source `.yaml` files.
+
+## Wanxiang ngram grammar model (`.gram`)
+
+### First deploy
+
+The repo configures `home.activation` to auto-download the model: **no manual steps are needed on a new machine**. `home-manager switch` (or `nixos-rebuild switch`) curls `wanxiang-lts-zh-hans.gram` into `~/.local/share/fcitx5/rime/`. If the network is unavailable, a warning is printed to stderr and the download is skipped; run `update-wanxiang-gram` later to catch up.
+
+### Update to latest
 
 ```bash
 update-wanxiang-gram
 ```
 
-该命令直接从 GitHub LTS release 拉取最新 `.gram` 文件。
+Fetches the latest `.gram` from the GitHub LTS release.
 
-### 更新节奏
+### Release cadence
 
-上游作者不定期更新（每年 1-3 次），只要服务端跑完了训练（需租用 GPU 服务器），就将新模型推到同一个 `LTS` 标签下覆盖旧版。因此同一 URL 每次都拿到的是「当前最新 LTS」，没有版本号分割。
+The author publishes updates irregularly (1–3 times per year), whenever server-side training runs (GPU rental) complete. Each release overwrites the same `LTS` tag, meaning the URL always points to the current latest, without versioned releases.
 
-参考：https://github.com/amzxyz/RIME-LMDG/releases
+Ref: https://github.com/amzxyz/RIME-LMDG/releases
 
-## v14 build 缓存问题（workaround）
+## Rime build cache behavior
 
-当前 nixpkgs-unstable 锁定的 `rime-wanxiang` 版本为 **14.1.1**（< v15），buildPhase 里有 `rime_deployer --compile` 预编译步骤。这可能导致用户目录的 `*.custom.yaml` patch 不生效。
+When rime deploys, it compiles source `.yaml` files into binary format under `~/.local/share/fcitx5/rime/build/`. After that, subsequent Deploy calls use the cached binaries — they do **not** re-parse `.custom.yaml` patches unless the build directory is cleared:
 
-**症状**：改了 custom.yaml 后万象依然不响应配置变更。
-
-**解决**：
 ```bash
 rm -rf ~/.local/share/fcitx5/rime/build/
-# 然后在 fcitx5 托盘菜单点 Deploy
+# fcitx5 tray → Deploy
 ```
 
-这个问题在 nixpkgs 的 rime-wanxiang **v15+** 已移除 buildPhase，届时仓库 nixpkgs 自动跟进即可（`nix flake update`）。
+This is rime's own deployment logic. While the official guide says clicking ⟲ (Deploy) should suffice, in practice — especially with Nix-managed symlinked configurations — the `build/` cache often goes stale and Deploy alone does not recompile. The `rm build/` + Deploy workaround is documented on the [Arch Wiki](https://wiki.archlinux.org/title/Rime#Apply_configuration) and [Stack Overflow](https://stackoverflow.com/questions/77575270) as a reliable fallback when Deploy doesn't pick up `.custom.yaml` changes.
 
-## 参考链接
+## References
 
-- [rime-wanxiang / 万象拼音](https://github.com/amzxyz/rime_wanxiang)
-- [RIME-LMDG / 万象语法模型](https://github.com/amzxyz/RIME-LMDG)
-- [rime-ice / 雾凇拼音](https://github.com/iDvel/rime-ice)（备选方案）
-- [felixonmars/fcitx5-pinyin-zhwiki](https://github.com/felixonmars/fcitx5-pinyin-zhwiki)（zhwiki 词库，同时产出 fcitx5 和 rime 格式）
-- [outloudvi/mw2fcitx](https://github.com/outloudvi/mw2fcitx)（moegirl 词库生成器）
-- [librime #377 — 候选词排序算法](https://github.com/rime/librine/issues/377)（开发者解释「记忆与遗忘」模型）
-- [Nixpkgs PR #224042 — rimeDataPkgs 机制](https://github.com/NixOS/nixpkgs/pull/224042)
+- [rime-wanxiang](https://github.com/amzxyz/rime_wanxiang)
+- [RIME-LMDG (grammar model releases)](https://github.com/amzxyz/RIME-LMDG)
+- [rime-ice](https://github.com/iDvel/rime-ice) (alternative schema)
+- [felixonmars/fcitx5-pinyin-zhwiki](https://github.com/felixonmars/fcitx5-pinyin-zhwiki) (zhwiki dictionary, dual-format: fcitx5 + rime)
+- [outloudvi/mw2fcitx](https://github.com/outloudvi/mw2fcitx) (moegirl dictionary generator)
+- [librime #377 — candidate ranking algorithm](https://github.com/rime/librime/issues/377) (dev explanation of "memory & forgetting" model)
+- [Nixpkgs PR #224042 — rimeDataPkgs mechanism](https://github.com/NixOS/nixpkgs/pull/224042)
 - [NixOS Wiki: Fcitx5](https://wiki.nixos.org/wiki/Fcitx5)
-- [fcitx5 官方 Wiki: Using Fcitx 5 on Wayland](https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland)
+- [Fcitx5 Wiki: Using Fcitx 5 on Wayland](https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland)
