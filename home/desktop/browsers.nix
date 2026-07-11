@@ -31,6 +31,10 @@
   };
 
   home.packages = [
-    pkgs.vivaldi
+    # Force Vivaldi to use gnome-keyring via libsecret instead of KWallet.
+    # See modules/nixos/desktop/keyring.nix for the system-wide rationale.
+    (pkgs.vivaldi.override {
+      commandLineArgs = "--password-store=gnome-libsecret";
+    })
   ];
 }
