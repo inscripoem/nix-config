@@ -9,5 +9,6 @@
     pkgs.yarn
     pkgs.uv
     pkgs.rustup
+    pkgs.just
   ];
 }
