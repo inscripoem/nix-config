@@ -30,12 +30,19 @@ NixOS installer kernel 6.18 they are swapped. Hard-coding `/dev/mmcblkN`
 would silently wipe the wrong disk on a re-install. All disk references
 in `disk-config.nix` use `/dev/disk/by-id/` symlinks instead.
 
-### 2.4 Atom x5-Z8350 Cherry Trail: no systemd hardening
-The Atom microcode cannot handle namespace/seccomp-dependent systemd
-hardening options. NixOS 26.05 applies aggressive defaults to
-`avahi-daemon`, `wpa_supplicant`, `systemd-logind`, and `nscd`. All
-four services fail to spawn with `Failed to spawn: Operation not
-permitted`. See §12 for the full diagnosis and fix.
+### 2.4 PrivateTmp fails with boot.tmp.useTmpfs
+When `boot.tmp.useTmpfs = true` (set by `wear-leveling.nix` for SD-card
+wear protection), systemd mounts a global tmpfs on `/tmp` at boot. The
+`PrivateTmp=yes` directive creates a new mount namespace and attempts to
+overmount a per-service tmpfs on `/tmp` — this clone(CLONE_NEWNS) fails
+with `EPERM` because the pre-existing tmpfs mount cannot be overmounted
+this way.
+
+The Atom x5-Z8350 CPU itself has no seccomp or namespace issues; `kernel
+6.18.5` with `CONFIG_SECCOMP=y` runs every other hardening option
+correctly. The fix uses `TemporaryFileSystem="/tmp /var/tmp"` (a
+different systemd code path that does not trigger the overmount
+conflict) and disables `PrivateTmp`. See §12.1 for the full diagnosis.
 
 ### 2.5 eMMC wear
 The eMMC is soldered and already showing age. The layout keeps the eMMC
@@ -80,8 +87,8 @@ builds.
 ## 4. Repo setup checklist (all files created/modified)
 
 - `hosts/wyse3040/default.nix` — host entry, imports sub-modules
-- `hosts/wyse3040/hardware.nix` — Atom seccomp fix, GRUB, blacklists,
-  logind timeouts, SSH KexAlgorithms
+- `hosts/wyse3040/hardware.nix` — PrivateTmp→TemporaryFileSystem fix,
+  GRUB, blacklists, logind timeouts, SSH KexAlgorithms
 - `hosts/wyse3040/disk-config.nix` — disko layout, by-id disks, Btrfs
   subvolumes, mount options
 - `hosts/wyse3040/impermanence.nix` — initrd rollback service,
@@ -319,56 +326,68 @@ This is the most valuable section. Every trap below was hit during the
 actual installation and operation of the Wyse 3040. Read it before you
 run into them.
 
-### 12.1 Atom CPU + systemd hardening incompatibility
+### 12.1 PrivateTmp + boot.tmp.useTmpfs incompatibility
 
-**The problem.** The Atom x5-Z8350 Cherry Trail CPU cannot handle ANY
-systemd seccomp/namespace hardening. NixOS 26.05 applies aggressive
-hardening to several services by default. On the Atom, all four
-services below fail to spawn with the exact same error:
+**The problem.** `wear-leveling.nix` sets `boot.tmp.useTmpfs = true`,
+which mounts a tmpfs over `/tmp`. When systemd's `PrivateTmp=yes` tries
+to create a per-service mount namespace and overmount a new tmpfs on
+`/tmp`, the `clone(CLONE_NEWNS)` syscall fails with `EPERM`:
 
 ```
-Failed to spawn <service>: Operation not permitted
+Failed to spawn 'start' task: Operation not permitted
 ```
 
-The four victims are:
-- `avahi-daemon.service`
-- `wpa_supplicant.service`
-- `systemd-logind.service`
-- `nscd.service`
+This was initially misdiagnosed as an "Atom CPU seccomp issue." In
+reality, the Atom x5-Z8350 CPU with kernel 6.18.5 and `CONFIG_SECCOMP=y`
+runs **every** other hardening option correctly — seccomp-BPF syscall
+filtering, mount namespaces (ProtectSystem, ProtectHome, PrivateDevices,
+etc.), cgroup device control, and even the `TemporaryFileSystem`
+directive all work.
 
-This is **CPU microarchitecture**, not a kernel version issue. The
-same kernel (`6.18.5`) on a Core i3 desktop (`briefcase`) runs all
-hardening without complaint.
+The root cause is purely a mount conflict: you can't `PrivateTmp`
+overmount a pre-existing tmpfs. briefcase (the laptop) has `/tmp` as a
+plain directory on btrfs, so `PrivateTmp` works there without issue.
 
-**The fix.** `hosts/wyse3040/hardware.nix` defines `atomSeccompFix` —
-a shared attrset of 22 hardening options, each set to `lib.mkForce
-false`. It is applied to each service via `systemd.services.<name>
-.serviceConfig = atomSeccompFix` (or `atomSeccompFixWpa` for
-wpa_supplicant, which also clears `RootDirectory` and
-`RootDirectoryStartOnly`).
+**The fix.** `hosts/wyse3040/hardware.nix` defines a minimal
+`atomSeccompFix` with two settings:
 
-The `lib.mkIf` wrapper on `avahi-daemon` and `wpa_supplicant` ensures
-our overrides are evaluated **after** their respective NixOS modules,
-preventing the module system from merging our `false` back to the
-module's `true`.
+```nix
+atomSeccompFix = {
+  PrivateTmp = lib.mkForce false;
+  TemporaryFileSystem = lib.mkForce "/tmp /var/tmp";
+};
+```
+
+`TemporaryFileSystem` provides the same per-service `/tmp` isolation as
+`PrivateTmp` but uses a different code path in systemd that does not
+trigger the overmount conflict. It also puts `/var/tmp` in RAM (it
+currently lives on the SD card btrfs), which is a net improvement for
+wear levelling.
+
+An additional benefit: because all other hardening options are no longer
+overridden, the services (avahi-daemon, wpa_supplicant, systemd-logind,
+nscd, systemd-hostnamed) now receive NixOS's full default sandboxing —
+seccomp-BPF syscall filters, mount namespace isolation, and more.
 
 **Verification.** Check that the services start cleanly after deploy:
 
 ```bash
-systemctl status avahi-daemon wpa_supplicant systemd-logind nscd
+systemctl status avahi-daemon wpa_supplicant systemd-logind nscd systemd-hostnamed
 ```
 
-All four should show `active (running)`. Check the journal for any
-remaining `seccomp` or `Operation not permitted` messages:
+All should show `active (running)`. Verify hardening is active:
 
 ```bash
-journalctl -u avahi-daemon --no-pager | grep -i "permitted\|seccomp"
+systemd-analyze security avahi-daemon.service | head -5
+# Overall exposure score should be well below 9.0 (previously ~9.6
+# because all hardening was disabled)
 ```
 
 ### 12.2 systemd-logind: the root cause of 25-second SSH and colmena SIGSEGV
 
-**The problem.** `systemd-logind` fails for the same seccomp reason as
-§12.1. The consequence is two-fold:
+**The problem.** `systemd-logind`'s upstream unit file includes
+`PrivateTmp=yes`, which fails on this host for the same reason as
+§12.1. When logind is dead, the consequence is two-fold:
 
 1. **Every SSH login takes exactly 25 seconds.** `pam_systemd.so` opens
    a D-Bus connection to logind and waits for the `StartSession` reply.
@@ -395,7 +414,8 @@ colmena apply --on wyse3040
 **The fix.** Two changes in `hardware.nix`:
 
 1. `atomSeccompFix` applied to `systemd-logind.service` (unconditional
-   — logind is always needed).
+   — logind is always needed). This replaces `PrivateTmp` with
+   `TemporaryFileSystem` as described in §12.1.
 2. `systemd.settings.Manager` timeouts raised to 5 minutes so any
    residual start/stop races do not cause premature failures:
 
@@ -513,20 +533,21 @@ time ssh root@wyse3040.local true
 # real    0m0.412s
 ```
 
-### 12.5 wpa_supplicant + nscd: same seccomp issue
+### 12.5 wpa_supplicant + nscd: same PrivateTmp issue
 
-**The problem.** Both services fail silently with the same `Operation
-not permitted` as the others in §12.1, because NixOS 26.05 applies
-systemd hardening to them as well.
+**The problem.** Both services fail silently because their upstream unit
+files or NixOS modules set `PrivateTmp=yes`, which triggers the same
+overmount conflict as §12.1.
 
 - `wpa_supplicant` failure means WiFi cannot associate at all.
 - `nscd` failure means DNS and user/group lookups are served directly
   from files, which is slow but functional.
 
-**The fix.** Both services receive `atomSeccompFix`. `wpa_supplicant`
-needs the extended `atomSeccompFixWpa` variant because it requires
-additional filesystem access (`RootDirectory = ""`,
-`RootDirectoryStartOnly = false`).
+**The fix.** Both services receive `atomSeccompFix`.
+`wpa_supplicant` needs the extended `atomSeccompFixWpa` variant because
+it additionally requires `AF_PACKET` address family for raw WiFi frame
+transmission (the NixOS default already includes this; our override
+matches it).
 
 ```nix
 systemd.services.wpa_supplicant = lib.mkIf config.networking.wireless.enable {
@@ -535,6 +556,10 @@ systemd.services.wpa_supplicant = lib.mkIf config.networking.wireless.enable {
 
 systemd.services.nscd.serviceConfig = atomSeccompFix;
 ```
+
+Unlike the previous version, `RootDirectory` is no longer cleared —
+NixOS's default chroot into `/run/wpa_supplicant` works correctly on
+this hardware (it uses `pivot_root`, not mount namespaces).
 
 **Verification.**
 
@@ -553,12 +578,19 @@ time dig +short wyse3040.local
 
 ### 12.6 Summary table
 
-| Service | Default hardening | Atom behaviour | Fix applied | User-visible symptom |
-|---------|------------------|----------------|-------------|---------------------|
-| `systemd-logind` | `RestrictNamespaces`, `MemoryDenyWriteExecute`, `SystemCallFilter`, etc. | Failed (seccomp) | `atomSeccompFix` | SSH 25-second login; colmena exit 11 |
-| `avahi-daemon` | same set | Failed (seccomp) | `atomSeccompFix` | `.local` resolution drops after deploy |
-| `wpa_supplicant` | same set + `RootDirectory` | Failed (seccomp) | `atomSeccompFixWpa` | WiFi cannot associate |
-| `nscd` | same set | Failed (seccomp) | `atomSeccompFix` | Slow DNS / user lookups |
+| Service | Default hardening | Problem | Fix applied | User-visible symptom |
+|---------|------------------|---------|-------------|---------------------|
+| `systemd-logind` | `PrivateTmp`, `SystemCallFilter`, `RestrictNamespaces`, etc. | PrivateTmp fails (tmpfs overmount) | `atomSeccompFix` | SSH 25-second login; colmena exit 11 |
+| `avahi-daemon` | `PrivateTmp`, `SystemCallFilter`, `ProtectSystem=strict`, etc. | PrivateTmp fails (tmpfs overmount) | `atomSeccompFix` | `.local` resolution drops after deploy |
+| `wpa_supplicant` | `PrivateTmp`, `RootDirectory`, `SystemCallFilter`, etc. | PrivateTmp fails (tmpfs overmount) | `atomSeccompFixWpa` | WiFi cannot associate |
+| `nscd` | `PrivateTmp`, `RestrictSUIDSGID`, `ProtectSystem=strict` | PrivateTmp fails (tmpfs overmount) | `atomSeccompFix` | Slow DNS / user lookups |
+| `systemd-hostnamed` | `PrivateTmp`, `SystemCallFilter`, `PrivateNetwork` | PrivateTmp fails (tmpfs overmount) | `atomSeccompFix` | hostnamectl commands fail |
+
+**Key insight:** The Atom x5-Z8350 CPU has no seccomp or namespace
+issues. The only incompatibility is `PrivateTmp` + `boot.tmp.useTmpfs`.
+All other hardening options (seccomp-BPF, mount namespaces, etc.) work
+correctly and are now active, providing stronger security than the
+previous "disable everything" approach.
 
 ### 12.7 eMMC by-id changes after physical swap
 
@@ -644,8 +676,8 @@ ssh root@wyse3040.local 'nmcli -t connection show --active | grep wifi'
 # 6. Remote builder reachable
 ssh root@wyse3040.local 'nix show-config | grep buildMachines'
 
-# 7. wpa_supplicant and nscd are running
-ssh root@wyse3040.local 'systemctl is-active wpa_supplicant nscd'
+# 7. wpa_supplicant, nscd, and hostnamed are running
+ssh root@wyse3040.local 'systemctl is-active wpa_supplicant nscd systemd-hostnamed'
 
 # 8. SD wear-leveling knobs are active
 ssh root@wyse3040.local 'systemctl is-active fstrim.timer'

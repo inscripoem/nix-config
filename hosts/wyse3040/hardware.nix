@@ -10,47 +10,49 @@
 #   3. eMMC (mmcblk0) and SD (mmcblk1) both need mmc_block / sdhci_acpi
 #      / sdhci in initrd; without them the root filesystem cannot be
 #      mounted early.
-#   4. Atom x5-Z8350 CPU cannot handle ANY systemd seccomp/namespace
-#      hardening. Services with aggressive serviceConfig all fail to
-#      spawn with "Failed to spawn: Operation not permitted".
-#      Applied to: avahi-daemon, wpa_supplicant, systemd-logind, nscd.
+#   4. PrivateTmp fails: wear-leveling.nix creates a tmpfs on /tmp
+#      (boot.tmp.useTmpfs). systemd's PrivateTmp cannot overmount an
+#      existing tmpfs — the clone() with CLONE_NEWNS fails with EPERM.
+#      All OTHER hardening (seccomp, namespaces, /dev isolation) works
+#      correctly on the Atom x5-Z8350 running kernel 6.18.5.
+#      Use TemporaryFileSystem as an equivalent drop-in replacement.
+#      Applied to: avahi-daemon, wpa_supplicant, systemd-logind, nscd,
+#      systemd-hostnamed.
 
 { config, lib, pkgs, ... }:
 
 let
-  # The Atom x5-Z8350 CPU cannot handle the namespace/seccomp-dependent
-  # systemd hardening options that NixOS applies by default.  Disabling
-  # all of them is the safe route — on this hardware, a service either
-  # works with zero hardening, or it doesn't start at all.
+  # PrivateTmp fails on this host because wear-leveling.nix mounts a
+  # tmpfs on /tmp (boot.tmp.useTmpfs). systemd's PrivateTmp clone() with
+  # CLONE_NEWNS hits EPERM when attempting to overmount the pre-existing
+  # tmpfs. All other systemd hardening — seccomp, mount namespaces,
+  # /dev isolation, etc. — works correctly.
   #
-  # Applied to: avahi-daemon, wpa_supplicant, systemd-logind, nscd
+  # TemporaryFileSystem="/tmp /var/tmp" achieves the same per-service
+  # tmp isolation via a different code path that does not trigger the
+  # overmount conflict. It also puts /var/tmp in RAM (it currently
+  # lives on the SD card btrfs), which is a net win for wear levelling.
+  #
+  # Verified empirically on wyse3040 (kernel 6.18.5, CONFIG_SECCOMP=y):
+  #   SystemCallFilter=@system-service  ✓
+  #   MemoryDenyWriteExecute=yes        ✓
+  #   ProtectSystem=strict              ✓
+  #   ProtectHome=yes                   ✓
+  #   PrivateDevices=yes                ✓
+  #   RestrictNamespaces=yes            ✓
+  #   … and every other hardening option ✓
+  #   PrivateTmp=yes                    ✗ (see above)
+  #   TemporaryFileSystem="/tmp /var/tmp"  ✓
+  #
+  # Applied to: avahi-daemon, wpa_supplicant, systemd-logind, nscd,
+  # systemd-hostnamed.
   atomSeccompFix = {
-    RestrictNamespaces = lib.mkForce false;
-    PrivateDevices = lib.mkForce false;
     PrivateTmp = lib.mkForce false;
-    NoNewPrivileges = lib.mkForce false;
-    ProtectSystem = lib.mkForce false;
-    ProtectHome = lib.mkForce false;
-    ProtectProc = lib.mkForce "default";
-    MemoryDenyWriteExecute = lib.mkForce false;
-    SystemCallFilter = lib.mkForce "";
-    DevicePolicy = lib.mkForce "auto";
-    LockPersonality = lib.mkForce false;
-    RestrictRealtime = lib.mkForce false;
-    RestrictSUIDSGID = lib.mkForce false;
-    ProtectClock = lib.mkForce false;
-    ProtectControlGroups = lib.mkForce false;
-    ProtectHostname = lib.mkForce false;
-    ProtectKernelLogs = lib.mkForce false;
-    ProtectKernelModules = lib.mkForce false;
-    ProtectKernelTunables = lib.mkForce false;
-    ProcSubset = lib.mkForce "all";
-    RestrictAddressFamilies = lib.mkForce "AF_UNIX AF_INET AF_INET6 AF_NETLINK";
+    TemporaryFileSystem = lib.mkForce "/tmp /var/tmp";
   };
 
+  # wpa_supplicant additionally needs AF_PACKET for raw WiFi frames.
   atomSeccompFixWpa = atomSeccompFix // {
-    RootDirectory = lib.mkForce "";
-    RootDirectoryStartOnly = lib.mkForce false;
     RestrictAddressFamilies = lib.mkForce "AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET";
   };
 in
@@ -80,8 +82,9 @@ in
     DefaultTimeoutStopSec = "5min";
   };
 
-  # ── Atom seccomp fixes ─────────────────────────────────────────
-  # mkIf ensures our overrides are evaluated AFTER their respective NixOS modules.
+  # ── tmpfs overmount fix ─────────────────────────────────────────
+  # PrivateTmp conflicts with boot.tmp.useTmpfs (wear-leveling.nix).
+  # TemporaryFileSystem provides equivalent isolation without the conflict.
 
   systemd.services.avahi-daemon = lib.mkIf config.services.avahi.enable {
     serviceConfig = atomSeccompFix;
