@@ -65,6 +65,10 @@ let
 in
 {
   inherit nixosHosts nixosConfigurations;
-  colmena = import ./colmena.nix (inputs // { inherit nixosHosts; });
+  colmena = import ./colmena.nix (inputs // { inherit nixosHosts vars; });
   deploy = import ./deploy.nix (inputs // { inherit nixosHosts; });
+
+  # Colmena 0.5 requires this output for direct flake evaluation.
+  # makeHive evaluates the raw hive config and returns the v0.5 schema.
+  colmenaHive = inputs.colmena.lib.makeHive self.outputs.colmena;
 }
