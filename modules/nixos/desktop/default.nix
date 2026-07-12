@@ -8,7 +8,7 @@
     ./printing.nix
     ./audio.nix
     ./browser.nix
-    ./sunshine.nix
+    ./ssh-x11.nix
     ./input-method.nix
     ./apps.nix
   ];

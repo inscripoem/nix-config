@@ -4,6 +4,9 @@ in {
   options.modules.capabilities.deploy-tools.enable =
     lib.mkEnableOption "deployment CLIs (colmena, deploy-rs)";
   config = lib.mkIf cfg.enable {
-    # P2: environment.systemPackages with colmena + deploy-rs
+    environment.systemPackages = [
+      inputs.colmena.packages.${pkgs.stdenv.hostPlatform.system}.colmena
+      inputs.deploy-rs.packages.${pkgs.stdenv.hostPlatform.system}.deploy-rs
+    ];
   };
 }

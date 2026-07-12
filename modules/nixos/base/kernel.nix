@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 {
   # Track the mainline kernel instead of the LTS default. Motivated by the
@@ -7,7 +7,7 @@
   # path — that mm-tagging regression is fixed in the 6.13+ series. Also
   # gives newer nvme / iommu code paths that keep the KIOXIA EXCERIA in
   # better shape between resets.
-  boot.kernelPackages = pkgs.linuxPackages_latest;
+  boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
 
   # Crash forensics: when the kernel notices something is broken, escalate
   # it to a full panic so the last dmesg ring buffer is flushed to pstore

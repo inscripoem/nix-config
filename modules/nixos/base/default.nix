@@ -11,5 +11,6 @@
     ./kernel.nix
     ./packages.nix
     ./state.nix
+    ./ssh.nix
   ];
 }

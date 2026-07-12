@@ -4,6 +4,11 @@ in {
   options.modules.capabilities.gaming.enable =
     lib.mkEnableOption "gaming suite (Steam, Proton-GE, gamemode)";
   config = lib.mkIf cfg.enable {
-    # P2: programs.steam, programs.gamemode
+    programs.steam = {
+      enable = true;
+      # https://github.com/GloriousEggroll/proton-ge-custom
+      extraCompatPackages = [ pkgs.proton-ge-bin ];
+    };
+    programs.gamemode.enable = true;
   };
 }

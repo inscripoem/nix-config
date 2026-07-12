@@ -10,9 +10,5 @@
   boot.loader.grub.device = "/dev/sda";
   boot.loader.grub.useOSProber = true;
 
-  # VMware guest support
-  services.xserver.videoDrivers = [ "vmware" ];
-  virtualisation.vmware.guest.enable = true;
-
   networking.hostName = "vm";
 }
