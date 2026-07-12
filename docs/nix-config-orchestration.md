@@ -84,6 +84,11 @@ Classes are directories under `modules/nixos/`. `lib/nixosModules.nix` imports `
 
 `desktop`, `server`, and `vm` answer "what kind of machine is this?". `lan` and `public` answer "what network environment is it in?". They are orthogonal mixins.
 
+**Design rationale — why not put avahi/tailscale in capabilities?**
+- **avahi** is a pure LAN assumption: every machine on the local network benefits from `.local` resolution, and a public server should not publish itself. It belongs to the `lan` class.
+- **tailscale** is a VPN overlay. A LAN machine might intentionally not join the tailnet (e.g., an isolated IoT bridge), so it remains a per-host capability.
+This split keeps the `lan` class meaningful while preserving per-host choice for the VPN.
+
 ### 3.2 Capability Modules
 
 Capabilities live in `modules/nixos/capabilities/`. Each module declares:
