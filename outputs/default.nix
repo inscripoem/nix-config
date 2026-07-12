@@ -1,4 +1,4 @@
-{ self, nixpkgs, home-manager, plasma-manager, disko, llm-agents, zen-browser, niri, colmena, deploy-rs, sops-nix, ... }@inputs:
+{ self, nixpkgs, home-manager, plasma-manager, disko, llm-agents, zen-browser, niri, colmena, deploy-rs, sops-nix, impermanence, ... }@inputs:
 let
   vars = import ../vars;
   lib = import ../lib { inherit (nixpkgs) lib; };
@@ -18,9 +18,12 @@ let
       hmEntryPoint = ../home/hosts/briefcase.nix;
       deploy = false;
       extraModules = [
+        ../modules/nixos/desktop
         disko.nixosModules.disko
         niri.nixosModules.niri
         { nixpkgs.overlays = [ niri.overlays.niri ]; }
+        ../modules/nixos/1password.nix
+        ../modules/nixos/gaming.nix
       ];
       hmSharedModules = desktopHmModules;
     };
@@ -29,8 +32,23 @@ let
       hardwarePath = ../hosts/vm;
       hmEntryPoint = ../home/hosts/vm.nix;
       deploy = false;
-      extraModules = [ ];
+      extraModules = [
+        ../modules/nixos/desktop
+        ../modules/nixos/1password.nix
+        ../modules/nixos/gaming.nix
+      ];
       hmSharedModules = desktopHmModules;
+    };
+    wyse3040 = {
+      arch = "x86_64-linux";
+      hardwarePath = ../hosts/wyse3040;
+      hmEntryPoint = ../home/hosts/wyse3040.nix;
+      deploy = true;
+      hostname = "wyse3040.local";
+      sshUser = "root";
+      tags = [ "home" ];
+      extraModules = [ disko.nixosModules.disko ];
+      hmSharedModules = [ ];
     };
   };
 

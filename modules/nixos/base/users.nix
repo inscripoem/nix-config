@@ -8,9 +8,6 @@
       "networkmanager"
       "wheel"
     ];
-    packages = with pkgs; [
-      kdePackages.kate
-    ];
     openssh.authorizedKeys.keys = vars.sshKeys;
     shell = pkgs.zsh;
   };

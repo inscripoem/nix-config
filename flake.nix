@@ -69,6 +69,8 @@
       url = "github:amzxyz/rime_wanxiang/wanxiang";
       flake = false;
     };
+
+    impermanence.url = "github:nix-community/impermanence";
   };
 
   outputs = inputs: import ./outputs inputs;

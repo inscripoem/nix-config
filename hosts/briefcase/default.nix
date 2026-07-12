@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, inputs, ... }:
 
 {
   imports = [
@@ -7,6 +7,9 @@
     # Active GPU profile. Swap this line — and only this line — when the
     # card changes. Old profiles in ./gpu/ stay around for swap-back.
     ./gpu/nvidia-pascal.nix
+    # Opt in to the remote-builder role: briefcase accepts nix build
+    # jobs from any client whose key is in vars.builderClientKeys.
+    ../../modules/nixos/nix-builder.nix
   ];
 
   # Bootloader configuration for Briefcase (UEFI)
@@ -26,4 +29,12 @@
   # advertised by other tailnet nodes. See system/tailscale.nix for the
   # shared portion of the configuration.
   services.tailscale.useRoutingFeatures = "client";
+
+  # Deployment CLIs. briefcase is the sole deployer for the fleet;
+  # colmena/deploy-rs binaries live here so `just apply` / `just
+  # safe-apply` can invoke them directly.
+  environment.systemPackages = [
+    inputs.colmena.packages.${pkgs.stdenv.hostPlatform.system}.colmena
+    inputs.deploy-rs.packages.${pkgs.stdenv.hostPlatform.system}.deploy-rs
+  ];
 }

@@ -9,5 +9,7 @@
     ./audio.nix
     ./browser.nix
     ./sunshine.nix
+    ./input-method.nix
+    ./apps.nix
   ];
 }

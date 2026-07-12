@@ -31,4 +31,9 @@
 
   # Enable niri - scrollable-tiling Wayland compositor
   programs.niri.enable = true;
+
+  # LocalSend needs port 53317 on both TCP (file transfer) and UDP
+  # (multicast peer discovery).
+  networking.firewall.allowedTCPPorts = [ 53317 ];
+  networking.firewall.allowedUDPPorts = [ 53317 ];
 }

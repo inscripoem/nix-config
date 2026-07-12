@@ -25,9 +25,6 @@ nixpkgs.lib.nixosSystem {
   modules = extraModules ++ [
     hardwarePath
     ../modules/nixos/base
-    ../modules/nixos/desktop  # Only for desktop hosts; will be conditional in P5
-    ../modules/nixos/1password.nix
-    ../modules/nixos/gaming.nix
     ../modules/nixos/tailscale.nix
     sops-nix.nixosModules.sops
     home-manager.nixosModules.home-manager
