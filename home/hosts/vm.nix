@@ -1,1 +1,1 @@
-{ imports = [ ../tui.nix ]; }
+{ imports = [ ../desktop.nix ]; }

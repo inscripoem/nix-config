@@ -1,1 +1,7 @@
-{ imports = [ ../desktop.nix ../packs/creative.nix ]; }
+{ imports = [
+  ../desktop.nix
+  ../packs/creative.nix
+  ../packs/toolchain.nix
+  ../packs/ai.nix
+  ../packs/gaming.nix
+]; }
