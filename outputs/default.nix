@@ -4,51 +4,67 @@ let
   lib = import ../lib { inherit (nixpkgs) lib; };
 
   # Desktop-oriented HM shared modules (plasma-manager, zen-browser).
-  # Servers/WSL would use a different (or empty) list.
   desktopHmModules = [
     plasma-manager.homeModules.plasma-manager
     zen-browser.homeModules.beta
   ];
 
-  # Host declaration table
+  # Host declaration table — class/capability model.
   nixosHosts = {
     briefcase = {
       arch = "x86_64-linux";
       hardwarePath = ../hosts/briefcase;
+      classes = [ "desktop" "lan" ];
       hmEntryPoint = ../home/hosts/briefcase.nix;
+      hmSharedModules = desktopHmModules;
       deploy = false;
       extraModules = [
-        ../modules/nixos/desktop
         disko.nixosModules.disko
         niri.nixosModules.niri
         { nixpkgs.overlays = [ niri.overlays.niri ]; }
-        ../modules/nixos/1password.nix
-        ../modules/nixos/gaming.nix
       ];
-      hmSharedModules = desktopHmModules;
+      extraConfig = {
+        modules.capabilities.gaming.enable = true;
+        modules.capabilities.sunshine.enable = true;
+        modules.capabilities."1password".enable = true;
+        modules.capabilities.smart.enable = true;
+        modules.capabilities.deploy-tools.enable = true;
+        modules.capabilities.remote-builder.enable = true;
+        modules.capabilities.tailscale.enable = true;
+      };
     };
+
     vm = {
       arch = "x86_64-linux";
       hardwarePath = ../hosts/vm;
+      classes = [ "vm" "desktop" "lan" ];
       hmEntryPoint = ../home/hosts/vm.nix;
-      deploy = false;
-      extraModules = [
-        ../modules/nixos/desktop
-        ../modules/nixos/1password.nix
-        ../modules/nixos/gaming.nix
-      ];
       hmSharedModules = desktopHmModules;
+      deploy = false;
+      extraModules = [ ];
+      extraConfig = {
+        modules.capabilities.tailscale.enable = true;
+      };
     };
+
     wyse3040 = {
       arch = "x86_64-linux";
       hardwarePath = ../hosts/wyse3040;
+      classes = [ "server" "lan" ];
       hmEntryPoint = ../home/hosts/wyse3040.nix;
+      hmSharedModules = [ ];
       deploy = true;
       hostname = "wyse3040.local";
       sshUser = "root";
       tags = [ "home" ];
       extraModules = [ disko.nixosModules.disko ];
-      hmSharedModules = [ ];
+      extraConfig = {
+        modules.capabilities.tailscale.enable = true;
+        modules.capabilities.sdcard.enable = true;
+        modules.capabilities.impermanence.enable = true;
+        modules.capabilities.remote-build-client.enable = true;
+        modules.capabilities.docker.enable = true;
+      };
     };
   };
 
@@ -57,10 +73,7 @@ let
   };
 
   nixosConfigurations = nixpkgs.lib.mapAttrs (name: spec:
-    mkNixos {
-      inherit name;
-      inherit (spec) arch hardwarePath extraModules hmSharedModules hmEntryPoint;
-    }
+    mkNixos (spec // { inherit name; })
   ) nixosHosts;
 in
 {
@@ -69,6 +82,5 @@ in
   deploy = import ./deploy.nix (inputs // { inherit nixosHosts; });
 
   # Colmena 0.5 requires this output for direct flake evaluation.
-  # makeHive evaluates the raw hive config and returns the v0.5 schema.
   colmenaHive = inputs.colmena.lib.makeHive self.outputs.colmena;
 }
