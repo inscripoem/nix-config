@@ -1,19 +1,17 @@
 # Declarative WiFi via NetworkManager ensureProfiles + SOPS.
 #
-# The WiFi SSIDs and PSK live in `secrets/wifi.yaml` (SOPS-encrypted,
-# age via host / editor / recovery keys — see .sops.yaml). At activation
-# sops-nix decrypts it to /run/secrets/wifi, then a oneshot service
-# uses yq to extract values into a flat env file consumed by
-# NetworkManager ensureProfiles via envsubst.
+# Each WiFi network's SSID and PSK live as flat keys in
+# `secrets/wifi.yaml` (SOPS-encrypted, age via host / editor /
+# recovery keys — see .sops.yaml). At activation sops-nix decrypts
+# them and a sops.templates env file passes the values into envsubst
+# for the .nmconnection profiles below. No systemd oneshot needed —
+# the activation phase runs before any services start.
 #
 # Schema (secrets/wifi.yaml):
-#   wifi:
-#     HKHomeNet_5G:
-#       ssid: "my-5ghz-ssid"
-#       psk: "5ghz-password"
-#     HKHomeNet:
-#       ssid: "my-24ghz-ssid"
-#       psk: "24ghz-password"
+#   wifi_HKHomeNet_5G_ssid: "my-5ghz-ssid"
+#   wifi_HKHomeNet_5G_psk:  "5ghz-password"
+#   wifi_HKHomeNet_ssid:    "my-24ghz-ssid"
+#   wifi_HKHomeNet_psk:     "24ghz-password"
 #
 # Why a system connection (permissions=""): without it NetworkManager
 # stores the PSK in KWallet/gnome-keyring, which is only unlocked at
@@ -24,33 +22,43 @@
 # See docs/secrets.md for the SOPS setup and docs/remote-desktop.md
 # for how this enables pre-login remote access.
 
-{ config, pkgs, ... }:
+{ config, ... }:
 
-let
-  wifiSecret = config.sops.secrets."wifi".path;
-in
 {
-  sops.secrets."wifi" = {
+  sops.secrets."wifi_HKHomeNet_5G_ssid" = {
+    sopsFile = ../../../secrets/wifi.yaml;
+    owner = "root";
+    mode = "0400";
+  };
+  sops.secrets."wifi_HKHomeNet_5G_psk" = {
+    sopsFile = ../../../secrets/wifi.yaml;
+    owner = "root";
+    mode = "0400";
+  };
+  sops.secrets."wifi_HKHomeNet_ssid" = {
+    sopsFile = ../../../secrets/wifi.yaml;
+    owner = "root";
+    mode = "0400";
+  };
+  sops.secrets."wifi_HKHomeNet_psk" = {
     sopsFile = ../../../secrets/wifi.yaml;
     owner = "root";
     mode = "0400";
   };
 
-  # oneshot: parse nested wifi.yaml → flat env file → trigger nmcli reload.
-  systemd.services."wifi-profiles" = {
-    description = "Generate WiFi NM profile env from sops secrets";
-    wantedBy = [ "multi-user.target" ];
-    after = [ "sops-nix.service" ];
-    serviceConfig.Type = "oneshot";
-    script = ''
-      ${pkgs.yq-go}/bin/yq -o=shell "${wifiSecret}" > /run/wifi.env
-      chmod 600 /run/wifi.env
+  sops.templates."wifi.env" = {
+    content = ''
+      wifi_HKHomeNet_5G_ssid=${config.sops.placeholder."wifi_HKHomeNet_5G_ssid"}
+      wifi_HKHomeNet_5G_psk=${config.sops.placeholder."wifi_HKHomeNet_5G_psk"}
+      wifi_HKHomeNet_ssid=${config.sops.placeholder."wifi_HKHomeNet_ssid"}
+      wifi_HKHomeNet_psk=${config.sops.placeholder."wifi_HKHomeNet_psk"}
     '';
-    serviceConfig.RemainAfterExit = true;
+    owner = "root";
+    mode = "0400";
   };
 
   networking.networkmanager.ensureProfiles = {
-    environmentFiles = [ "/run/wifi.env" ];
+    environmentFiles = [ config.sops.templates."wifi.env".path ];
     profiles = {
       "HKHomeNet_5G" = {
         connection = {

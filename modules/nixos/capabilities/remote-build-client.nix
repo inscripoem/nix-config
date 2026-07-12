@@ -4,10 +4,10 @@
 # hosts; every derivation gets farmed out to hosts listed in
 # vars.builders. The client does no local building (max-jobs = 0).
 #
-# The SSH key at /persist/root/.ssh/builder_ed25519 must be generated
-# post-install and its public half added to vars.builderClientKeys;
-# see docs/wyse3040-install.md for that step. (P4 will migrate this to
-# sops-nix.)
+# The SSH key at /persist/root/.ssh/builder_ed25519 is deployed
+# declaratively via sops-nix (secrets/builder.yaml → sops.secrets on
+# wyse3040). Each remote-build client gets its own keypair; the public
+# half lives in keys/ and is referenced by vars.builderClientKeys.
 
 { config, lib, vars, ... }:
 let cfg = config.modules.capabilities.remote-build-client;

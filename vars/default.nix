@@ -19,5 +19,6 @@
   };
 
   builderClientKeys = [
+    (builtins.readFile ../keys/wyse3040-builder-ed25519.pub)
   ];
 }
