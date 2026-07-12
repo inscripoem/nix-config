@@ -43,7 +43,7 @@ apply target="":
     # IP fallback for hosts where mDNS is down.
     case "{{target}}" in
         wyse3040)
-            ssh -o ConnectTimeout=8 "root@192.168.0.162" \
+            ssh -o ConnectTimeout=8 "root@<wyse3040-ip>" \
                 'systemctl is-active avahi-daemon -q || systemctl restart avahi-daemon.socket avahi-daemon.service' 2>/dev/null || :
             ;;
     esac
@@ -71,7 +71,7 @@ check host="":
 # Initial install (bare host or Live USB). Runs on briefcase;
 # the target only receives the closure. Reboots after install.
 #
-#     just install-remote wyse3040 192.168.0.162
+#     just install-remote wyse3040 <wyse3040-ip>
 #
 # See docs/wyse3040-install.md §5.
 # ══════════════════════════════════════════════════════════════

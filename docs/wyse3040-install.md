@@ -142,14 +142,14 @@ From a machine that already has the repo checked out (in this case,
 `briefcase`), run:
 
 ```bash
-just install-remote wyse3040 192.168.0.162
+just install-remote wyse3040 <wyse3040-ip>
 ```
 
 This invokes `nixos-anywhere` with:
 - `--flake .#wyse3040`
 - `--generate-hardware-config` to write
   `hosts/wyse3040/hardware-configuration.nix`
-- `root@192.168.0.162` as the target
+- `root@<wyse3040-ip>` as the target
 
 **Requirements:**
 - Root SSH access to the Wyse (use `ssh-copy-id` first if needed).
@@ -272,7 +272,7 @@ already restarted `avahi-daemon`. If it is still dead, run the manual
 restart from the justfile's fallback section, or use the hard-coded IP:
 
 ```bash
-ssh root@192.168.0.162
+ssh root@<wyse3040-ip>
 ```
 
 ## 11. Daily ops
@@ -288,7 +288,7 @@ just apply wyse3040
 
 The recipe automatically runs the post-colmena avahi SSH workaround.
 If the target is `wyse3040`, it falls back to the hard-coded IP
-`192.168.0.162` when `.local` resolution fails.
+`<wyse3040-ip>` when `.local` resolution fails.
 
 ### `just check [host]`
 ```bash
@@ -452,12 +452,12 @@ ssh -o ConnectTimeout=8 "root@{{target}}.local" \
 2. **Fallback IP:** The justfile contains an IP-based fallback for
    `wyse3040` specifically. If mDNS itself is the casualty (rare, but
    possible if the local network's multicast is broken), the fallback
-   `192.168.0.162` is used instead of `.local`:
+   `<wyse3040-ip>` is used instead of `.local`:
 
 ```bash
 case "{{target}}" in
     wyse3040)
-        ssh -o ConnectTimeout=8 "root@192.168.0.162" \
+        ssh -o ConnectTimeout=8 "root@<wyse3040-ip>" \
             'systemctl is-active avahi-daemon -q || systemctl restart avahi-daemon.socket avahi-daemon.service'
         ;;
 esac
@@ -589,7 +589,7 @@ When replacing the SD:
 2. Boot a Live USB.
 3. Re-list `/dev/disk/by-id/` and update `sd.device` in
    `disk-config.nix`.
-4. Re-run `just install-remote wyse3040 192.168.0.162`.
+4. Re-run `just install-remote wyse3040 <wyse3040-ip>`.
 5. Disko will re-partition the new card and re-format from scratch.
 
 ### 12.9 Builder client key must be added to `vars/default.nix`

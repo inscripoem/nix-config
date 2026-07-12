@@ -32,6 +32,11 @@
     owner = "root";
     mode = "0400";
   };
+  sops.secrets."WIFI_SSID_24G" = {
+    sopsFile = ../../../secrets/wifi.yaml;
+    owner = "root";
+    mode = "0400";
+  };
 
   # Generate a simple KEY=value env file from the two sops secrets,
   # so ensureProfiles.environmentFiles can envsubst $WIFI_SSID /
@@ -40,6 +45,7 @@
     content = ''
       WIFI_SSID=${config.sops.placeholder."WIFI_SSID"}
       WIFI_PSK=${config.sops.placeholder."WIFI_PSK"}
+      WIFI_SSID_24G=${config.sops.placeholder."WIFI_SSID_24G"}
     '';
     owner = "root";
     mode = "0400";
@@ -62,6 +68,30 @@
         wifi = {
           mode = "infrastructure";
           ssid = "$WIFI_SSID";
+        };
+        wifi-security = {
+          auth-alg = "open";
+          key-mgmt = "wpa-psk";
+          psk = "$WIFI_PSK";
+        };
+        ipv4 = {
+          method = "auto";
+        };
+        ipv6 = {
+          method = "auto";
+        };
+      };
+      "HKHomeNet" = {
+        connection = {
+          id = "HKHomeNet";
+          type = "wifi";
+          permissions = "";
+          autoconnect = true;
+          autoconnect-priority = 10;
+        };
+        wifi = {
+          mode = "infrastructure";
+          ssid = "$WIFI_SSID_24G";
         };
         wifi-security = {
           auth-alg = "open";

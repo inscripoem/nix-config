@@ -51,6 +51,7 @@ let
   atomSeccompFixWpa = atomSeccompFix // {
     RootDirectory = lib.mkForce "";
     RootDirectoryStartOnly = lib.mkForce false;
+    RestrictAddressFamilies = lib.mkForce "AF_UNIX AF_INET AF_INET6 AF_NETLINK AF_PACKET";
   };
 in
 
@@ -69,7 +70,7 @@ in
     efi.canTouchEfiVariables = false;
   };
 
-  boot.blacklistedKernelModules = [ "dw_dmac_core" ];
+  boot.blacklistedKernelModules = [ "dw_dmac_core" "rtl8192cu" ];
   boot.kernelParams = [ "reboot=efi" ];
 
   boot.kernel.sysctl."kernel.panic" = lib.mkForce 60;
@@ -93,6 +94,8 @@ in
   systemd.services.systemd-logind.serviceConfig = atomSeccompFix;
 
   systemd.services.nscd.serviceConfig = atomSeccompFix;
+
+  systemd.services.systemd-hostnamed.serviceConfig = atomSeccompFix;
 
   # ── SSH speed ───────────────────────────────────────────────────
 
