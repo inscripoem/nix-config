@@ -18,7 +18,7 @@ creation_rules:
       # ═══ Recipients that can decrypt secrets ═══
       #
       # Editor key (daily use — age-keygen, ~/.config/sops/age/keys.txt).
-      - age1mhcwhew5svwp5dgfmq9pf9055r7jtxa59zh7sts8f826vfshha5swkzcq2
+      - age1kf6vrxsmudkel2tth5mjx8x4wcan7p4ypwjehme7pregkpgmfs6q9nv28q
       #
       # Recovery key (last resort — derived from a personal SSH ed25519 key
       # in 1Password via `ssh-to-age -i pub`). Use this only if your editor
