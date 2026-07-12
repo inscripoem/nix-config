@@ -10,7 +10,6 @@
     ./nh.nix
     ./kernel.nix
     ./packages.nix
-    ./smart.nix
     ./state.nix
   ];
 }

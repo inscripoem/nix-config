@@ -36,5 +36,16 @@
   environment.systemPackages = [
     inputs.colmena.packages.${pkgs.stdenv.hostPlatform.system}.colmena
     inputs.deploy-rs.packages.${pkgs.stdenv.hostPlatform.system}.deploy-rs
+    pkgs.smartmontools
+    pkgs.nvme-cli
   ];
+
+  # Disk health surveillance: pairs with kernel.nix (which panics + reboots
+  # when the machine falls over) by warning us *before* the SSD dies.
+  services.smartd = {
+    enable = true;
+    autodetect = true;
+    defaults.autodetected = "-a -o on -S on -n standby,q -s (S/../.././02|L/../../6/03) -W 4,60,75";
+    notifications.wall.enable = true;
+  };
 }
