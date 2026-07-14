@@ -14,6 +14,13 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
+  # The budget H410 board + Comet Lake combo silently drops the PCIe
+  # link when the CPU enters deep C-states (C2/C3). The GPU falls off
+  # the bus → hard freeze with zero logs from kernel panic detectors,
+  # NMI watchdog, or pstore. Restrict the CPU to C1 at deepest to
+  # keep the PCIe link alive.
+  boot.kernelParams = [ "intel_idle.max_cstate=1" ];
+
   networking.hostName = "briefcase";
 
   # Pull in linux-firmware so Intel AX210 (and friends) get iwlwifi-*.ucode.
