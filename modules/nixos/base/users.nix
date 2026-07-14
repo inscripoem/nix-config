@@ -7,6 +7,9 @@
     extraGroups = [
       "networkmanager"
       "wheel"
+      "video"
+      "render"
+      "uinput"
     ];
     openssh.authorizedKeys.keys = vars.sshKeys;
     shell = pkgs.zsh;

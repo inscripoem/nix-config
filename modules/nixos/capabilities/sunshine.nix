@@ -2,29 +2,29 @@
 #
 # Why Sunshine (and not KRDP / RustDesk / Parsec / krfb):
 #
-#   On this machine the KDE session runs on **X11** because the NVIDIA
-#   proprietary driver (Turing RTX 2060S, see docs/nvidia.md) makes
+#   On this machine the KDE session runs on **X11**. The X11
+#   architecture was originally chosen to work around NVIDIA proprietary
+#   driver issues (Turing RTX 2060S, see docs/nvidia.md) that made
 #   portal-based screencast unstable under Wayland, which disables
 #   every remote-desktop tool that goes through xdg-desktop-portal
 #   (KRDP, krfb-on-wayland, RustDesk-on-wayland, ...; see
-#   docs/xdg-portal.md). X11 avoids the portal entirely for screen
-#   capture, but the only Wayland-only RDP option (KRDP, kcm_krdpserver)
-#   hides itself on X11, so we need a different host.
+#   docs/xdg-portal.md). With the current Intel Arc A380 GPU, X11 is
+#   retained because it gives reliable pre-login Sunshine capture
+#   without requiring KMS / capSysAdmin.
 #
 #   Sunshine is chosen over the alternatives:
 #     - KRDP: Wayland-only (kcm hides on X11), no Linux host path.
 #     - RustDesk: works on X11 but has no NixOS *host* module
 #       (only `services.rustdesk-server` for self-hosting the relay),
 #       and `rustdesk --service` (unattended) needs a sudo+setuid
-#       wrapper hack under NixOS. NVIDIA hwcodec has historical
-#       libcuda.so.1 path issues.
+#       wrapper hack under NixOS.
 #     - Parsec: no Linux host at all (Windows/macOS only) — dead on
 #       arrival for this NixOS box.
 #     - krfb (VNC): pure CPU compression, too laggy for cross-region
 #       use (HK <-> SZ).
 #
-#   Sunshine grabs the active X11 screen via XShm/XDamage (or NvFBC)
-#   and encodes with NVENC on the Turing GPU, has a first-class NixOS
+#   Sunshine grabs the active X11 screen via XShm/XDamage and encodes
+#   with the Intel Arc A380's media engines, has a first-class NixOS
 #   module, and needs no third-party account/signaling server —
 #   connectivity rides on the existing Tailscale tailnet. See
 #   docs/remote-desktop.md for the full rationale, alternatives

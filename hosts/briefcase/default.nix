@@ -6,7 +6,7 @@
     ./disk-config.nix
     # Active GPU profile. Swap this line — and only this line — when the
     # card changes. Old profiles in ./gpu/ stay around for swap-back.
-    ./gpu/nvidia-pascal.nix
+    ./gpu/intel-arc-a380.nix
   ];
 
   # Bootloader configuration for Briefcase (UEFI)

@@ -40,6 +40,14 @@ with this NVIDIA card, X11 is the pragmatic choice.
 | **xrdp** | RDP | no — opens a new Xorg session | not applicable; xrdp targets X. | usable for remote *login* to a fresh session, but does not shadow the active desktop. |
 | **Sunshine** | Moonlight stream | yes | needs DRM/KMS capture (`capSysAdmin = true`); NVIDIA DRM has known GPU-ownership contention → **flaky**. | captures via XShm/XDamage (or NvFBC), **NVENC on Turing**, first-class NixOS module, no third-party account/signaling. **Chosen.** |
 
+> **Current hardware (Intel Arc A380):** The NVIDIA-specific
+> instability is gone, but the X11 / SDDM / Sunshine architecture is
+> retained because it gives reliable pre-login capture without
+> requiring KMS / `capSysAdmin`. On Intel Arc, Wayland portal screencast
+> would work for logged-in sessions, but pre-login capture still needs a
+> redesign. The Wayland migration roadmap is in
+> `docs/intel-arc-a380.md`.
+
 ---
 
 ## 2. Architecture: Windows-RDP-like pre-login streaming
@@ -77,7 +85,7 @@ Boot → multi-user.target
   `sunshine-sddm` service sets `DISPLAY=:0` and dynamically finds SDDM's
   XAUTHORITY cookie at `/run/sddm/xauth_*` (root-readable). Sunshine
   grabs the greeter framebuffer via XShm/XDamage — no portal, no
-  NVIDIA problem.
+  KMS/`capSysAdmin` required.
 - No auto-login → no KWallet/keyring problem → PAM gets the password
   at real login → KWallet + gnome-keyring unlock properly → WiFi
   (already connected via system connection) doesn't need the keyring
@@ -201,7 +209,7 @@ do NOT hand-list these in `networking.firewall`.
 1. Open Moonlight on any client, pick `briefcase`.
 2. You see the SDDM login screen. Type the login password.
 3. ~5-8s handoff → Moonlight reconnects → you're in the KDE desktop
-   with NVENC + PipeWire audio.
+   with Intel Arc A380 hardware encode + PipeWire audio.
 
 ### If the box reboots
 
