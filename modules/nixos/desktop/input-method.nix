@@ -37,5 +37,11 @@
       }))
       catppuccin-fcitx5
     ];
+    # Activate catppuccin-mocha-mauve theme with matching font size.
+    # Fcitx5 ignores theme.conf Font → must set in globalSection explicitly.
+    fcitx5.settings.addons.classicui.globalSection = {
+      Theme = "catppuccin-mocha-mauve";
+      Font = ''"Sans 13"'';
+    };
   };
 }
