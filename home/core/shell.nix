@@ -111,6 +111,7 @@
     enable = true;
     enableFishIntegration = true;
     enableZshIntegration = true;
+    shellWrapperName = "y";
   };
 
   programs.atuin = {
@@ -149,6 +150,9 @@
     enableBashIntegration = true;
     enableFishIntegration = true;
     enableZshIntegration = true;
+    # Atuin already owns Ctrl-R; disable fzf's history widget to avoid the
+    # conflict warning.
+    historyWidget.command = "";
   };
 
   programs.eza = {

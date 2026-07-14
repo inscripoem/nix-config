@@ -44,8 +44,8 @@ let
       libnotify
       openssl
       stdenv.cc.cc.lib
-      xorg.libX11
-      xorg.libxcb
+      libx11
+      libxcb
       libxkbcommon
       wayland
     ];

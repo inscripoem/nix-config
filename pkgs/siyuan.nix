@@ -73,19 +73,19 @@ let
 
     buildInputs = with pkgs; [
       stdenv.cc.cc.lib
-      xorg.libX11
-      xorg.libXcomposite
-      xorg.libXdamage
-      xorg.libXext
-      xorg.libXfixes
-      xorg.libXrandr
-      xorg.libxcb
-      xorg.libxkbfile
-      xorg.libXinerama
-      xorg.libXcursor
-      xorg.libXi
-      xorg.libXScrnSaver
-      xorg.libXtst
+      libx11
+      libxcomposite
+      libxdamage
+      libxext
+      libxfixes
+      libxrandr
+      libxcb
+      libxkbfile
+      libxinerama
+      libxcursor
+      libxi
+      libxscrnsaver
+      libxtst
       libdrm
       mesa
       nss
