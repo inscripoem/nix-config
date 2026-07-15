@@ -6,7 +6,6 @@
     wget
     git
     maple-mono.NF-CN
-    gh
   ];
   environment.variables.EDITOR = "vim";
 }
