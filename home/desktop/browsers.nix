@@ -35,6 +35,7 @@
     # See modules/nixos/desktop/keyring.nix for the system-wide rationale.
     (pkgs.vivaldi.override {
       commandLineArgs = "--password-store=gnome-libsecret";
+      proprietaryCodecs = true;
     })
   ];
 }
