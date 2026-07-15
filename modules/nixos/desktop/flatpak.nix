@@ -9,6 +9,6 @@
     packages = [
       { appId = "com.pocoguy.Muse"; origin = "mixtapes"; }
     ];
-    update.onActivation = false;
+    update.onActivation = true;
   };
 }
