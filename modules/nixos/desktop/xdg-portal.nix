@@ -12,5 +12,6 @@
     enable = true;
     config.kde.default = [ "kde" ];
     config.cosmic.default = [ "cosmic" ];
+    config.niri.default = [ "niri" ];
   };
 }
