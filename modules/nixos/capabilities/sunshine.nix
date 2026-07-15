@@ -125,6 +125,7 @@ in {
       serviceConfig = {
         ExecStartPre = [
           "${pkgs.systemd}/bin/systemctl stop sunshine-sddm.service"
+          "${pkgs.coreutils}/bin/sleep 1"  # let old process release ports before binding
         ];
         ExecStopPost = [
           "${pkgs.systemd}/bin/systemctl start sunshine-sddm.service"
