@@ -123,11 +123,12 @@
       auto_sync = false;
       update_check = false;
       style = "compact";
-      inline_height = 20;
+      inline_height = 0;
       show_preview = true;
       filter_mode = "global";
-      filter_mode_shell_up_key_binding = "global";
+      filter_mode_shell_up_key_binding = "directory";
       search_mode = "fuzzy";
+      enter_accept = true;
     };
   };
 
