@@ -3,7 +3,7 @@
     disk = {
       main = {
         type = "disk";
-        device = "/dev/nvme0n1"; 
+        device = "/dev/disk/by-id/nvme-KIOXIA-EXCERIA_SSD_Y03A617IK2V2"; 
         content = {
           type = "gpt";
           partitions = {
