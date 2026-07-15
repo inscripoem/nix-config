@@ -248,3 +248,21 @@ try, in order:
 4. Collect `journalctl --user -b -1 | grep -iE 'kwin|qFatal|signal'`
    and `coredumpctl list` to confirm whether KWin exited cleanly
    (workaround territory) or actually crashed (driver bug territory).
+
+---
+
+## 4. Non-NVIDIA: C-state hard-hang (affects both GPUs)
+
+In July 2026 `briefcase` also suffered silent hard-freezes during idle
+on both the NVIDIA Quadro P620 **and** the Intel Arc A380. The root
+cause turned out to be deep CPU C-states (C2/C3) dropping the PCIe link
+on the H410 budget board — not a GPU driver bug.
+
+Symptoms that distinguish it from §1/§3:
+- Freeze happens when the machine is **idle / screen-locked**, not during
+  login or session startup.
+- Zero kernel logs, zero pstore entries, zero coredumps — the freeze is
+  below kernel visibility.
+- Affects **both** NVIDIA and Intel Arc equally.
+
+Fix and full diagnosis: `docs/hard-hang-cstate.md`.

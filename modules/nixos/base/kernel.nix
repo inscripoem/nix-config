@@ -1,21 +1,23 @@
 { config, lib, pkgs, ... }:
 
 {
-  # Track the mainline kernel instead of the LTS default. Motivated by the
-  # July 2026 briefcase hard-hangs whose only kernel breadcrumb was a
-  # 6.12.65 `alloc_tagging_slab_alloc_hook` warning in the shmem fallocate
-  # path — that mm-tagging regression is fixed in the 6.13+ series. Also
-  # gives newer nvme / iommu code paths that keep the KIOXIA EXCERIA in
-  # better shape between resets.
+  # Track mainline instead of LTS. Initially motivated by the July 2026
+  # briefcase hard-hangs (later diagnosed as a C-state PCIe link-drop on
+  # the H410 board — see docs/hard-hang-cstate.md), but still worthwhile
+  # for newer nvme / iommu code paths with the KIOXIA EXCERIA.
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
 
   # Crash forensics: when the kernel notices something is broken, escalate
   # it to a full panic so the last dmesg ring buffer is flushed to pstore
-  # (EFI backend, already mounted at /sys/fs/pstore) and the box reboots
-  # on its own instead of sitting frozen until we hit the power button.
-  # Motivated by the July 2026 silent hard-hang series on briefcase where
-  # journalctl just cut off mid-log with no panic trace and pstore was
-  # empty on the next boot.
+  # (EFI backend, mounted at /sys/fs/pstore) and the box auto-reboots.
+  #
+  # Motivated by the July 2026 silent hard-hang series on briefcase, which
+  # turned out to be a hardware-level PCIe link drop triggered by deep CPU
+  # C-states (C2/C3) on the H410 budget board — so far below kernel visibility
+  # that even these panic hooks never fired and pstore stayed empty.
+  #
+  # Root cause & fix: docs/hard-hang-cstate.md
+  # Host-level kernel param:   hosts/briefcase/default.nix (intel_idle.max_cstate=1)
   boot.kernel.sysctl = {
     "kernel.panic" = 10;              # auto-reboot 10s after panic
     "kernel.panic_on_oops" = 1;       # oops -> panic (so it lands in pstore)
