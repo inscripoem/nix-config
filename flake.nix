@@ -71,6 +71,9 @@
     };
 
     impermanence.url = "github:nix-community/impermanence";
+
+    # nix-flatpak - declarative Flatpak package management
+    nix-flatpak.url = "github:gmodena/nix-flatpak/v0.7.0";
   };
 
   outputs = inputs: import ./outputs inputs;

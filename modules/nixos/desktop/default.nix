@@ -11,6 +11,7 @@
     ./ssh-x11.nix
     ./input-method.nix
     ./apps.nix
+    ./flatpak.nix
     ./sudo-askpass.nix
   ];
 }
