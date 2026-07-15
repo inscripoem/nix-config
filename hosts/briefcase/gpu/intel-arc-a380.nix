@@ -18,7 +18,6 @@
   boot.kernelParams = [
     "i915.enable_guc=3"      # GuC + HuC firmware for media/compute
     "i915.force_probe=56a5"  # A380 PCI ID
-    "pcie_aspm=force"        # Force ASPM capability even if BIOS hides it
   ];
 
   # Hardware decode/encode (VA-API iHD), QSV (oneVPL), OpenCL/Level Zero.
