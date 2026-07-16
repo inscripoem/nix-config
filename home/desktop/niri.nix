@@ -1,5 +1,21 @@
-{ pkgs, ... }:
+{ pkgs, lib, config, ... }:
+let
+  cfg = config.programs.niri;
 
+  # Append include "dms/binds.kdl" to the rendered config so DMS's
+  # KeybindsService doesn't show a warning banner in Keyboard Shortcuts settings.
+  configWithDmsInclude = pkgs.runCommand "niri-config-validated" {
+    nativeBuildInputs = [ cfg.package ];
+    passAsFile = [ "configBody" ];
+    configBody = cfg.finalConfig + "\n" + ''include "dms/binds.kdl"'';
+  } ''
+    dir=$(dirname "$configBodyPath")
+    mkdir -p "$dir/dms"
+    touch "$dir/dms/binds.kdl"
+    niri validate -c "$configBodyPath"
+    cp "$configBodyPath" $out
+  '';
+in
 {
   programs.niri = {
     settings = {
@@ -253,6 +269,15 @@
         # Force DMS to use an icon theme with light panel icons on the dark bar.
         "QS_ICON_THEME" = "breeze-dark";
       };
+
     };
+  };
+
+  # Override the config file source to append include "dms/binds.kdl" so DMS
+  # doesn't show a warning banner in Keyboard Shortcuts settings.
+  xdg.configFile.niri-config = lib.mkForce {
+    enable = true;
+    target = "niri/config.kdl";
+    source = configWithDmsInclude;
   };
 }
