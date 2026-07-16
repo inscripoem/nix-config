@@ -17,6 +17,8 @@
   boot.initrd.kernelModules = [ "i915" ];
   boot.kernelParams = [
     "i915.enable_guc=3"      # GuC + HuC firmware for media/compute
+    "pcie_aspm=force"        # Force ASPM on despite firmware claiming unsupported
+    "pcie_aspm.policy=powersupersave"  # Enable ASPM L1 + L1 substates where supported
   ];
 
   # Hardware decode/encode (VA-API iHD), QSV (oneVPL), OpenCL/Level Zero.
@@ -32,7 +34,7 @@
   # ReBarState sets the ReBarUEFI UEFI variable that controls the resizable
   # BAR size. Only useful on firmware that has the ReBarUEFI DXE driver
   # injected (this host's Intel Arc profile).
-  environment.systemPackages = with pkgs; [ rebarstate ];
+  environment.systemPackages = with pkgs; [ rebarstate nvtopPackages.intel ];
 
   # Allow intel_gpu_top to run without root for GPU monitoring.
   hardware.intel-gpu-tools.enable = true;
