@@ -29,6 +29,11 @@
   # Make VA-API use the modern iHD backend instead of the legacy i965 driver.
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
 
+  # ReBarState sets the ReBarUEFI UEFI variable that controls the resizable
+  # BAR size. Only useful on firmware that has the ReBarUEFI DXE driver
+  # injected (this host's Intel Arc profile).
+  environment.systemPackages = with pkgs; [ rebarstate ];
+
   # Allow intel_gpu_top to run without root for GPU monitoring.
   hardware.intel-gpu-tools.enable = true;
 

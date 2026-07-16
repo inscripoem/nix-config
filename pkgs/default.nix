@@ -3,6 +3,7 @@ final: prev: {
   "trae-cn" = final.callPackage ./trae-cn.nix { };
   "cc-switch" = final.callPackage ./cc-switch.nix { };
   glances = final.callPackage ./glances.nix { originalGlances = prev.glances; };
+  rebarstate = final.callPackage ./rebarstate.nix { };
 
   # Fix flatpak 1.18.0 regression where the host environment (containing
   # NixOS /nix/store paths) was leaked into flatpak-spawn --sandbox
