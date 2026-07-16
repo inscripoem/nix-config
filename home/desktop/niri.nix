@@ -56,6 +56,8 @@
         "XDG_CURRENT_DESKTOP" = "niri";
         "XDG_SESSION_TYPE" = "wayland";
         "XDG_SESSION_DESKTOP" = "niri";
+        # Force DMS to use an icon theme with light panel icons on the dark bar.
+        "QS_ICON_THEME" = "breeze-dark";
       };
     };
   };

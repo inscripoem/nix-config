@@ -21,6 +21,11 @@
     wl-clipboard
   ];
 
+  xdg.configFile."autostart/nm-applet.desktop".text = ''
+    [Desktop Entry]
+    Hidden=true
+  '';
+
   xdg.configFile."autostart/org.deskflow.deskflow.desktop".source =
     "${pkgs.deskflow}/share/applications/org.deskflow.deskflow.desktop";
 }

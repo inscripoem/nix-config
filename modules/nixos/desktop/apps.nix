@@ -5,5 +5,6 @@
 {
   environment.systemPackages = with pkgs; [
     kdePackages.kate
+    papirus-icon-theme
   ];
 }
