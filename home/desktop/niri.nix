@@ -2,9 +2,6 @@
 
 {
   programs.niri = {
-    # Use niri from nixpkgs for NixOS official cache
-    package = pkgs.niri;
-
     settings = {
       binds = {
         # ── User-preserved custom binds ──
@@ -207,6 +204,7 @@
         "Mod+Ctrl+R".action."reset-window-height" = [];
 
         # ── Maximize / Fullscreen / Center ──
+        "Mod+M".action."maximize-window-to-edges" = [];
         "Mod+F".action."maximize-column" = [];
         "Mod+Shift+F".action."fullscreen-window" = [];
         "Mod+Ctrl+F".action."expand-column-to-available-width" = [];

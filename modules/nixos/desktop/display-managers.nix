@@ -29,8 +29,13 @@
   # Enable COSMIC desktop environment (parallel install with KDE Plasma).
   services.desktopManager.cosmic.enable = true;
 
-  # Enable niri - scrollable-tiling Wayland compositor
-  programs.niri.enable = true;
+  # Enable niri - scrollable-tiling Wayland compositor.
+  # Use niri-unstable from the niri-flake overlay to get newer actions like
+  # maximize-window-to-edges that are not yet in the stable release.
+  programs.niri = {
+    enable = true;
+    package = pkgs.niri-unstable;
+  };
 
   # LocalSend needs port 53317 on both TCP (file transfer) and UDP
   # (multicast peer discovery).

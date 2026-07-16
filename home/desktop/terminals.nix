@@ -11,8 +11,8 @@
       selection.save_to_clipboard = true;
       terminal = {
         shell = {
-          program = "/etc/profiles/per-user/inscripoem/bin/zellij";
-          args = [ "attach" "--index" "1" "--create" ];
+          program = "/etc/profiles/per-user/inscripoem/bin/zsh";
+          args = [ "-l" "-c" "exec zellij --session \"$(basename \"$PWD\")-$(date +%H%M%S)\"" ];
         };
       };
     };
@@ -27,7 +27,7 @@
       config.font = wezterm.font("Maple Mono NF CN");
       config.color_scheme = "catppuccin-macchiato";
       config.hide_tab_bar_if_only_one_tab = true;
-      config.default_prog = { os.getenv("SHELL"), "-l", "-c", "zellij attach --index 0 --create"};
+      config.default_prog = { os.getenv("SHELL"), "-l", "-c", "exec zellij --session \"$(basename \"$PWD\")-$(date +%H%M%S)\""};
 
       return config
     '';
