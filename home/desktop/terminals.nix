@@ -27,6 +27,7 @@
       config.font = wezterm.font("Maple Mono NF CN");
       config.color_scheme = "catppuccin-macchiato";
       config.hide_tab_bar_if_only_one_tab = true;
+      config.window_close_confirmation = "NeverPrompt";
       config.default_prog = { os.getenv("SHELL"), "-l", "-c", "exec zellij --session \"$(basename \"$PWD\")-$(date +%H%M%S)\""};
 
       return config
@@ -39,6 +40,7 @@
       keybindings = "normal";
       theme = "catppuccin-macchiato";
       show_startup_tips = false;
+      on_force_close = "quit";
     };
   };
 }
