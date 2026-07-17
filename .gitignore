@@ -1,0 +1,19 @@
+# Nix build output symlinks
+result
+result-*
+
+# direnv cache
+.direnv/
+
+# Vim / Neovim — swap, backup, undo, sessions
+*.swp
+*.swo
+*~
+[._]*.un~
+Session.vim
+Sessionx.vim
+
+# VS Code — allow project settings, ignore everything else
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
