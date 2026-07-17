@@ -2,16 +2,21 @@
 let
   cfg = config.programs.niri;
 
-  # Append include "dms/binds.kdl" to the rendered config so DMS's
-  # KeybindsService doesn't show a warning banner in Keyboard Shortcuts settings.
-  configWithDmsInclude = pkgs.runCommand "niri-config-validated" {
+  # Append DMS optional includes so Settings pages detect "initialized"
+  # and any GUI-changed values in ~/.config/niri/dms/*.kdl take effect.
+  configWithDmsIncludes = pkgs.runCommand "niri-config-validated" {
     nativeBuildInputs = [ cfg.package ];
     passAsFile = [ "configBody" ];
-    configBody = cfg.finalConfig + "\n" + ''include "dms/binds.kdl"'';
+    configBody = cfg.finalConfig + ''
+
+      // DMS-managed overrides (optional — files don't have to exist)
+      include optional=true "dms/binds.kdl"
+      include optional=true "dms/layout.kdl"
+      include optional=true "dms/colors.kdl"
+      include optional=true "dms/alttab.kdl"
+      include optional=true "dms/outputs.kdl"
+    '';
   } ''
-    dir=$(dirname "$configBodyPath")
-    mkdir -p "$dir/dms"
-    touch "$dir/dms/binds.kdl"
     niri validate -c "$configBodyPath"
     cp "$configBodyPath" $out
   '';
@@ -273,11 +278,10 @@ in
     };
   };
 
-  # Override the config file source to append include "dms/binds.kdl" so DMS
-  # doesn't show a warning banner in Keyboard Shortcuts settings.
+  # Override config file source to append DMS optional includes.
   xdg.configFile.niri-config = lib.mkForce {
     enable = true;
     target = "niri/config.kdl";
-    source = configWithDmsInclude;
+    source = configWithDmsIncludes;
   };
 }
