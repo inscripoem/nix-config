@@ -32,6 +32,10 @@ in {
   config = lib.mkIf cfg.enable {
     services.tailscale = {
       enable = true;
+      # Accept subnet routes advertised by other tailnet peers so traffic
+      # to those subnets is routed through the advertising node rather
+      # than attempted directly.
+      extraSetFlags = [ "--accept-routes" ];
       # Opens UDP 41641 on the host firewall. This is the port tailscaled
       # uses for direct WireGuard traffic; without it, peers fall back to
       # DERP relays, which adds latency. The control-plane HTTPS to
