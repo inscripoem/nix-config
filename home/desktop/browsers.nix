@@ -2,7 +2,6 @@
 {pkgs, ...}: {
   programs.zen-browser = {
     enable = true;
-    setAsDefaultBrowser = true;
 
     policies = {
       DisableAppUpdate = true;
@@ -28,5 +27,16 @@
         default = "ddg";
       };
     };
+  };
+
+  # 确保 MIME 和 $BROWSER 指向 Vivaldi
+  xdg.mimeApps.defaultApplications = {
+    "x-scheme-handler/http" = "vivaldi-stable.desktop";
+    "x-scheme-handler/https" = "vivaldi-stable.desktop";
+    "text/html" = "vivaldi-stable.desktop";
+  };
+
+  home.sessionVariables = {
+    BROWSER = "vivaldi-stable";
   };
 }
