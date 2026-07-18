@@ -39,13 +39,12 @@ let
       hardwarePath = ../hosts/vm;
       classes = [ "vm" "desktop" "lan" ];
       hmEntryPoint = ../home/hosts/vm.nix;
-      hmSharedModules = desktopHmModules ++ [
-        # The niri NixOS module isn't loaded for vm, but the desktop HM
-        # entry imports niri.nix which needs `programs.niri` to exist.
-        niri.homeModules.niri
-      ];
+      hmSharedModules = desktopHmModules;
       deploy = false;
-      extraModules = [ ];
+      extraModules = [
+        niri.nixosModules.niri
+        { nixpkgs.overlays = [ niri.overlays.niri ]; }
+      ];
       extraConfig = {
         modules.capabilities.tailscale.enable = true;
       };
