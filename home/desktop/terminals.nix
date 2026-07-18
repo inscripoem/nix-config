@@ -34,6 +34,14 @@
     '';
   };
 
+  programs.kitty = {
+    enable = true;
+    font.name = "Maple Mono NF CN";
+    font.size = 12;
+    themeFile = "Catppuccin-Macchiato";
+    settings.term = "xterm-256color";
+  };
+
   programs.zellij = {
     enable = true;
     settings = {
