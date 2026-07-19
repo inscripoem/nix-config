@@ -12,5 +12,6 @@
     ./packages.nix
     ./state.nix
     ./ssh.nix
+    ./nix-ld.nix
   ];
 }

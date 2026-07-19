@@ -6,10 +6,7 @@
     package = pkgs.vscode.override {
       commandLineArgs = "--password-store=${passwordStore}";
     };
-    profiles.default.extensions = with pkgs.vscode-extensions; [
-      bbenoist.nix
-      pkief.material-icon-theme
-    ];
+    mutableExtensionsDir = true;
   };
 
   programs.zed-editor = {
