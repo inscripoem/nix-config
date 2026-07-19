@@ -1,3 +1,9 @@
+{ pkgs, ... }:
+let
+  zellijLauncher = pkgs.writeShellScript "zellij-launcher" ''
+    exec "$SHELL" -l -c 'exec zellij --session "$(basename "$PWD")-$(date +%H%M%S)"'
+  '';
+in
 {
   programs.alacritty = {
     enable = true;
@@ -9,12 +15,7 @@
       };
       scrolling.multiplier = 5;
       selection.save_to_clipboard = true;
-      terminal = {
-        shell = {
-          program = "/etc/profiles/per-user/inscripoem/bin/zsh";
-          args = [ "-l" "-c" "exec zellij --session \"$(basename \"$PWD\")-$(date +%H%M%S)\"" ];
-        };
-      };
+      terminal.shell.program = "${zellijLauncher}";
     };
   };
 
@@ -28,7 +29,7 @@
       config.color_scheme = "catppuccin-macchiato";
       config.hide_tab_bar_if_only_one_tab = true;
       config.window_close_confirmation = "NeverPrompt";
-      config.default_prog = { os.getenv("SHELL"), "-l", "-c", "exec zellij --session \"$(basename \"$PWD\")-$(date +%H%M%S)\""};
+      config.default_prog = { "${zellijLauncher}" };
 
       return config
     '';
@@ -39,7 +40,11 @@
     font.name = "Maple Mono NF CN";
     font.size = 12;
     themeFile = "Catppuccin-Macchiato";
-    settings.term = "xterm-256color";
+    settings = {
+      term = "xterm-256color";
+      shell = "${zellijLauncher}";
+      shell_integration = "no-rc";
+    };
   };
 
   programs.zellij = {
