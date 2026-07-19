@@ -1,12 +1,14 @@
 # XDG Desktop Portal on `briefcase`
 
 Notes for the xdg-desktop-portal setup on this machine (KDE Plasma 6 on
-Wayland). These explain **why** the portal config lives entirely at the
-system level (`configuration.nix`) and **why** `home/desktop/plasma.nix`
-must not touch `xdg.portal`, so the choice doesn't get "tidied" back
-into trouble later.
+Wayland, with niri and COSMIC as alternate Wayland sessions). These
+explain **why** the portal config lives entirely at the system level
+(`configuration.nix`) and **why** `home/desktop/plasma.nix` must not
+touch `xdg.portal`, so the choice doesn't get "tidied" back into
+trouble later.
 
-Session: **KDE Plasma 6.5 / KWin Wayland**, SDDM Wayland greeter
+Session: **KDE Plasma 6.5 / KWin Wayland**, SDDM Wayland greeter,
+alternate sessions: **niri** (scrollable-tiling), **COSMIC**
 Affected app that originally surfaced the problem: **Deskflow 1.25**
 (Wayland client → needs `org.freedesktop.portal.RemoteDesktop` to
 inject input via libei).
@@ -101,27 +103,41 @@ noise to portal discovery.
 ## 3. The system-level config that works
 
 ```nix
-# configuration.nix
+# modules/nixos/desktop/xdg-portal.nix
 xdg.portal = {
   enable = true;
-  # KDE session: route everything to the kde backend by default.
-  # The kde backend implements RemoteDesktop (via KWin + libei), which
-  # is what deskflow needs on Wayland. xdg-desktop-portal-gtk gets
-  # pulled in transitively but must NOT win for RemoteDesktop because
-  # the gtk backend does not implement it.
-  config.kde.default = [ "kde" ];
+  # niri does not register any portal backend itself; add gnome
+  # explicitly so its session can route to it. plasma6 auto-adds the
+  # kde portal and gtk is pulled in transitively, so they don't need
+  # to be listed here.
+  extraPortals = [ pkgs.xdg-desktop-portal-gnome ];
+  # KDE session: route everything to the kde backend. It implements
+  # RemoteDesktop (via KWin + libei), which is what deskflow needs on
+  # Wayland. xdg-desktop-portal-gtk gets pulled in transitively but
+  # must NOT win for RemoteDesktop because gtk lacks it.
+  config.kde.default    = [ "kde" ];
+  config.cosmic.default = [ "cosmic" ];
+  # niri session: prefer the gnome backend (ScreenCast, RemoteDesktop,
+  # Wallpaper, Background) with gtk as a fallback for the interfaces
+  # gnome doesn't cover.
+  config.niri.default   = [ "gnome" "gtk" ];
 };
 ```
 
 That's the entire system-level surface. `services.desktopManager.plasma6.enable`
-already adds `xdg-desktop-portal-kde` to `xdg.portal.extraPortals`, so
-there's no need to list it manually.
+already adds `xdg-desktop-portal-kde` to `xdg.portal.extraPortals`, and
+`xdg-desktop-portal-gtk` gets pulled in transitively by GTK apps
+(nautilus, evince, ...), so neither needs to be listed manually.
+`xdg-desktop-portal-gnome` is different — nothing in the closure pulls
+it in for us, so it has to be declared explicitly for the niri routing
+above to actually resolve.
 
 Resulting `extraPortals` on `briefcase` (sanity check via
 `nix eval .#nixosConfigurations.briefcase.config.xdg.portal.extraPortals`):
 
 - `xdg-desktop-portal-kde` (RemoteDesktop, ScreenCast, FileChooser, ...)
 - `xdg-desktop-portal-gtk` (Settings, Print, AppChooser fallback, ...)
+- `xdg-desktop-portal-gnome` (ScreenCast, RemoteDesktop, Wallpaper — for niri)
 - `kwallet` (Secret — currently overridden, see `docs` on keyring)
 - `gnome-keyring` (Secret)
 
