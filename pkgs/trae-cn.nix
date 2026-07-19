@@ -59,6 +59,8 @@ let
       at-spi2-core
     ];
 
+    runtimeDependencies = [ pkgs.libsecret ];
+
     autoPatchelfIgnoreMissingDeps = [ "libc.musl-x86_64.so.1" ];
 
     unpackPhase = ''
