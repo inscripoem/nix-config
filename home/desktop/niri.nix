@@ -266,6 +266,8 @@ in
         { command = [ "dms" "run" ]; }
       ];
 
+      prefer-no-csd = true;
+
       environment = {
         "NIXOS_OZONE_WL" = "1";
         "XDG_CURRENT_DESKTOP" = "niri";
