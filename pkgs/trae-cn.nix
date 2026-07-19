@@ -1,4 +1,4 @@
-{ pkgs }:
+{ pkgs, commandLineArgs ? "" }:
 
 let
   version = "2.3.55931";
@@ -103,6 +103,12 @@ let
       if [ -f "$out/share/applications/trae-cn.desktop" ]; then
         sed -i "s|Exec=.*|Exec=$out/bin/trae-cn|g" $out/share/applications/trae-cn.desktop
       fi
+
+      # Expose commandLineArgs override surface (mirrors vivaldi/vscode API).
+      # wrapProgram appends the flags into argv before "$@", so the underlying
+      # Electron main process receives them like a native CLI arg.
+      wrapProgram $out/bin/trae-cn \
+        --add-flags ${pkgs.lib.escapeShellArg commandLineArgs}
 
       runHook postInstall
     '';
