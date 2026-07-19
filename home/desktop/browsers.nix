@@ -1,5 +1,12 @@
 # Ref: https://github.com/0xc000022070/zen-browser-flake/tree/main/examples
-{pkgs, ...}: {
+{ pkgs, passwordStore, ... }: {
+  home.packages = [
+    (pkgs.vivaldi.override {
+      commandLineArgs = "--password-store=${passwordStore}";
+      proprietaryCodecs = true;
+    })
+  ];
+
   programs.zen-browser = {
     enable = true;
 
