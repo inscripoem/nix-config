@@ -130,7 +130,12 @@ let
       cp -r usr/share/applications $out/share/ 2>/dev/null || true
       cp -r usr/share/icons $out/share/ 2>/dev/null || true
 
-      find $out/opt -name "chrome-sandbox" -exec chmod 0755 {} \; 2>/dev/null || true
+      # Drop the .deb-shipped chrome-sandbox: nix store paths cannot be
+      # root:root 4755, so leaving it in place makes Electron's setuid
+      # sandbox host abort FATAL (breaks file picker, printing, etc.).
+      # Removing it lets Electron ≥20 fall back to the user-namespace
+      # sandbox, which is the modern Chromium default and needs no SUID.
+      find $out/opt -name "chrome-sandbox" -delete 2>/dev/null || true
 
       runHook postInstall
     '';
