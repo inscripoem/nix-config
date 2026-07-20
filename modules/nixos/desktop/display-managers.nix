@@ -36,6 +36,10 @@
     enable = true;
     package = pkgs.niri-unstable;
   };
+  # niri session doesn't pull GNOME; install nautilus so
+  # xdg-desktop-portal-gnome (≥ v47) can back its FileChooser.
+  # See https://github.com/YaLTeR/niri/wiki/Important-Software#portals.
+  environment.systemPackages = [ pkgs.nautilus ];
 
   # LocalSend needs port 53317 on both TCP (file transfer) and UDP
   # (multicast peer discovery).
