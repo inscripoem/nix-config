@@ -15,17 +15,31 @@
         postInstall = (old.postInstall or "") + ''
           wanxiangSrc=${inputs.rime-wanxiang}
           out=$out/share/rime-data
-          rm -f $out/default.yaml
-          cp $wanxiangSrc/default.yaml $out/default.yaml
+
+          # Wipe the wanxiang tree bundled with fcitx5-rime so that yaml,
+          # lua and dicts all come from the same upstream commit pinned in
+          # flake.lock. Non-wanxiang schemas shipped by fcitx5-rime stay.
+          rm -f  $out/default.yaml $out/version.txt $out/custom_phrase.txt
+          rm -f  $out/wanxiang*.yaml
+          rm -rf $out/lua/wanxiang $out/lua/data
+
+          install -Dm644 $wanxiangSrc/default.yaml $out/default.yaml
           shopt -s nullglob
-          for f in $wanxiangSrc/wanxiang*.yaml; do cp -n "$f" $out/; done
-          for f in $wanxiangSrc/version.txt $wanxiangSrc/custom_phrase.txt; do
-            [ -f "$f" ] && cp -n "$f" $out/ || true
+          for f in $wanxiangSrc/wanxiang*.yaml; do
+            install -Dm644 "$f" "$out/$(basename "$f")"
           done
+          for f in $wanxiangSrc/version.txt $wanxiangSrc/custom_phrase.txt; do
+            [ -f "$f" ] && install -Dm644 "$f" "$out/$(basename "$f")" || true
+          done
+          if [ -d $wanxiangSrc/lua ]; then
+            mkdir -p $out/lua
+            cp -r $wanxiangSrc/lua/. $out/lua/
+            chmod -R u+w $out/lua
+          fi
           if [ -d $wanxiangSrc/dicts ]; then
             mkdir -p $out/dicts
             for f in $wanxiangSrc/dicts/*; do
-              [ -f "$f" ] && cp -n "$f" $out/dicts/ || true
+              [ -f "$f" ] && install -Dm644 "$f" "$out/dicts/$(basename "$f")" || true
             done
           fi
           shopt -u nullglob
