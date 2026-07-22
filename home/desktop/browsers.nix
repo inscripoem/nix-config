@@ -44,6 +44,6 @@
   };
 
   home.sessionVariables = {
-    BROWSER = "vivaldi-stable";
+    BROWSER = "vivaldi";
   };
 }
