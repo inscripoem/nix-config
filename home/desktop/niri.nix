@@ -266,6 +266,10 @@ in
         { command = [ "dms" "run" ]; }
       ];
 
+      xwayland-satellite = {
+        path = "${pkgs.xwayland-satellite}/bin/xwayland-satellite";
+      };
+
       prefer-no-csd = true;
 
       environment = {
