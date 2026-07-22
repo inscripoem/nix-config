@@ -22,10 +22,6 @@
           for f in $wanxiangSrc/version.txt $wanxiangSrc/custom_phrase.txt; do
             [ -f "$f" ] && cp -n "$f" $out/ || true
           done
-          if [ -d $wanxiangSrc/lua ]; then
-            mkdir -p $out/lua
-            cp -r $wanxiangSrc/lua/. $out/lua/
-          fi
           if [ -d $wanxiangSrc/dicts ]; then
             mkdir -p $out/dicts
             for f in $wanxiangSrc/dicts/*; do
