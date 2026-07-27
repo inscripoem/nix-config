@@ -74,6 +74,12 @@
 
     # nix-flatpak - declarative Flatpak package management
     nix-flatpak.url = "github:gmodena/nix-flatpak/v0.7.0";
+
+    # anime game launchers (原神/星铁/绝区零)
+    aagl = {
+      url = "github:ezKEa/aagl-gtk-on-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs: import ./outputs inputs;

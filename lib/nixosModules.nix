@@ -28,6 +28,7 @@ in
     ../modules/nixos/capabilities
     inputs.sops-nix.nixosModules.sops
     inputs.nix-flatpak.nixosModules.nix-flatpak
+    inputs.aagl.nixosModules.default
     inputs.home-manager.nixosModules.home-manager
     { nixpkgs.overlays = [ (import ../pkgs) ]; }
     hmBlock

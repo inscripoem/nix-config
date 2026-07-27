@@ -1,4 +1,4 @@
-{ self, nixpkgs, home-manager, plasma-manager, disko, llm-agents, zen-browser, niri, colmena, deploy-rs, sops-nix, impermanence, ... }@inputs:
+{ self, nixpkgs, home-manager, plasma-manager, disko, llm-agents, zen-browser, niri, colmena, deploy-rs, sops-nix, impermanence, aagl, ... }@inputs:
 let
   vars = import ../vars;
   lib = import ../lib { inherit (nixpkgs) lib; };

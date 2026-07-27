@@ -17,7 +17,6 @@
     ./media.nix
     ./productivity.nix
     ./social.nix
-    ./compat.nix
     ./1password.nix
     ./glances.nix
     ./cc-switch.nix

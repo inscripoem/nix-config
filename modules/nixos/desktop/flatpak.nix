@@ -7,6 +7,9 @@
     remotes = [
       { name = "flathub"; location = "https://flathub.org/repo/flathub.flatpakrepo"; }
     ];
+    packages = [
+      "com.usebottles.bottles"
+    ];
     update.onActivation = true;
   };
 
