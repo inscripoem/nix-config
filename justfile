@@ -40,13 +40,6 @@ apply target="":
         ssh -o ConnectTimeout=8 "root@{{target}}.local" \
             'systemctl is-active avahi-daemon -q || systemctl restart avahi-daemon.socket avahi-daemon.service' 2>/dev/null || :
     fi
-    # IP fallback for hosts where mDNS is down.
-    case "{{target}}" in
-        wyse3040)
-            ssh -o ConnectTimeout=8 "root@<wyse3040-ip>" \
-                'systemctl is-active avahi-daemon -q || systemctl restart avahi-daemon.socket avahi-daemon.service' 2>/dev/null || :
-            ;;
-    esac
 
     exit $colmena_rc
 
