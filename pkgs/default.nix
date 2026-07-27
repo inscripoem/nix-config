@@ -9,9 +9,5 @@ final: prev: {
     flatpak = prev.flatpak;
   };
 
-  bottles-unwrapped = import ./bottles.nix {
-    inherit (prev) bottles-unwrapped python3Packages;
-  };
-
   ww-manager = final.callPackage ./ww-manager.nix { };
 }

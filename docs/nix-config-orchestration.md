@@ -170,7 +170,7 @@ Each remote-build client gets its own keypair. No manual `ssh-keygen` on target 
 |---|---|
 | `core/` | git, ssh, shell (zsh/fish/starship/bat/yazi/atuin/tealdeer/fzf/eza/zoxide/carapace/direnv), CLI editors (nvim/helix), basic CLI tools (ripgrep/fd/jq/yq-go/duf/dust/htop/bottom/lazygit/gping), compression, fastfetch, nix-output-monitor, nix-index |
 | `tui/` | pueue (task queue), tokei (line counter) |
-| `desktop/` | GUI terminals (alacritty/wezterm/zellij), desktop env (plasma/niri/deskflow/wl-clipboard), GUI editors (vscode/zed/trae-cn), browsers (vivaldi/zen), media (vlc), productivity (libreoffice/localsend/siyuan), social (qq), compat (bottles), 1password GUI, glances, rime, cc-switch |
+| `desktop/` | GUI terminals (alacritty/wezterm/zellij), desktop env (plasma/niri/deskflow/wl-clipboard), GUI editors (vscode/zed/trae-cn), browsers (vivaldi/zen), media (vlc), productivity (libreoffice/localsend/siyuan), social (qq), 1password GUI, glances, rime, cc-switch |
 
 ### 4.3 Packs
 
