@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Update trae-cn, cc-switch and siyuan to their latest upstream versions.
+# Update trae-cn, cc-switch, siyuan and ww-manager to their latest upstream
+# versions.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--trae-version=<X.Y.Z>]
 #
 # Options:
 #   --dry-run              Show what would change without modifying files.
-#   --only=<names>         Comma-separated subset of {trae-cn,cc-switch,siyuan}.
-#                          Defaults to all three.
+#   --only=<names>         Comma-separated subset of
+#                          {trae-cn,cc-switch,siyuan,ww-manager}.
+#                          Defaults to all four.
 #   --trae-version=<ver>   Skip the trae-cn `latest` API and pin the given
 #                          version directly. Only meaningful when trae-cn is
 #                          in the selected set.
@@ -32,7 +34,7 @@ for arg in "$@"; do
       TRAE_VERSION_OVERRIDE="${arg#--trae-version=}"
       ;;
     -h|--help)
-      sed -n '2,15p' "$0"
+      sed -n '2,16p' "$0"
       exit 0
       ;;
     *)
@@ -285,6 +287,45 @@ if should_update "siyuan"; then
       changed=true
     else
       echo "    [dry-run] would update to $siyuan_version"
+    fi
+  fi
+fi
+
+# ── ww-manager ───────────────────────────────────────────────────────
+
+if should_update "ww-manager"; then
+  echo ""
+  echo "==> Checking ww-manager ..."
+  ww_json=$(curl -sf --max-time 10 "https://pypi.org/pypi/ww-manager/json" || true)
+  if [[ -z "$ww_json" ]]; then
+    echo "    ERROR: Failed to reach PyPI JSON API for ww-manager."
+    exit 1
+  fi
+  ww_version=$(echo "$ww_json" | jq -r '.info.version')
+  if [[ -z "$ww_version" || "$ww_version" == "null" ]]; then
+    echo "    ERROR: could not extract .info.version from PyPI response."
+    exit 1
+  fi
+
+  ww_nix="$REPO_ROOT/pkgs/ww-manager.nix"
+  ww_current=$(grep 'version = ' "$ww_nix" | head -1 | grep -oP '[\d.]+')
+
+  echo "    current : $ww_current"
+  echo "    latest  : $ww_version"
+
+  if [[ "$ww_version" == "$ww_current" ]]; then
+    echo "    up to date."
+  else
+    echo "    updating ..."
+    if [[ "$DRY_RUN" == false ]]; then
+      ww_url="https://pypi.io/packages/source/w/ww-manager/ww_manager-${ww_version}.tar.gz"
+      ww_hash=$(prefetch_hash "$ww_url")
+      update_nix_field "$ww_nix" "version" "$ww_version"
+      update_nix_field "$ww_nix" "hash" "$ww_hash"
+      echo "    done: $ww_current → $ww_version"
+      changed=true
+    else
+      echo "    [dry-run] would update to $ww_version"
     fi
   fi
 fi
