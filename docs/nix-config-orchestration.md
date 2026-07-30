@@ -12,7 +12,7 @@ Every host is defined by three orthogonal axes:
 |---|---|---|---|
 | **class** | NixOS system | Baseline profile of a machine or its network environment. Imported automatically based on `spec.classes`. | `desktop`, `server`, `vm`, `lan`, `public` |
 | **capability** | NixOS system | Optional system service/daemon/kernel feature. Toggled per host via `options.modules.capabilities.<name>.enable`, with optional per-component sub-toggles. | `gaming`, `sunshine`, `docker`, `tailscale`, `smart` |
-| **pack** | Home Manager | Optional bundle of user-level packages. Imported in `home/hosts/<name>.nix` and enabled via `packs.<name>.enable`, with per-package sub-toggles. | `creative`, `toolchain`, `ai`, `gaming` |
+| **pack** | Home Manager | Optional bundle of user-level packages. Auto-imported into every host's HM via `hmBlock.sharedModules` (see [nixosModules.nix](../lib/nixosModules.nix)); each host only flips `packs.<name>.enable`, with per-package sub-toggles. | `creative`, `toolchain`, `ai`, `gaming` |
 
 A host chooses a class stack, enables some capabilities, and selects some packs.
 
@@ -195,21 +195,31 @@ Each remote-build client gets its own keypair. No manual `ssh-keygen` on target 
 
 ### 4.3 Packs
 
-Packs are optional user-level package sets. Each pack is a home-manager module declaring `options.packs.<name>.{enable, <child>.enable}`. A host imports the pack file in `home/hosts/<name>.nix` and toggles it via `packs.<name>.enable = true;`. Child toggles default to the parent value and can be flipped off individually to trim the closure.
+Packs are optional user-level package sets. Each pack is a home-manager module declaring `options.packs.<name>.{enable, <child>.enable}`. All pack files are aggregated in `home/packs/default.nix` and auto-injected into every host's HM via `hmBlock.sharedModules` in [nixosModules.nix](../lib/nixosModules.nix). Hosts do **not** import pack files themselves; they only flip `packs.<name>.enable = true;` in `home/hosts/<name>.nix`. Child toggles default to the parent value and can be flipped off individually to trim the closure.
 
-| Pack | Contents (each is an individual sub-toggle) |
+| Pack | Sub-toggles → contents |
 |---|---|
-| `creative` | ardour, audacity, blender, gimp, godot, zrythm |
+| `creative` | `ardour`, `audacity`, `blender`, `gimp`, `godot` (`godot_4`), `zrythm` |
 | `toolchain` | `node` (bun/nodejs_22/pnpm/yarn), `python` (uv), `rust` (rustup), `build` (just/devenv) |
-| `ai` | aichat, opencode (+ `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`), antigravity-cli, ck, claude-code, rtk |
-| `gaming` | lutris, maa-assistant-arknights, maa-cli, ww-manager |
+| `ai` | `aichat`, `opencode` (+ `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`), `antigravity-cli`, `ck`, `claude-code`, `rtk` |
+| `gaming` | `lutris`, `maa` (maa-assistant-arknights + maa-cli, same upstream software), `ww-manager` |
 
 ### 4.4 Per-host HM Entries
 
+Each entry only picks a base layer (`core.nix` / `tui.nix` / `desktop.nix`) and flips the packs it wants — pack files are auto-imported.
+
 ```nix
-# home/hosts/briefcase.nix  —  desktop + creative + toolchain + ai + gaming
-# home/hosts/vm.nix         —  desktop only
-# home/hosts/wyse3040.nix   —  tui + toolchain + ai
+# home/hosts/briefcase.nix
+{
+  imports = [ ../desktop.nix ];
+  packs.ai.enable = true;
+  packs.creative.enable = true;
+  packs.gaming.enable = true;
+  packs.toolchain.enable = true;
+}
+
+# home/hosts/vm.nix        — desktop only, no packs
+# home/hosts/wyse3040.nix  — tui + ai + toolchain
 ```
 
 ---
@@ -306,7 +316,8 @@ For capabilities that bundle several independent components, follow the sub-togg
        lib.optional cfg.<child>.enable pkgs.<child>;
    }
    ```
-2. Import it in the target host's `home/hosts/<name>.nix` and enable via `packs.<name>.enable = true;`. Flip individual `<child>.enable` off to trim the closure.
+2. Add the file to `imports` in [home/packs/default.nix](../home/packs/default.nix). This aggregator is auto-injected into every host's HM via `hmBlock.sharedModules` in [nixosModules.nix](../lib/nixosModules.nix), so no host-side `imports` change is needed.
+3. In the target host's `home/hosts/<name>.nix`, flip `packs.<name>.enable = true;`. Flip individual `<child>.enable` off to trim the closure.
 
 ---
 
@@ -318,11 +329,12 @@ For capabilities that bundle several independent components, follow the sub-togg
 
 ---
 
-**Document version**: v2.1 (2026-07-30)  
-**Status**: Current (reflects class/capability/pack model with sub-toggle refinement)
+**Document version**: v2.2 (2026-07-30)  
+**Status**: Current (packs auto-imported via HM sharedModules; capability/pack layers now fully symmetric)
 
 ### Changelog
 
+- **v2.2**: Pack files are now auto-imported into every host's HM via `hmBlock.sharedModules` in [nixosModules.nix](../lib/nixosModules.nix), aggregated by `home/packs/default.nix`. Each host only writes `packs.<name>.enable = true;`, mirroring the capability layer. `gaming` pack module-ized with 3 sub-toggles: `lutris`, `maa` (maa-assistant-arknights + maa-cli, same upstream software), `ww-manager`. Fixed wyse3040 pack drift (was importing `toolchain`/`ai` without ever enabling them).
 - **v2.1**: Capabilities and packs now use a shared sub-toggle pattern. `gaming` capability split into `steam` / `gamemode` / `waydroid[.helper]` / `aagl.*` (each AAGL launcher opt-in). Userland gaming packages (MAA, ww-manager) moved to the `gaming` pack. Packs (`creative`, `toolchain`, `ai`, `gaming`) converted from bare imports to modules with per-package sub-toggles; `toolchain` further grouped as `node` / `python` / `rust` / `build`. Added §8 "Adding a New Pack".
 - **v2.0**: Rewritten to reflect class/capability/pack model. Added class modules, capability modules, shared module list, SSH strategy, builder keys via sops, HM packs, per-host HM entries
 - **v1.2**: Replaced parallel HM class layering with progressive entry points + optional packs
