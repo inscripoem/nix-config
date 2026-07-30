@@ -76,12 +76,19 @@ install-remote host ip *extra:
         root@'{{ip}}'
 
 # ══════════════════════════════════════════════════════════════
-# Build a WSL-importable tarball for a `wsl.*` host and drop it
-# next to the flake as ./nixos.wsl. Requires root (tarballBuilder
-# performs a full nixos-install into a temp rootfs). Extra flags
-# after the host name are forwarded to the builder, e.g.:
+# Build a WSL-importable tarball for a `wsl.*` host. The output
+# is written to ./result-<host>.wsl so it lands in a gitignored
+# path (see .gitignore: `result-*`) rather than polluting the
+# tree with a top-level nixos.wsl. Requires root because
+# tarballBuilder performs a full nixos-install into a temp
+# rootfs. Extra flags after the host name are forwarded to the
+# builder, e.g.:
 #
 #     just build-tarball nutshell --extra-files ./extra --chown /home/inscripoem 1000:100
+#
+# Note: tarballBuilder rejects more than one positional argument,
+# so avoid passing an output path in `{{extra}}` — this recipe
+# always appends `./result-<host>.wsl` as the sole positional.
 #
 # See https://nix-community.github.io/NixOS-WSL/building.html
 # ══════════════════════════════════════════════════════════════
@@ -89,8 +96,7 @@ build-tarball host="nutshell" *extra:
     #!/usr/bin/env bash
     set -euo pipefail
     attr=".#nixosConfigurations.{{host}}.config.system.build.tarballBuilder"
-    echo "▶ building $attr"
-    sudo nix run --no-warn-dirty "$attr" -- {{extra}}
-    if [[ -f nixos.wsl ]]; then
-        echo "✔ tarball written to $(pwd)/nixos.wsl"
-    fi
+    out="./result-{{host}}.wsl"
+    echo "▶ building $attr → $out"
+    sudo nix run --no-warn-dirty "$attr" -- {{extra}} "$out"
+    echo "✔ tarball written to $(readlink -f "$out")"
