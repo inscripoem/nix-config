@@ -11,7 +11,9 @@ let
     home-manager = {
       useGlobalPkgs = true;
       useUserPackages = true;
-      sharedModules = spec.hmSharedModules or [ ];
+      # All pack modules are declared once here so every host only needs to
+      # flip `packs.<name>.enable`, mirroring the capability pattern.
+      sharedModules = [ ../home/packs ] ++ (spec.hmSharedModules or [ ]);
       backupFileExtension = "backup";
       users.${vars.username} = import spec.hmEntryPoint;
       extraSpecialArgs = inputs;

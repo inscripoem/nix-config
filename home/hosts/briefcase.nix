@@ -1,11 +1,8 @@
-{ imports = [
-  ../desktop.nix
-  ../packs/creative.nix
-  ../packs/toolchain.nix
-  ../packs/ai.nix
-  ../packs/gaming.nix
-];
+{
+  imports = [ ../desktop.nix ];
+
   packs.ai.enable = true;
   packs.creative.enable = true;
+  packs.gaming.enable = true;
   packs.toolchain.enable = true;
 }
