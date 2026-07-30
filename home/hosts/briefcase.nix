@@ -7,4 +7,5 @@
 ];
   packs.ai.enable = true;
   packs.creative.enable = true;
+  packs.toolchain.enable = true;
 }
