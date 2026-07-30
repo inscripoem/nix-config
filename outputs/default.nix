@@ -76,6 +76,17 @@ let
         modules.capabilities.docker.enable = true;
       };
     };
+
+    nutshell = {
+      arch = "x86_64-linux";
+      hardwarePath = ../hosts/nutshell;
+      classes = [ "wsl" ];
+      hmEntryPoint = ../home/hosts/nutshell.nix;
+      hmSharedModules = [ ];
+      deploy = false;
+      extraModules = [ ];
+      extraConfig = { };
+    };
   };
 
   mkNixos = import ../lib/mkNixos.nix {

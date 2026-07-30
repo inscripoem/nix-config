@@ -80,6 +80,15 @@
       url = "github:ezKEa/aagl-gtk-on-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # nixos-wsl - run NixOS as a WSL2 distribution. The `wsl` class
+    # imports its default module; the `wsl` host additionally exposes
+    # `config.system.build.tarballBuilder` for producing a `.wsl` image
+    # importable via `wsl --install --from-file`.
+    nixos-wsl = {
+      url = "github:nix-community/NixOS-WSL/main";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs: import ./outputs inputs;
