@@ -38,6 +38,7 @@ let
         modules.capabilities.deploy-tools.enable = true;
         modules.capabilities.remote-builder.enable = true;
         modules.capabilities.tailscale.enable = true;
+        modules.capabilities.wifi-profiles.enable = true;
       };
     };
 

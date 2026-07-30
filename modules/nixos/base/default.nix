@@ -5,7 +5,6 @@
     ./i18n.nix
     ./users.nix
     ./networking.nix
-    ./wifi.nix
     ./shells.nix
     ./nh.nix
     ./kernel.nix

@@ -11,5 +11,6 @@
     ./smart.nix
     ./deploy-tools.nix
     ./docker.nix
+    ./wifi-profiles.nix
   ];
 }
