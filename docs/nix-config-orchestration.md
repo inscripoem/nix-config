@@ -11,10 +11,24 @@ Every host is defined by three orthogonal axes:
 | Concept | Layer | Meaning | Example |
 |---|---|---|---|
 | **class** | NixOS system | Baseline profile of a machine or its network environment. Imported automatically based on `spec.classes`. | `desktop`, `server`, `vm`, `lan`, `public` |
-| **capability** | NixOS system | Optional system service/daemon/kernel feature. Toggled per host via `options.modules.capabilities.<name>.enable`. | `gaming`, `sunshine`, `docker`, `tailscale`, `smart` |
-| **pack** | Home Manager | Optional bundle of user-level packages. Imported explicitly in `home/hosts/<name>.nix`, one per line. | `creative`, `toolchain`, `ai`, `gaming` |
+| **capability** | NixOS system | Optional system service/daemon/kernel feature. Toggled per host via `options.modules.capabilities.<name>.enable`, with optional per-component sub-toggles. | `gaming`, `sunshine`, `docker`, `tailscale`, `smart` |
+| **pack** | Home Manager | Optional bundle of user-level packages. Imported in `home/hosts/<name>.nix` and enabled via `packs.<name>.enable`, with per-package sub-toggles. | `creative`, `toolchain`, `ai`, `gaming` |
 
 A host chooses a class stack, enables some capabilities, and selects some packs.
+
+**Sub-toggle pattern** (used by both capabilities and packs with more than one distinct component):
+
+```nix
+options.<parent> = {
+  enable = lib.mkEnableOption "...";
+  <child>.enable = lib.mkOption {
+    type = lib.types.bool;
+    default = cfg.enable;   # child follows parent by default
+  };
+};
+```
+
+The parent switch stays as the coarse "on/off". Children default to the parent value so existing hosts keep working, but heavy or opt-in components (e.g. AAGL wine closures) explicitly override the default to `false` and require per-host opt-in.
 
 ---
 
@@ -30,7 +44,14 @@ nixosHosts = {
     deploy = false;
     extraModules = [ disko.nixosModules.disko /* niri */ ];
     extraConfig = {
-      modules.capabilities.gaming.enable = true;
+      modules.capabilities.gaming = {
+        enable = true;
+        # AAGL launchers each pull a large wine closure, so they are
+        # opt-in per host rather than following the parent enable.
+        aagl.anime-game-launcher.enable = true;
+        aagl.honkers-railway-launcher.enable = true;
+        # aagl.sleepy-launcher.enable = true;  # Zenless Zone Zero
+      };
       modules.capabilities.sunshine.enable = true;
       modules.capabilities."1password".enable = true;
       modules.capabilities.smart.enable = true;
@@ -106,7 +127,7 @@ All capability modules are imported unconditionally by `lib/nixosModules.nix`; o
 
 | Capability | Responsibility |
 |---|---|
-| `gaming` | Steam, Proton-GE, gamemode |
+| `gaming` | System-level gaming stack. Sub-toggles: `steam`, `gamemode`, `waydroid` (+ `waydroid.helper`), `aagl.{anime-game-launcher,honkers-railway-launcher,sleepy-launcher}` (each AAGL launcher is opt-in) |
 | `sunshine` | Moonlight/Sunshine streaming (SDDM greeter + user service handoff) |
 | `1password` | 1Password system integration (CLI, GUI, browser bridge) |
 | `remote-builder` | Accepts remote Nix builds (nix-builder user + authorized_keys) |
@@ -174,14 +195,14 @@ Each remote-build client gets its own keypair. No manual `ssh-keygen` on target 
 
 ### 4.3 Packs
 
-Packs are optional user-level package sets, imported in `home/hosts/<name>.nix`.
+Packs are optional user-level package sets. Each pack is a home-manager module declaring `options.packs.<name>.{enable, <child>.enable}`. A host imports the pack file in `home/hosts/<name>.nix` and toggles it via `packs.<name>.enable = true;`. Child toggles default to the parent value and can be flipped off individually to trim the closure.
 
-| Pack | Contents |
+| Pack | Contents (each is an individual sub-toggle) |
 |---|---|
-| `creative` | ardour, audacity, blender, gimp, godot_4, zrythm |
-| `toolchain` | bun, nodejs_22, pnpm, yarn, uv, rustup, just, devenv |
-| `ai` | aichat, opencode, antigravity-cli, ck, claude-code, rtk + `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS` |
-| `gaming` | lutris |
+| `creative` | ardour, audacity, blender, gimp, godot, zrythm |
+| `toolchain` | `node` (bun/nodejs_22/pnpm/yarn), `python` (uv), `rust` (rustup), `build` (just/devenv) |
+| `ai` | aichat, opencode (+ `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`), antigravity-cli, ck, claude-code, rtk |
+| `gaming` | lutris, maa-assistant-arknights, maa-cli, ww-manager |
 
 ### 4.4 Per-host HM Entries
 
@@ -263,9 +284,33 @@ nix-config/
 2. Add it to the imports in `modules/nixos/capabilities/default.nix`
 3. Enable per host via `extraConfig.modules.capabilities.<name>.enable = true`
 
+For capabilities that bundle several independent components, follow the sub-toggle pattern from §1 (parent enable + per-component `<child>.enable` with `default = cfg.enable`). Components with a heavy closure or narrow use-case should override the default to `false` so they stay opt-in.
+
 ---
 
-## 8. Deployment
+## 8. Adding a New Pack
+
+1. Create `home/packs/<name>.nix` as a home-manager module:
+   ```nix
+   { config, lib, pkgs, ... }:
+   let cfg = config.packs.<name>;
+   in {
+     options.packs.<name> = {
+       enable = lib.mkEnableOption "...";
+       <child>.enable = lib.mkOption {
+         type = lib.types.bool;
+         default = cfg.enable;
+       };
+     };
+     config.home.packages =
+       lib.optional cfg.<child>.enable pkgs.<child>;
+   }
+   ```
+2. Import it in the target host's `home/hosts/<name>.nix` and enable via `packs.<name>.enable = true;`. Flip individual `<child>.enable` off to trim the closure.
+
+---
+
+## 9. Deployment
 
 - **Local hosts** (briefcase, vm): `sudo nixos-rebuild switch --flake .#<host>`
 - **Remote hosts** (wyse3040): `just apply wyse3040` (colmena) or `deploy .#wyse3040` (deploy-rs)
@@ -273,11 +318,12 @@ nix-config/
 
 ---
 
-**Document version**: v2.0 (2026-07-13)  
-**Status**: Current (reflects class/capability/pack model, P1-P4 complete, P5 complete)
+**Document version**: v2.1 (2026-07-30)  
+**Status**: Current (reflects class/capability/pack model with sub-toggle refinement)
 
 ### Changelog
 
+- **v2.1**: Capabilities and packs now use a shared sub-toggle pattern. `gaming` capability split into `steam` / `gamemode` / `waydroid[.helper]` / `aagl.*` (each AAGL launcher opt-in). Userland gaming packages (MAA, ww-manager) moved to the `gaming` pack. Packs (`creative`, `toolchain`, `ai`, `gaming`) converted from bare imports to modules with per-package sub-toggles; `toolchain` further grouped as `node` / `python` / `rust` / `build`. Added §8 "Adding a New Pack".
 - **v2.0**: Rewritten to reflect class/capability/pack model. Added class modules, capability modules, shared module list, SSH strategy, builder keys via sops, HM packs, per-host HM entries
 - **v1.2**: Replaced parallel HM class layering with progressive entry points + optional packs
 - **v1.1**: Clarified generator purity, class auto-import, HM class layer
