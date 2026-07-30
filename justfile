@@ -74,3 +74,23 @@ install-remote host ip *extra:
         --generate-hardware-config nixos-generate-config 'hosts/{{host}}/hardware-configuration.nix' \
         {{extra}} \
         root@'{{ip}}'
+
+# ══════════════════════════════════════════════════════════════
+# Build a WSL-importable tarball for a `wsl.*` host and drop it
+# next to the flake as ./nixos.wsl. Requires root (tarballBuilder
+# performs a full nixos-install into a temp rootfs). Extra flags
+# after the host name are forwarded to the builder, e.g.:
+#
+#     just build-tarball nutshell --extra-files ./extra --chown /home/inscripoem 1000:100
+#
+# See https://nix-community.github.io/NixOS-WSL/building.html
+# ══════════════════════════════════════════════════════════════
+build-tarball host="nutshell" *extra:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    attr=".#nixosConfigurations.{{host}}.config.system.build.tarballBuilder"
+    echo "▶ building $attr"
+    sudo nix run --no-warn-dirty "$attr" -- {{extra}}
+    if [[ -f nixos.wsl ]]; then
+        echo "✔ tarball written to $(pwd)/nixos.wsl"
+    fi
