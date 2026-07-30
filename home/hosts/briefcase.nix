@@ -6,4 +6,5 @@
   ../packs/gaming.nix
 ];
   packs.ai.enable = true;
+  packs.creative.enable = true;
 }
