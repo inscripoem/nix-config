@@ -1,40 +1,91 @@
-{ config, lib, pkgs, vars, ... }:
-let cfg = config.modules.capabilities.gaming;
+{ config, lib, pkgs, ... }:
+let
+  cfg = config.modules.capabilities.gaming;
 in {
-  options.modules.capabilities.gaming.enable =
-    lib.mkEnableOption "gaming suite (Steam, Proton-GE, gamemode)";
-  config = lib.mkIf cfg.enable {
-    programs.steam = {
-      enable = true;
-      # https://github.com/GloriousEggroll/proton-ge-custom
-      extraCompatPackages = [
-        pkgs.proton-ge-bin
-        pkgs.dwproton-bin  # Arknights: Endfield (ACE anti-cheat patches)
-      ];
+  options.modules.capabilities.gaming = {
+    enable = lib.mkEnableOption "gaming system integration (Steam, gamemode, Waydroid)";
+
+    steam.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = cfg.enable;
+      description = "Steam + Proton-GE + Arknights: Endfield ACE-patched proton";
     };
-    programs.gamemode.enable = true;
 
-    # AAGL launchers (Genshin/HSR/ZZZ, with CN server support)
-    # https://github.com/ezKEa/aagl-gtk-on-nix
-    programs.anime-game-launcher.enable = true;        # Genshin Impact
-    programs.honkers-railway-launcher.enable = true;   # Honkai: Star Rail
-    # programs.sleepy-launcher.enable = true;          # Zenless Zone Zero (optional)
+    gamemode.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = cfg.enable;
+      description = "Feral Interactive gamemode daemon";
+    };
 
-    # Waydroid Android container (for Arknights + MAA automation)
-    # https://wiki.nixos.org/wiki/Waydroid
-    virtualisation.waydroid.enable = true;
-    # kernel ≥ 6.17 dropped ip_tables, use nftables variant
-    virtualisation.waydroid.package = pkgs.waydroid-nftables;
+    aagl = {
+      anime-game-launcher.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Genshin Impact launcher (AAGL)";
+      };
+      honkers-railway-launcher.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Honkai: Star Rail launcher (AAGL)";
+      };
+      sleepy-launcher.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = "Zenless Zone Zero launcher (AAGL)";
+      };
+    };
 
-    # WuWa CLI manager (download/update/switch servers)
-    # MAA for Arknights automation (auto-farming, base management)
-    # Waydroid-helper for ARM translation in Android container
-    environment.systemPackages = [
-      pkgs.ww-manager
-      pkgs.maa-assistant-arknights
-      pkgs.maa-cli
-      pkgs.waydroid-helper
-      pkgs.android-tools
-    ];
+    waydroid = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = cfg.enable;
+        description = "Waydroid Android container (Arknights + MAA)";
+      };
+      helper.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = cfg.waydroid.enable;
+        description = "waydroid-helper GUI + android-tools (adb/fastboot) for driving Waydroid";
+      };
+    };
   };
+
+  config = lib.mkMerge [
+    (lib.mkIf cfg.steam.enable {
+      programs.steam = {
+        enable = true;
+        extraCompatPackages = [
+          pkgs.proton-ge-bin
+          pkgs.dwproton-bin
+        ];
+      };
+    })
+
+    (lib.mkIf cfg.gamemode.enable {
+      programs.gamemode.enable = true;
+    })
+
+    (lib.mkIf cfg.aagl.anime-game-launcher.enable {
+      programs.anime-game-launcher.enable = true;
+    })
+
+    (lib.mkIf cfg.aagl.honkers-railway-launcher.enable {
+      programs.honkers-railway-launcher.enable = true;
+    })
+
+    (lib.mkIf cfg.aagl.sleepy-launcher.enable {
+      programs.sleepy-launcher.enable = true;
+    })
+
+    (lib.mkIf cfg.waydroid.enable {
+      virtualisation.waydroid.enable = true;
+      virtualisation.waydroid.package = pkgs.waydroid-nftables;
+    })
+
+    (lib.mkIf cfg.waydroid.helper.enable {
+      environment.systemPackages = [
+        pkgs.waydroid-helper
+        pkgs.android-tools
+      ];
+    })
+  ];
 }

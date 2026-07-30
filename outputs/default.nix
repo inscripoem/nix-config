@@ -24,7 +24,14 @@ let
         { nixpkgs.overlays = [ niri.overlays.niri ]; }
       ];
       extraConfig = {
-        modules.capabilities.gaming.enable = true;
+        modules.capabilities.gaming = {
+          enable = true;
+          # AAGL launchers must be enabled explicitly (they each pull a
+          # large wine closure). Currently: Genshin + HSR only.
+          aagl.anime-game-launcher.enable = true;
+          aagl.honkers-railway-launcher.enable = true;
+          # aagl.sleepy-launcher.enable = true;  # Zenless Zone Zero
+        };
         modules.capabilities.sunshine.enable = true;
         modules.capabilities."1password".enable = true;
         modules.capabilities.smart.enable = true;
