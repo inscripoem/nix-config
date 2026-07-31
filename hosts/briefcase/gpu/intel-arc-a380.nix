@@ -16,7 +16,7 @@
   # Arc A380 is DG2; load i915 early and force-bind it.
   boot.initrd.kernelModules = [ "i915" ];
   boot.kernelParams = [
-    "i915.enable_guc=3"      # GuC + HuC firmware for media/compute
+    "i915.enable_guc=2"      # HuC only (disable GuC submission to avoid GPU hangs)
     "pcie_aspm=force"        # Force ASPM on despite firmware claiming unsupported
     "pcie_aspm.policy=powersupersave"  # Enable ASPM L1 + L1 substates where supported
   ];
