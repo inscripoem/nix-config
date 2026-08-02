@@ -2,6 +2,45 @@
 let
   cfg = config.programs.niri;
 
+  # DMS only syncs the portal `color-scheme` signal, never the legacy GTK
+  # `gtk-application-prefer-dark-theme` key. Electron apps (notion) decide
+  # light/dark from that GTK key, so keep it in lockstep with DMS's theme.
+  # Once per session: sync immediately, then follow portal SettingChanged.
+  gtkDarkThemeSync = pkgs.writeShellScript "gtk-dark-theme-sync" ''
+    export PATH=/run/current-system/sw/bin:/usr/bin:/bin
+
+    sync_prefer_dark() {
+      local scheme
+      scheme=$(gdbus call --session \
+        --dest org.freedesktop.portal.Desktop \
+        --object-path /org/freedesktop/portal/desktop \
+        --method org.freedesktop.portal.Settings.Read \
+        "org.freedesktop.appearance" "color-scheme" 2>/dev/null \
+        | grep -oE '[0-9]+' | head -1)
+      local val=false
+      [ "$scheme" = "1" ] && val=true   # 1 = prefer dark
+      for f in "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"; do
+        [ -f "$f" ] || continue
+        if grep -q '^gtk-application-prefer-dark-theme=' "$f"; then
+          sed -i "s|^gtk-application-prefer-dark-theme=.*|gtk-application-prefer-dark-theme=$val|" "$f"
+        else
+          printf 'gtk-application-prefer-dark-theme=%s\n' "$val" >> "$f"
+        fi
+      done
+    }
+
+    sync_prefer_dark
+    gdbus monitor --session \
+      --dest org.freedesktop.portal.Desktop \
+      --object-path /org/freedesktop/portal/desktop \
+      | while IFS= read -r line; do
+          case "$line" in
+            *color-scheme*) sync_prefer_dark ;;
+          esac
+        done
+  '';
+
+
   # Append DMS optional includes so Settings pages detect "initialized"
   # and any GUI-changed values in ~/.config/niri/dms/*.kdl take effect.
   configWithDmsIncludes = pkgs.runCommand "niri-config-validated" {
@@ -264,6 +303,9 @@ in
 
       spawn-at-startup = [
         { command = [ "dms" "run" ]; }
+        # Keep GTK's legacy dark-theme key in sync with DMS theme mode so
+        # Electron tray icons (notion) pick the right icon.
+        { command = [ "${gtkDarkThemeSync}/bin/gtk-dark-theme-sync" ]; }
       ];
 
       xwayland-satellite = {
@@ -277,6 +319,9 @@ in
         "XDG_CURRENT_DESKTOP" = "niri";
         "XDG_SESSION_TYPE" = "wayland";
         "XDG_SESSION_DESKTOP" = "niri";
+        # Make Qt apps (DMS shell, fcitx5) resolve icons via GTK settings, so
+        # their tray icons follow the DMS light/dark icon theme switch.
+        "QT_QPA_PLATFORMTHEME" = "gtk3";
       };
 
     };
