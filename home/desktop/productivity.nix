@@ -7,6 +7,6 @@
   home.packages = [
     pkgs.libreoffice
     pkgs.localsend
-    pkgs.notion-app-enhanced
+    pkgs.notion-electron
   ];
 }
