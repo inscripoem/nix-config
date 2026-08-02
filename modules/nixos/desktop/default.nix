@@ -2,6 +2,7 @@
   imports = [
     ./display-managers.nix
     ./dms-shell.nix
+    ./fonts.nix
     ./keyring.nix
     ./xdg-portal.nix
     ./x11.nix
