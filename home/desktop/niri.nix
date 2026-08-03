@@ -6,7 +6,9 @@ let
   # `gtk-application-prefer-dark-theme` key. Electron apps (notion) decide
   # light/dark from that GTK key, so keep it in lockstep with DMS's theme.
   # Once per session: sync immediately, then follow portal SettingChanged.
-  gtkDarkThemeSync = pkgs.writeShellScript "gtk-dark-theme-sync" ''
+  # NOTE: name must NOT contain "gtk" — DMS runs `pkill -HUP -f gtk` on every
+  # theme switch (intended to reload GTK apps), which would kill this script.
+  darkThemeSync = pkgs.writeShellScript "dark-theme-sync" ''
     export PATH=/run/current-system/sw/bin:/usr/bin:/bin
 
     sync_prefer_dark() {
@@ -16,7 +18,7 @@ let
         --object-path /org/freedesktop/portal/desktop \
         --method org.freedesktop.portal.Settings.Read \
         "org.freedesktop.appearance" "color-scheme" 2>/dev/null \
-        | grep -oE '[0-9]+' | head -1)
+        | sed -n 's/.*uint32 \([0-9]*\).*/\1/p')
       local val=false
       [ "$scheme" = "1" ] && val=true   # 1 = prefer dark
       for f in "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"; do
@@ -305,7 +307,7 @@ in
         { command = [ "dms" "run" ]; }
         # Keep GTK's legacy dark-theme key in sync with DMS theme mode so
         # Electron tray icons (notion) pick the right icon.
-        { command = [ "${gtkDarkThemeSync}/bin/gtk-dark-theme-sync" ]; }
+        { command = [ "${darkThemeSync}" ]; }
       ];
 
       xwayland-satellite = {
