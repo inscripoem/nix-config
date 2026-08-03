@@ -1,5 +1,14 @@
 # Intel Arc A380 idle power on H410
 
+> **Status (2026-08-03): ASPM force is REMOVED.** The `pcie_aspm=force`
+> + `pcie_aspm.policy=powersupersave` parameters below were reverted in
+> `hosts/briefcase/gpu/intel-arc-a380.nix` and replaced with
+> `pcie_port_pm=off`, because the H410 firmware silently drops the GPU
+> PCIe link when it idles into a low-power state (hard hang, zero logs —
+> see `docs/hard-hang-cstate.md`). The ~1 W that ASPM L1 saved here was
+> not worth a full-system freeze. The tuning notes below are kept as
+> historical record.
+
 `briefcase` (MAXSUN MS-TZZ H410M, i3-10105F) with a Sparkle Intel Arc A380
 (DG2, PCI ID `0x56a5`) idles at a higher GPU power draw than the same card
 on a newer platform. This page records why, and what was changed.
@@ -53,7 +62,7 @@ platform limitation, not a driver or configuration issue.
 `powersupersave` still helps slightly (~1 W) because it enables the deepest
 basic L1 behavior that the platform supports.
 
-## Final state
+## Final state (historical, pre-2026-08-03)
 
 - ASPM policy: `powersupersave`
 - All GPU links: `ASPM L1 Enabled`
@@ -67,5 +76,8 @@ enabled, which requires a newer platform.
 
 - `hosts/briefcase/gpu/intel-arc-a380.nix`: added `pcie_aspm=force` and
   `pcie_aspm.policy=powersupersave`.
+- **2026-08-03**: both parameters **removed** (ASPM L1 suspected in the
+  recurring hard hang; see `docs/hard-hang-cstate.md`), replaced with
+  `pcie_port_pm=off`. Expected GPU idle power returns to ~18–19 W.
 - `environment.systemPackages` in the same file: added `nvtopPackages.intel`
   and `furmark` for monitoring and stress testing.

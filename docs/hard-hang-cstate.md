@@ -48,6 +48,8 @@ nothing.
 
 ## Fix
 
+### Round 1: cap CPU C-states (2026-07-15)
+
 Limit the CPU to C1 at deepest, preventing the PCIe link from dropping:
 
 ```nix
@@ -55,14 +57,51 @@ Limit the CPU to C1 at deepest, preventing the PCIe link from dropping:
 boot.kernelParams = [ "intel_idle.max_cstate=1" ];
 ```
 
+### Round 2: close the PCIe-side low-power channels (2026-08-03)
+
+`max_cstate=1` held for ~5 days (boot -4, -3 ran 3.5d + 2.2d without
+incident) but a freeze **recurred** on 2026-08-03 (boot -1, after ~7 h of
+idle, log cut at 09:37:04). The CPU-side cap was confirmed active
+(cpuidle only exposes POLL + C1_ACPI), so the drop must come from the
+**PCIe-side** low-power channels the diagnosis noted but the first fix
+did not close:
+
+- The GPU-path PCIe switch `0000:01:00.0` had `power/control=auto`
+  (portdrv runtime PM allowed to suspend the link).
+- `pcie_aspm=force` + `pcie_aspm.policy=powersupersave`
+  (added 2026-07-16, see `docs/intel-arc-a380-power.md`) put the link
+  into ASPM L1 when idle.
+
+Both are removed/disabled now:
+
+```nix
+# hosts/briefcase/gpu/intel-arc-a380.nix
+boot.kernelParams = [
+  "i915.enable_guc=2"      # HuC only
+  "pcie_port_pm=off"       # no PCIe port runtime PM
+  # pcie_aspm=force and pcie_aspm.policy=powersupersave removed
+];
+```
+
+Cost: roughly 1 W of GPU idle power (the L1 substates that would make
+ASPM worthwhile are unavailable on this H410 platform anyway).
+
 The kernel panic hooks in `modules/nixos/base/kernel.nix` are retained
 as a safety net for future incidents, but they will not catch
-C-state-induced PCIe link drops (which happen below kernel visibility).
+C-state/ASPM-induced PCIe link drops (which happen below kernel
+visibility).
 
 ## Verification
 
 1. Lock the screen and leave the machine idle for ≥ 30 minutes.
 2. If the freeze does not recur, the fix is confirmed.
+
+Note: the 2026-08-03 recurrence happened after ~7 h of idle, so a
+short idle test passing is necessary but not conclusive — treat one
+full overnight idle cycle without a freeze as the real gate. If it
+recurrs again with `pcie_port_pm=off`, the remaining suspect is the
+H410 board itself and a motherboard swap is the next step (swapping
+only the CPU will not help — the defect is in the board firmware).
 
 ## Alternative root causes considered & ruled out
 

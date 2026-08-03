@@ -18,11 +18,12 @@ knobs and how to verify the stack is healthy.
   LUKS) never blocks on the GPU.
 
 - **`boot.kernelParams`**:
-  - `i915.enable_guc=3` — enables GuC + HuC firmware offload for
-    media and compute workloads.
-  - `i915.force_probe=56a5` — binds i915 to the A380's PCI ID even
-    though DG2 support was still partially allow-listed in older
-    kernels.
+  - `i915.enable_guc=2` — HuC only; GuC submission is disabled
+    because it caused GPU hangs on this host (see git 77ac815).
+  - `pcie_port_pm=off` — no PCIe port runtime PM; the H410 firmware
+    silently drops the GPU link on idle low-power states, causing a
+    hard hang (see `docs/hard-hang-cstate.md`). This replaced the
+    earlier `pcie_aspm=force` / `powersupersave` experiment.
 
 - **`hardware.graphics.extraPackages`**:
   - `intel-media-driver` — VA-API `iHD` backend for hardware

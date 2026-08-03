@@ -17,8 +17,11 @@
   boot.initrd.kernelModules = [ "i915" ];
   boot.kernelParams = [
     "i915.enable_guc=2"      # HuC only (disable GuC submission to avoid GPU hangs)
-    "pcie_aspm=force"        # Force ASPM on despite firmware claiming unsupported
-    "pcie_aspm.policy=powersupersave"  # Enable ASPM L1 + L1 substates where supported
+    # No PCIe port runtime PM. The H410 firmware silently drops the GPU link
+    # when the port is suspended (hard hang, zero logs); capping CPU C-states
+    # alone (hosts/briefcase/default.nix) was not enough — see
+    # docs/hard-hang-cstate.md. ASPM was removed for the same reason.
+    "pcie_port_pm=off"
   ];
 
   # Hardware decode/encode (VA-API iHD), QSV (oneVPL), OpenCL/Level Zero.
