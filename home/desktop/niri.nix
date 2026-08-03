@@ -5,7 +5,10 @@ let
   # DMS only syncs the portal `color-scheme` signal, never the legacy GTK
   # `gtk-application-prefer-dark-theme` key. Electron apps (notion) decide
   # light/dark from that GTK key, so keep it in lockstep with DMS's theme.
-  # Once per session: sync immediately, then follow portal SettingChanged.
+  # DMS itself never re-reads the icon theme at runtime (Qt gtk3 platform
+  # theme only loads settings.ini at startup, and the tray IconImage caches by
+  # URL), so we also restart DMS on theme switch to pick up the new icon
+  # theme for Qt-rendered tray icons (fcitx5 etc.).
   # NOTE: name must NOT contain "gtk" — DMS runs `pkill -HUP -f gtk` on every
   # theme switch (intended to reload GTK apps), which would kill this script.
   darkThemeSync = pkgs.writeShellScript "dark-theme-sync" ''
@@ -31,13 +34,25 @@ let
       done
     }
 
+    # Restart DMS so its Qt process re-reads the icon theme. DMS is normally
+    # spawned by niri, but spawn-at-startup only runs once, so we relaunch it
+    # ourselves as a daemon (niri's DMS config includes make it session-safe).
+    # NOTE: use `pkill -x` (exact process-name match) — any `-f` pattern would
+    # also match this script's own shell command line and kill itself.
+    restart_dms() {
+      pkill -x .dms-wrapped 2>/dev/null
+      sleep 1
+      setsid dms run >/dev/null 2>&1 &
+      disown
+    }
+
     sync_prefer_dark
     gdbus monitor --session \
       --dest org.freedesktop.portal.Desktop \
       --object-path /org/freedesktop/portal/desktop \
       | while IFS= read -r line; do
           case "$line" in
-            *color-scheme*) sync_prefer_dark ;;
+            *color-scheme*) sync_prefer_dark; restart_dms ;;
           esac
         done
   '';
