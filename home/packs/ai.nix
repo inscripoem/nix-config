@@ -36,6 +36,12 @@ in {
       description = "claude-code CLI";
     };
 
+    codex.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = cfg.enable;
+      description = "codex CLI";
+    };
+
     rtk.enable = lib.mkOption {
       type = lib.types.bool;
       default = cfg.enable;
@@ -68,6 +74,10 @@ in {
 
     (lib.mkIf cfg.claude-code.enable {
       home.packages = [ agentPkgs.claude-code ];
+    })
+
+    (lib.mkIf cfg.codex.enable {
+      home.packages = [ agentPkgs.codex ];
     })
 
     (lib.mkIf cfg.rtk.enable {
