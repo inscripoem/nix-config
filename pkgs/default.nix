@@ -7,9 +7,5 @@ final: prev: {
   glances = final.callPackage ./glances.nix { originalGlances = prev.glances; };
   rebarstate = final.callPackage ./rebarstate.nix { };
 
-  flatpak = final.callPackage ./flatpak.nix {
-    flatpak = prev.flatpak;
-  };
-
   ww-manager = final.callPackage ./ww-manager.nix { };
 }

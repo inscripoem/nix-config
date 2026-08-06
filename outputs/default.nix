@@ -9,6 +9,18 @@ let
     zen-browser.homeModules.beta
   ];
 
+  # niri-flake still requires libdisplay-info 0.2, which was removed from
+  # nixpkgs unstable on 2026-08-04. Reuse the exact 0.2.0 package from
+  # niri-flake's own stable nixpkgs input until upstream supports 0.3.
+  niriCompatOverlay = _final: prev: {
+    libdisplay-info_0_2 =
+      niri.inputs.nixpkgs-stable.legacyPackages.${prev.stdenv.hostPlatform.system}.libdisplay-info_0_2;
+  };
+  niriOverlays = [
+    niriCompatOverlay
+    niri.overlays.niri
+  ];
+
   # Host declaration table — class/capability model.
   nixosHosts = {
     briefcase = {
@@ -21,7 +33,7 @@ let
       extraModules = [
         disko.nixosModules.disko
         niri.nixosModules.niri
-        { nixpkgs.overlays = [ niri.overlays.niri ]; }
+        { nixpkgs.overlays = niriOverlays; }
       ];
       extraConfig = {
         modules.capabilities.gaming = {
@@ -51,7 +63,7 @@ let
       deploy = false;
       extraModules = [
         niri.nixosModules.niri
-        { nixpkgs.overlays = [ niri.overlays.niri ]; }
+        { nixpkgs.overlays = niriOverlays; }
       ];
       extraConfig = {
         modules.capabilities.tailscale.enable = true;
