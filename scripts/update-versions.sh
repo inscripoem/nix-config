@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Update trae-cn, cc-switch, siyuan and ww-manager to their latest upstream
-# versions.
+# Update trae-cn, cc-switch, siyuan, ww-manager and notion-electron to their
+# latest upstream versions.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--trae-version=<X.Y.Z>]
 #
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {trae-cn,cc-switch,siyuan,ww-manager}.
-#                          Defaults to all four.
+#                          {trae-cn,cc-switch,siyuan,ww-manager,notion-electron}.
+#                          `notion` is accepted as an alias for notion-electron.
+#                          Defaults to all five.
 #   --trae-version=<ver>   Skip the trae-cn `latest` API and pin the given
 #                          version directly. Only meaningful when trae-cn is
 #                          in the selected set.
@@ -43,6 +44,19 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+# Normalize aliases: `notion` → `notion-electron` (the package's pname).
+if [[ -n "$ONLY" ]]; then
+  IFS=, read -ra items <<< "$ONLY"
+  normalized=""
+  for item in "${items[@]}"; do
+    if [[ "$item" == "notion" ]]; then
+      item="notion-electron"
+    fi
+    normalized+="${normalized:+,}${item}"
+  done
+  ONLY="$normalized"
+fi
 
 should_update() {
   local name="$1"
@@ -326,6 +340,58 @@ if should_update "ww-manager"; then
       changed=true
     else
       echo "    [dry-run] would update to $ww_version"
+    fi
+  fi
+fi
+
+# ── notion-electron ─────────────────────────────────────────────────
+
+if should_update "notion-electron"; then
+  echo ""
+  echo "==> Checking notion-electron ..."
+  if command -v gh &>/dev/null; then
+    ne_version=$(gh api repos/anechunaev/notion-electron/releases/latest --jq '.tag_name' | sed 's/^v//')
+  else
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+      ne_json=$(curl -sf --max-time 10 -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/anechunaev/notion-electron/releases/latest" || true)
+    else
+      ne_json=$(curl -sf --max-time 10 "https://api.github.com/repos/anechunaev/notion-electron/releases/latest" || true)
+    fi
+    if [[ -z "$ne_json" ]]; then
+      echo "    ERROR: Failed to reach GitHub API. Check your network or set GITHUB_TOKEN."
+      exit 1
+    fi
+    if echo "$ne_json" | jq -e '.message' >/dev/null 2>&1; then
+      echo "    ERROR: GitHub API request failed: $(echo "$ne_json" | jq -r '.message')"
+      echo "    Try again later, set GITHUB_TOKEN, or install gh CLI."
+      exit 1
+    fi
+    ne_version=$(echo "$ne_json" | jq -r '.tag_name' | sed 's/^v//')
+  fi
+
+  ne_nix="$REPO_ROOT/pkgs/notion-electron.nix"
+  ne_current=$(grep 'version = ' "$ne_nix" | head -1 | grep -oP '[\d.]+')
+
+  echo "    current : $ne_current"
+  echo "    latest  : $ne_version"
+
+  if [[ "$ne_version" == "$ne_current" ]]; then
+    echo "    up to date."
+  else
+    echo "    updating ..."
+    if [[ "$DRY_RUN" == false ]]; then
+      ne_url="https://github.com/anechunaev/notion-electron/releases/download/v${ne_version}/Notion_Electron-${ne_version}-x86_64.AppImage"
+
+      echo "    prefetching ..."
+      ne_hash=$(prefetch_hash "$ne_url")
+
+      update_nix_field "$ne_nix" "version" "$ne_version"
+      update_nix_field "$ne_nix" "hash" "$ne_hash"
+
+      echo "    done: $ne_current → $ne_version"
+      changed=true
+    else
+      echo "    [dry-run] would update to $ne_version"
     fi
   fi
 fi
