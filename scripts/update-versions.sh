@@ -133,8 +133,9 @@ if should_update "trae-cn"; then
     echo "    updating ..."
     if [[ "$DRY_RUN" == false ]]; then
       trae_hash=$(prefetch_hash "$trae_url")
-      # Update URL template: Trae%20CN → Trae_CN (matches API response)
-      sed -i 's|Trae%20CN-linux-x64\.deb|Trae_CN-linux-x64.deb|' "$trae_nix"
+      # Update URL template: Trae%20CN / Trae_CN → TraeCode_CN (matches API response)
+      sed -i -e 's|Trae%20CN-linux-x64\.deb|TraeCode_CN-linux-x64.deb|' \
+             -e 's|Trae_CN-linux-x64\.deb|TraeCode_CN-linux-x64.deb|' "$trae_nix"
       update_nix_field "$trae_nix" "version" "$trae_version"
       update_nix_field "$trae_nix" "hash" "$trae_hash"
       echo "    done: $trae_current → $trae_version"
