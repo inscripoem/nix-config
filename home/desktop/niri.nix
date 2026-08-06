@@ -12,7 +12,14 @@ let
   # NOTE: name must NOT contain "gtk" — DMS runs `pkill -HUP -f gtk` on every
   # theme switch (intended to reload GTK apps), which would kill this script.
   darkThemeSync = pkgs.writeShellScript "dark-theme-sync" ''
-    export PATH=/run/current-system/sw/bin:/usr/bin:/bin
+    # Re-import the authoritative user PATH from the systemd user manager
+    # (PAM + ~/.config/environment.d merged). Hardcoding would starve dms,
+    # which resolves relative Exec= command names from .desktop files
+    # against its own PATH. Pulling systemd's PATH keeps every profile dir
+    # (home-manager, nix-profile, flatpak, ...) in sync automatically.
+    PATH=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^PATH=//p')
+    [ -n "$PATH" ] || PATH=/run/current-system/sw/bin:/usr/bin:/bin
+    export PATH
 
     sync_prefer_dark() {
       local scheme
