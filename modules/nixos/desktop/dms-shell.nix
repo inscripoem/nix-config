@@ -1,4 +1,4 @@
-{ config, pkgs, lib, ... }:
+{ pkgs, ... }:
 
 let
   hxrebornPluginsSrc = pkgs.fetchFromGitHub {

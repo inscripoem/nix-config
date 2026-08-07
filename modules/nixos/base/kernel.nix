@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ lib, pkgs, ... }:
 
 {
   # Track mainline instead of LTS. Initially motivated by the July 2026

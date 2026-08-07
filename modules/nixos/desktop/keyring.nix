@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ ... }:
 
 {
   # Use gnome-keyring as the Secret Service provider (org.freedesktop.secrets)

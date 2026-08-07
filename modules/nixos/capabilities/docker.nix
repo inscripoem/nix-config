@@ -1,4 +1,4 @@
-{ config, lib, pkgs, vars, ... }:
+{ config, lib, vars, ... }:
 let
   cfg = config.modules.capabilities.docker;
   impCfg = config.modules.capabilities.impermanence;

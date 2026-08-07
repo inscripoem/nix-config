@@ -1,4 +1,4 @@
-{ config, pkgs, vars, ... }:
+{ vars, ... }:
 
 {
   system.stateVersion = vars.stateVersion;

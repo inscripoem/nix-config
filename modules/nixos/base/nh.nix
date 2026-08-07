@@ -1,4 +1,4 @@
-{ config, pkgs, vars, ... }:
+{ vars, ... }:
 
 {
   programs.nh = {

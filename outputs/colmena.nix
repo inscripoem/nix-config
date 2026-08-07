@@ -1,4 +1,4 @@
-{ self, nixpkgs, nixosHosts, home-manager, sops-nix, vars, colmena, ... }@flakeInputs:
+{ nixpkgs, nixosHosts, vars, ... }@flakeInputs:
 let
   inherit (nixpkgs) lib;
 

@@ -1,7 +1,6 @@
-{ self, nixpkgs, home-manager, plasma-manager, disko, llm-agents, zen-browser, niri, colmena, deploy-rs, sops-nix, impermanence, aagl, ... }@inputs:
+{ self, nixpkgs, plasma-manager, disko, zen-browser, niri, ... }@inputs:
 let
   vars = import ../vars;
-  lib = import ../lib { inherit (nixpkgs) lib; };
 
   # Desktop-oriented HM shared modules (plasma-manager, zen-browser).
   desktopHmModules = [
@@ -103,7 +102,7 @@ let
   };
 
   mkNixos = import ../lib/mkNixos.nix {
-    inherit inputs vars nixpkgs home-manager sops-nix;
+    inherit inputs vars nixpkgs;
   };
 
   nixosConfigurations = nixpkgs.lib.mapAttrs (name: spec:

@@ -5,7 +5,7 @@
 #      before disk swap, aggressive GC).
 #   2. When writes must happen, make them TRIM-friendly.
 
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 let cfg = config.modules.capabilities.sdcard;
 in {
   options.modules.capabilities.sdcard.enable =

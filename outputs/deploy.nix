@@ -1,4 +1,4 @@
-{ self, nixpkgs, deploy-rs, nixosHosts, ... }@inputs:
+{ self, nixpkgs, deploy-rs, nixosHosts, ... }:
 let
   # Only hosts with deploy = true become deploy-rs nodes.
   deployableHosts = nixpkgs.lib.filterAttrs (_: spec: spec.deploy or false) nixosHosts;

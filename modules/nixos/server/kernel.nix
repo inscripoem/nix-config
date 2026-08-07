@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ lib, pkgs, ... }:
 {
   # Stable kernel for server workloads — overrides the base default
   # (linuxPackages_latest). Set as mkDefault so a specific host

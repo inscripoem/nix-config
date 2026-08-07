@@ -1,7 +1,7 @@
 # Fcitx5 input method framework with Rime + Wanxiang schema.
 # Lives in desktop/ because headless hosts don't need an input method.
 
-{ config, pkgs, inputs, ... }:
+{ pkgs, inputs, ... }:
 
 {
   i18n.inputMethod = {

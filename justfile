@@ -45,9 +45,22 @@ apply target="":
 
 # ══════════════════════════════════════════════════════════════
 # Verification — AGENTS.md §1 hard rule.
+# `just lint` checks for unused Nix declarations with the deadnix
+# package from this flake's locked nixpkgs input.
+# Generated hardware files retain upstream boilerplate. The scan path
+# precedes `--exclude` because deadnix consumes all following values.
 # `just check` iterates every host in .#nixosConfigurations and
 # forces evaluation of its top-level derivation path.
 # ══════════════════════════════════════════════════════════════
+lint:
+    nix run --no-warn-dirty --inputs-from . 'nixpkgs#deadnix' -- \
+        --fail \
+        . \
+        --exclude \
+        hosts/briefcase/hardware-configuration.nix \
+        hosts/vm/hardware-configuration.nix \
+        hosts/wyse3040/hardware-configuration.nix
+
 check host="":
     #!/usr/bin/env bash
     set -euo pipefail

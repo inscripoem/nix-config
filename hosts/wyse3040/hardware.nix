@@ -19,7 +19,7 @@
 #      Applied to: avahi-daemon, wpa_supplicant, systemd-logind, nscd,
 #      systemd-hostnamed.
 
-{ config, lib, pkgs, ... }:
+{ config, lib, ... }:
 
 let
   # PrivateTmp fails on this host because wear-leveling.nix mounts a

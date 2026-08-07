@@ -1,8 +1,6 @@
 { vars, inputs }:
 spec:
 let
-  inherit (inputs.nixpkgs) lib;
-
   # Resolve class directories from spec.classes.
   classModules = map (c: ../modules/nixos/${c}) (spec.classes or [ ]);
 

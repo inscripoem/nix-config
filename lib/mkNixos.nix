@@ -1,5 +1,5 @@
-{ inputs, vars, nixpkgs, home-manager, sops-nix }:
-{ name, arch, ... }@spec:
+{ inputs, vars, nixpkgs }:
+{ arch, ... }@spec:
 
 let
   nixosModules = import ./nixosModules.nix { inherit vars inputs; };

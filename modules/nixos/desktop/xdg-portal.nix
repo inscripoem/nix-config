@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ pkgs, ... }:
 
 {
   # xdg-desktop-portal routing. xdg-desktop-portal-gtk gets pulled in by some
