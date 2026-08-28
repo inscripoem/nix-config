@@ -105,8 +105,14 @@ if should_update "trae-cn"; then
     echo "    (manual override)"
   else
     trae_json=$(curl -sf "https://api.trae.com.cn/icube/api/v1/native/version/trae/cn/latest")
-    trae_version=$(echo "$trae_json" | jq -r '.data.manifest.linux.version')
     trae_url=$(echo "$trae_json" | jq -r '.data.manifest.linux.download[0]."x64.deb"')
+    # The `latest` API no longer exposes a version field; the version is
+    # embedded in the download URL: .../releases/stable/<version>/linux/...
+    trae_version=$(echo "$trae_url" | grep -oP 'stable/\K[0-9.]+')
+    if [[ -z "$trae_version" ]]; then
+      echo "    ERROR: could not extract version from API download URL." >&2
+      exit 1
+    fi
   fi
 
   echo "    current : $trae_current"
@@ -133,9 +139,6 @@ if should_update "trae-cn"; then
     echo "    updating ..."
     if [[ "$DRY_RUN" == false ]]; then
       trae_hash=$(prefetch_hash "$trae_url")
-      # Update URL template: Trae%20CN / Trae_CN → TraeCode_CN (matches API response)
-      sed -i -e 's|Trae%20CN-linux-x64\.deb|TraeCode_CN-linux-x64.deb|' \
-             -e 's|Trae_CN-linux-x64\.deb|TraeCode_CN-linux-x64.deb|' "$trae_nix"
       update_nix_field "$trae_nix" "version" "$trae_version"
       update_nix_field "$trae_nix" "hash" "$trae_hash"
       echo "    done: $trae_current → $trae_version"
