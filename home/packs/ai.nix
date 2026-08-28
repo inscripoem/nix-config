@@ -92,6 +92,20 @@ in {
 
     (lib.mkIf cfg.zcode.enable {
       home.packages = [ agentPkgs.zcode ];
+
+      # ZCode is an Electron app that calls setAsDefaultProtocolClient() on
+      # every launch, rewriting a user-level desktop file into
+      # ~/.local/share/applications/zcode.desktop. That copy shadows the one
+      # shipped by the package and breaks xdg-desktop-portal's registration of
+      # x-scheme-handler/zcode — after the browser OAuth redirect the portal
+      # then shows an empty "Open With" dialog ("no available apps"). Register
+      # the scheme via [Added Associations]: GLib only enumerates schemes
+      # listed there, and this tweak path is immune to the desktop-file
+      # shadowing.
+      xdg.dataFile."applications/mimeapps.list".text = ''
+        [Added Associations]
+        x-scheme-handler/zcode=zcode.desktop;
+      '';
     })
   ];
 }
