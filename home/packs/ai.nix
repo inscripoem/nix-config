@@ -47,6 +47,12 @@ in {
       default = cfg.enable;
       description = "rtk CLI";
     };
+
+    zcode.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = cfg.enable;
+      description = "zcode CLI";
+    };
   };
 
   config = lib.mkMerge [
@@ -82,6 +88,10 @@ in {
 
     (lib.mkIf cfg.rtk.enable {
       home.packages = [ agentPkgs.rtk ];
+    })
+
+    (lib.mkIf cfg.zcode.enable {
+      home.packages = [ agentPkgs.zcode ];
     })
   ];
 }
