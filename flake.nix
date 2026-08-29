@@ -79,7 +79,14 @@
     aagl = {
       url = "github:ezKEa/aagl-gtk-on-nix";
       inputs.nixpkgs.follows = "nixpkgs";
+      # aagl still pins a rust-overlay that uses the deprecated stdenv.is*
+      # aliases (nixpkgs deprecation 2026-05-09); force our newer pin so
+      # evaluation stays warning-free.
+      inputs.rust-overlay.follows = "rust-overlay";
     };
+
+    # rust toolchain overlay; also injected into aagl (see above).
+    rust-overlay.url = "github:oxalica/rust-overlay";
 
     # nixos-wsl - run NixOS as a WSL2 distribution. The `wsl` class
     # imports its default module; the `wsl` host additionally exposes
