@@ -2,6 +2,6 @@
 {
   home.packages = [
     pkgs.vlc
-    pkgs.splayer
+    pkgs.splayer-next
   ];
 }
