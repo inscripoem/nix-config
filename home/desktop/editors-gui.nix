@@ -34,6 +34,7 @@
   home.packages = with pkgs; [
     nixd
     nixfmt
+    heynote
     (trae-cn.override {
       commandLineArgs = "--password-store=${passwordStore}";
     })
