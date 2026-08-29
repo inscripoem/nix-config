@@ -58,6 +58,7 @@ in {
           pkgs.dwproton-bin
         ];
       };
+      environment.systemPackages = [ pkgs.steamcmd ];
     })
 
     (lib.mkIf cfg.gamemode.enable {
