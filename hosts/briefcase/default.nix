@@ -23,6 +23,10 @@
 
   networking.hostName = "briefcase";
 
+  # Palworld dedicated server — game port (UDP only; RCON/REST API would
+  # need extra TCP ports but are disabled by default).
+  networking.firewall.allowedUDPPorts = [ 8211 ];
+
   # Pull in linux-firmware so Intel AX210 (and friends) get iwlwifi-*.ucode.
   # Without this the PCIe Wi-Fi half of the card fails to probe even though
   # USB-side Bluetooth keeps working with in-tree btusb.
