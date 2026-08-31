@@ -201,7 +201,7 @@ Packs are optional user-level package sets. Each pack is a home-manager module d
 |---|---|
 | `creative` | `ardour`, `audacity`, `blender`, `gimp`, `godot` (`godot_4`), `zrythm` |
 | `toolchain` | `node` (bun/nodejs_22/pnpm/yarn), `python` (uv), `rust` (rustup), `build` (just/devenv) |
-| `ai` | `aichat`, `opencode` (+ `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`), `antigravity-cli`, `ck`, `claude-code`, `rtk` |
+| `ai` | `aichat`, `opencode` (+ `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS`), `antigravity-cli`, `ck`, `claude-code`, `codex`, `rtk`, `zcode` (+ xdg `x-scheme-handler/zcode` association) |
 | `gaming` | `lutris`, `maa` (maa-assistant-arknights + maa-cli, same upstream software), `ww-manager` |
 
 ### 4.4 Per-host HM Entries
@@ -216,6 +216,10 @@ Each entry only picks a base layer (`core.nix` / `tui.nix` / `desktop.nix`) and 
   packs.creative.enable = true;
   packs.gaming.enable = true;
   packs.toolchain.enable = true;
+
+  # Uninstall trae-cn and zcode on briefcase only; vm keeps trae-cn.
+  desktop.editors-gui.traeCn.enable = false;
+  packs.ai.zcode.enable = false;
 }
 
 # home/hosts/vm.nix        — desktop only, no packs
