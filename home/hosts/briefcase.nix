@@ -6,7 +6,6 @@
   packs.gaming.enable = true;
   packs.toolchain.enable = true;
 
-  # Uninstall trae-cn and zcode on briefcase only; vm keeps trae-cn.
+  # Uninstall trae-cn on briefcase only; vm keeps trae-cn.
   desktop.editors-gui.traeCn.enable = false;
-  packs.ai.zcode.enable = false;
 }
