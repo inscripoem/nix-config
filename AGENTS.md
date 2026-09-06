@@ -7,10 +7,11 @@ Hard rules any AI assistant MUST follow when modifying this repo.
 After **any** edit to a `*.nix` file, run at least one of:
 
 - `nix eval --no-warn-dirty .#nixosConfigurations.<host>.config.system.build.toplevel.drvPath` (default)
+- `nix eval --no-warn-dirty .#darwinConfigurations.<host>.config.system.build.toplevel.drvPath` (Darwin or shared Home Manager changes)
 - `nix build --no-link --dry-run .#nixosConfigurations.<host>.config.system.build.toplevel` (when touching packages / overlays)
 - `sudo nixos-rebuild dry-activate --flake .#<host>` (when touching activation / systemd / PAM)
 
-Hosts: `briefcase` (primary), `vm`.
+NixOS hosts: `briefcase` (primary), `vm`. Darwin host: `air`.
 
 A change is only "done" when the chosen command exits 0 with no `error:` or
 "will become an error" warnings. Don't ignore warnings — fix them in the

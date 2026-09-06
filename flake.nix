@@ -13,6 +13,14 @@
       # to avoid problems caused by different versions of nixpkgs.
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # nix-darwin - macOS host management (darwinConfigurations output).
+    # Uses the same nixpkgs pin. Phase 1 leaves both Home Manager and the
+    # existing Lix installation outside nix-darwin's ownership boundary.
+    nix-darwin = {
+      url = "github:nix-darwin/nix-darwin/master";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     
     plasma-manager = {
       url = "github:nix-community/plasma-manager";

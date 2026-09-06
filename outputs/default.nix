@@ -108,9 +108,26 @@ let
   nixosConfigurations = nixpkgs.lib.mapAttrs (name: spec:
     mkNixos (spec // { inherit name; })
   ) nixosHosts;
+
+  # macOS hosts use only fields consumed by the Darwin assembler. Deployment
+  # stays local (darwin-rebuild); colmena/deploy-rs are NixOS-only.
+  mkDarwin = import ../lib/mkDarwin.nix {
+    inherit inputs vars;
+  };
+
+  darwinHosts = {
+    air = {
+      arch = "aarch64-darwin";
+      hostModule = ../hosts/air;
+    };
+  };
+
+  darwinConfigurations = nixpkgs.lib.mapAttrs (_name: spec:
+    mkDarwin spec
+  ) darwinHosts;
 in
 {
-  inherit nixosHosts nixosConfigurations;
+  inherit nixosHosts nixosConfigurations darwinHosts darwinConfigurations;
   colmena = import ./colmena.nix (inputs // { inherit nixosHosts vars; });
   deploy = import ./deploy.nix (inputs // { inherit nixosHosts; });
 

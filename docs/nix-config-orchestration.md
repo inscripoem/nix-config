@@ -1,6 +1,6 @@
 # Nix Configuration Orchestration
 
-This document records the design decisions, architecture, and target structure of the current nix-config. It is the reference baseline for future extensions.
+This document records the design decisions, architecture, and target structure of the current cross-platform nix-config. It is the reference baseline for future extensions.
 
 ---
 
@@ -85,11 +85,18 @@ nixosHosts = {
     };
   };
 };
+
+darwinHosts = {
+  air = {
+    arch = "aarch64-darwin";
+    hostModule = ../hosts/air;
+  };
+};
 ```
 
 ---
 
-## 3. NixOS System Architecture
+## 3. System Architecture
 
 ### 3.1 Class Modules
 
@@ -173,6 +180,30 @@ Remote-build client SSH keys are generated on the deployer machine and stored in
 
 Each remote-build client gets its own keypair. No manual `ssh-keygen` on target hosts.
 
+### 3.8 nix-darwin bootstrap
+
+`lib/mkDarwin.nix` and `lib/darwinModules.nix` mirror the existing NixOS
+assembly pattern. Each entry in `darwinHosts` becomes a
+`darwinConfigurations.<name>` target, while the flake target remains separate
+from the machine's macOS hostname.
+
+Phase 1 was deployed to `air` on 2026-09-06 and is deliberately system-only:
+
+- `nix.enable = false` leaves the existing Lix installation, daemon, build
+  users, and `/etc/nix/nix.conf` externally managed.
+- Homebrew management and Home Manager are not enabled.
+- No hostname or macOS defaults are declared.
+- nix-darwin establishes its system generation, global Zsh integration, and
+  its default system Bash integration while preserving the currently enabled
+  Touch ID sudo behavior.
+
+The original `/etc/pam.d/sudo_local` is retained as
+`/etc/pam.d/sudo_local.before-nix-darwin`. The Phase 1 generation is the
+rollback anchor for the Home Manager migration in Phase 2.
+
+Home Manager, shared user packages, and shell migration are Phase 2. Homebrew
+inventory is Phase 3.
+
 ---
 
 ## 4. Home Manager Architecture
@@ -181,7 +212,7 @@ Each remote-build client gets its own keypair. No manual `ssh-keygen` on target 
 
 | Entry | Imports | Used by |
 |---|---|---|
-| `home/core.nix` | `home/core/` | All hosts |
+| `home/core.nix` | `home/core/` | Current NixOS hosts; Darwin from Phase 2 |
 | `home/tui.nix` | `home/core/` + `home/tui/` | Terminal-oriented dev hosts |
 | `home/desktop.nix` | `home/core/` + `home/tui/` + `home/desktop/` | GUI hosts |
 
@@ -240,11 +271,14 @@ nix-config/
 ├── lib/
 │   ├── default.nix
 │   ├── mkNixos.nix        # Host → nixosSystem
-│   └── nixosModules.nix   # Shared module list (classes + caps + base)
+│   ├── nixosModules.nix   # NixOS module list (classes + caps + base)
+│   ├── mkDarwin.nix       # Host → darwinSystem
+│   └── darwinModules.nix  # Darwin system module list
 ├── vars/
 │   └── default.nix        # username, builders, builderClientKeys
 ├── hosts/
 │   ├── briefcase/
+│   ├── air/               # macOS host module
 │   ├── vm/
 │   └── wyse3040/
 ├── modules/nixos/
@@ -255,6 +289,8 @@ nix-config/
 │   ├── lan/               # avahi/mDNS
 │   ├── public/            # SSH hardening (reserved)
 │   └── capabilities/      # Optional system services (see §3.2)
+├── modules/darwin/
+│   └── base/              # conservative nix-darwin system baseline
 ├── home/
 │   ├── core/              # All hosts (shell, git, ssh, editors, CLI tools)
 │   ├── tui/               # Dev hosts (pueue, tokei)
@@ -275,12 +311,21 @@ nix-config/
 
 ## 6. Adding a New Host
 
+For NixOS:
+
 1. Add entry to `nixosHosts` in `outputs/default.nix`: choose `classes`, enable `capabilities` via `extraConfig`
 2. Create `hosts/<name>/` with `default.nix` + `hardware-configuration.nix`
 3. Create `home/hosts/<name>.nix` to select HM entry point + packs
 4. If deployable: set `deploy = true`, `hostname`, `sshUser`, `tags`
 5. Run `nix eval` for the new host
 6. If remote-build client: generate keypair, add to `secrets/builder.yaml` and `keys/`
+
+For macOS Phase 1:
+
+1. Add `arch` and `hostModule` to `darwinHosts`.
+2. Create `hosts/<name>/default.nix`; macOS needs no NixOS hardware file.
+3. Evaluate `darwinConfigurations.<name>` and run a dry-run.
+4. Add the host's Home Manager entry point separately in Phase 2.
 
 ---
 
@@ -327,17 +372,33 @@ For capabilities that bundle several independent components, follow the sub-togg
 
 ## 9. Deployment
 
-- **Local hosts** (briefcase, vm): `sudo nixos-rebuild switch --flake .#<host>`
+- **Local NixOS hosts** (briefcase, vm): `sudo nixos-rebuild switch --flake .#<host>`
 - **Remote hosts** (wyse3040): `just apply wyse3040` (colmena) or `deploy .#wyse3040` (deploy-rs)
-- **Pre-deploy check**: `nix eval .#nixosConfigurations.<host>.config.system.build.toplevel.drvPath`
+- **Darwin bootstrap switch**: `sudo -H nix run github:nix-darwin/nix-darwin/4cff07de74b50e64bdd68cd4e722ab5b6b35ee48#darwin-rebuild -- switch --flake .#<host>`
+- **Darwin later switches**: `sudo -H darwin-rebuild switch --flake .#<host>`
+- **NixOS pre-deploy check**: `nix eval --no-warn-dirty .#nixosConfigurations.<host>.config.system.build.toplevel.drvPath`
+- **Darwin pre-deploy check**: `nix eval --no-warn-dirty .#darwinConfigurations.<host>.config.system.build.toplevel.drvPath`
+
+The first successful Darwin switch creates the rollback anchor for Phase 2.
+Before that point there is no previous nix-darwin generation, so Phase 1 keeps
+Lix, Homebrew, hostname, macOS defaults, and user dotfiles outside its
+ownership boundary.
+
+At the pinned nix-darwin revision, `darwin-rebuild check` was observed to run
+the activation script instead of remaining non-mutating: the wrapper's
+`checkActivation` environment variable is cleared by the generated activation
+script's `/usr/bin/env -i` shebang. Use `nix eval` and `nix build --dry-run` as
+the non-mutating gates for this revision; do not rely on `check` as a dry run.
 
 ---
 
-**Document version**: v2.2 (2026-07-30)  
-**Status**: Current (packs auto-imported via HM sharedModules; capability/pack layers now fully symmetric)
+**Document version**: v2.4 (2026-09-06)
+**Status**: Current (`air` Phase 1 deployed; Home Manager planned for Phase 2)
 
 ### Changelog
 
+- **v2.4**: Recorded the successful `air` Phase 1 deployment, first system generation, PAM backup, default system Bash ownership, and the pinned revision's mutating `darwin-rebuild check` behavior.
+- **v2.3**: Added the `air` nix-darwin target with a system-only first phase. Existing Lix, Homebrew, hostname, macOS defaults, and user dotfiles remain externally managed until their explicitly reviewed follow-up phases.
 - **v2.2**: Pack files are now auto-imported into every host's HM via `hmBlock.sharedModules` in [nixosModules.nix](../lib/nixosModules.nix), aggregated by `home/packs/default.nix`. Each host only writes `packs.<name>.enable = true;`, mirroring the capability layer. `gaming` pack module-ized with 3 sub-toggles: `lutris`, `maa` (maa-assistant-arknights + maa-cli, same upstream software), `ww-manager`. Fixed wyse3040 pack drift (was importing `toolchain`/`ai` without ever enabling them).
 - **v2.1**: Capabilities and packs now use a shared sub-toggle pattern. `gaming` capability split into `steam` / `gamemode` / `waydroid[.helper]` / `aagl.*` (each AAGL launcher opt-in). Userland gaming packages (MAA, ww-manager) moved to the `gaming` pack. Packs (`creative`, `toolchain`, `ai`, `gaming`) converted from bare imports to modules with per-package sub-toggles; `toolchain` further grouped as `node` / `python` / `rust` / `build`. Added §8 "Adding a New Pack".
 - **v2.0**: Rewritten to reflect class/capability/pack model. Added class modules, capability modules, shared module list, SSH strategy, builder keys via sops, HM packs, per-host HM entries

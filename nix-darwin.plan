@@ -1,0 +1,181 @@
+# nix-darwin 分阶段接管计划
+
+日期：2026-09-04
+完成日期：2026-09-06
+状态：Phase 1 system-only 已完成实现、静态验证、首次激活与 generation 注册；
+Phase 2 尚未开始。
+
+## 1. 总体目标
+
+将 `air` 接入 nix-darwin，但把不同所有权边界拆成可独立验证和回退的阶段：
+
+1. Phase 1：只建立 nix-darwin 系统 generation。
+2. Phase 2：接入 Home Manager，接管用户级 shell、Git、SSH 与共享 CLI。
+3. Phase 3：通过 nix-darwin 逐步声明现有 Homebrew 软件。
+4. 可选 Phase 4：单独评估是否让 nix-darwin 管理 Lix。
+
+`air` 始终是 flake target，而不是 macOS hostname。
+
+## 2. Phase 1：system-only bootstrap
+
+Phase 1 只负责建立安全、可求值的 nix-darwin 基线：
+
+- 输出为 `darwinConfigurations.air`，架构为 `aarch64-darwin`。
+- `nix.enable = false`，现有 Lix、daemon、build users 和
+  `/etc/nix/nix.conf` 继续由当前安装器管理。
+- nix-darwin Homebrew 管理保持关闭，不运行 Brew Bundle，也不增删包。
+- 不设置 `networking.hostName`、`networking.localHostName` 或
+  `networking.computerName`。
+- `system.stateVersion = 6`。
+- nix-darwin 管理系统级 Zsh 集成。
+- 保留 nix-darwin 默认的系统级 Bash 集成；`/etc/bashrc` 与 Bash package 也由
+  Phase 1 generation 管理。
+- nix-darwin 管理 `/etc/pam.d/sudo_local`，保持 Touch ID sudo 启用。
+- 不接入 Home Manager，不替换用户 dotfiles，不安装共享 HM 包，也不启动
+  HM 用户 LaunchAgent。
+
+首次成功后，系统拥有第一个 nix-darwin generation、
+`darwin-rebuild`、系统 profile、`/run/current-system` 和对应的激活服务。
+这为 Phase 2 提供系统级回退锚点。
+
+## 3. Phase 2：Home Manager 与 Zsh
+
+Phase 2 使用仓库现有的 Home Manager 模块管理用户环境：
+
+- Home Manager 接管 `.zshrc`、`.zprofile`、`.zshenv` 等用户 shell 文件。
+- 移除现有 Antigen 依赖。
+- 保留由 Nix/Home Manager 管理的 Oh My Zsh、Atuin、Starship、zoxide、
+  syntax-highlighting、autosuggestions 等组件。
+- 接入共享 Git、SSH、编辑器和 CLI 模块，并对 Linux-only 包做平台隔离。
+- Darwin rebuild alias 必须从 host spec 动态获取 target，不能硬编码 `air`。
+- 通用 macOS 用户配置与 `air` 专属配置分层，避免新增 Mac 时复制配置。
+
+启用前必须检查所有冲突目标及其 `.backup`。当前已知会被接管的现有文件包括：
+
+- `~/.zshrc`、`~/.zprofile`、`~/.zshenv`
+- `~/.bash_profile`、`~/.bashrc`、`~/.profile`
+- `~/.config/fish/config.fish`
+- `~/.config/atuin/config.toml`
+- `~/.ssh/config`
+- `~/.gitconfig`
+
+Home Manager 使用 `backupFileExtension = "backup"`；原文件不会直接删除。
+Phase 2 还需单独审查 Pueue、tldr-update 等用户 LaunchAgent 是否应在
+`air` 上启用。
+
+## 4. 包管理策略
+
+### Nix / Home Manager 优先
+
+以下类型优先复用 NixOS 已有的 Home Manager 配置：
+
+- 跨平台 CLI 和开发工具。
+- shell、Git、SSH、编辑器及其声明式配置。
+- 希望与 NixOS 保持相同版本和行为的工具。
+- nixpkgs 在 Darwin 上支持且不依赖 macOS GUI 原生安装机制的软件。
+
+共享模块必须用平台条件隔离 Linux-only 包。用户级工具优先放在 Home
+Manager；只有确实需要所有用户共享的工具才放进
+`environment.systemPackages`。
+
+### Homebrew 优先
+
+以下类型优先保留或交给 Homebrew：
+
+- `.app` GUI 软件和 cask。
+- 依赖签名、自动更新器、系统扩展或原生 macOS 集成的软件。
+- nixpkgs 在 Darwin 上不可用、不稳定或明显落后的软件。
+- App Store 软件；需要时通过 `masApps` 管理。
+
+同一个 CLI 不同时由 Home Manager 和 Homebrew 声明，避免 PATH 和版本来源
+不明确。
+
+Phase 3 首次启用 `homebrew.enable` 时采用增量策略：不自动升级，并保持
+`onActivation.cleanup` 为 `none`/未启用。先声明并安装缺失项，不删除现有
+formula 或 cask。严格清理应作为后续独立变更。
+
+nix-darwin 内置 Homebrew 模块管理 Brew Bundle 清单，并不负责安装 Homebrew
+本身。现有 Homebrew 可直接复用；只有需要声明式管理 Homebrew 安装时才考虑
+额外引入 `nix-homebrew`。
+
+## 5. Lix 所有权
+
+Phase 1 不接管 Lix，因为首次部署时同时迁移 package manager、daemon 和系统
+配置会显著扩大故障面。`nix.enable = false` 是 nix-darwin 官方支持的外部 Nix
+安装模式。
+
+如果以后需要声明式管理 Lix，作为独立阶段完成：
+
+1. 确认现有 Lix 安装器、launchd daemon、build users 和配置文件的所有权。
+2. 确认当前 nixpkgs/nix-darwin 对 Lix package 的支持方式。
+3. 明确选择继续使用 Lix，而不是无意切换到 nixpkgs 默认的官方 Nix。
+4. 先构建和审查 activation，再在已有 Darwin generation 的前提下迁移。
+
+## 6. 验证门槛
+
+每个阶段都必须完成：
+
+- `git diff --check`
+- `nix eval --no-warn-dirty .#darwinConfigurations.air.config.system.build.toplevel.drvPath`
+- `nix build --no-warn-dirty --no-link --dry-run .#darwinConfigurations.air.config.system.build.toplevel`
+- 对比当前工作树与干净 `origin/main` 的 `briefcase` drvPath，必须完全一致。
+
+非激活验证不执行真实 `switch`；首次切换由 Captain 手动执行。
+
+### Phase 1 验证记录（2026-09-04）
+
+- `darwinConfigurations.air` 求值成功：
+  `/nix/store/q80mj47r45mdiaranl94v20qq4rxp4br-darwin-system-26.11.4cff07d.drv`
+- Darwin 展开配置确认：`nix.enable = false`、Home Manager 与 Homebrew 均未
+  启用，三个 hostname 选项均为 `null`，Touch ID sudo 与系统级 Zsh 已启用。
+- Darwin dry-run 成功：42 个 derivation、155 个 fetch path，预计下载
+  367.61 MiB、解包 1708.38 MiB；未执行构建或激活。
+- 当前工作树与干净 `origin/main`（`7eae8d29`）的 `briefcase` drvPath 均为：
+  `/nix/store/hb4ba4i7hmi596ss049vn3321xv2b47v-nixos-system-briefcase-26.11.20260826.9fbb54b.drv`
+- `git diff --cached --check` 通过。
+
+### Phase 1 激活记录（2026-09-06）
+
+- 固定 revision 的 `darwin-rebuild check` 实际执行了激活。wrapper 虽然导出
+  `checkActivation=1`，但生成的 `activate` 脚本以 `/usr/bin/env -i` 启动，
+  该变量未进入脚本。它建立了 `/run/current-system`、`/etc/static` 和 activation
+  LaunchDaemon，但没有注册 system profile。此 revision 不得把 `check` 当作
+  无副作用的预检命令。
+- 随后执行固定 revision 的 `darwin-rebuild switch`，成功注册首个 generation：
+  `/nix/var/nix/profiles/system -> system-1-link`。
+- system profile、`/run/current-system` 与当前 flake 输出一致，均指向：
+  `/nix/store/9r6lv1cfq7dabvnvyvjqid10wgg578c7-darwin-system-26.11.4cff07d`。
+- 外部 Lix 保持为 `2.95.2`；`nix.enable = false`，Home Manager 与 Homebrew 均
+  未启用，三个 hostname 选项仍为 `null`。
+- `/etc/pam.d/sudo_local` 已由 nix-darwin 管理并继续启用 Touch ID；原文件保留为
+  `/etc/pam.d/sudo_local.before-nix-darwin`。
+- `dirty Git tree` 与缺少 root legacy channels 的提示均为非致命 warning；切换
+  最终退出码为 0。
+
+## 7. Phase 1 首次切换结果与回退
+
+首次切换使用 `flake.lock` 中固定的 nix-darwin revision：
+
+```sh
+sudo -H nix run github:nix-darwin/nix-darwin/4cff07de74b50e64bdd68cd4e722ab5b6b35ee48#darwin-rebuild -- switch --flake .#air
+```
+
+首次成功前没有旧 nix-darwin generation，因此当时不能依赖
+`darwin-rebuild --rollback`。Phase 1 保持了 Lix、Homebrew、hostname 和用户
+dotfiles 不变，并把原 `sudo_local` 保存为 `.before-nix-darwin`。
+
+Phase 1 generation 现已成为 Phase 2 的系统级回退锚点。后续切换使用：
+
+```sh
+sudo -H darwin-rebuild switch --flake .#air
+```
+
+从 Phase 2 开始，系统层可以回到 Phase 1 generation；Home Manager 接管的
+用户文件仍以对应的 `.backup` 作为人工恢复入口。
+
+## 8. Git 边界
+
+- Phase 1 的配置、lock file、架构文档与本计划以完整文件放入同一个 commit。
+- 不 push，不删除现有 stash。
+- 删除本地未跟踪的 `.zcode/`。
+- 只 stage 本次 Phase 1 实际包含的文件，不使用 `git add -A`。
