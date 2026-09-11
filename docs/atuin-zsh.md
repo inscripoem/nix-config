@@ -1,8 +1,8 @@
 # Atuin × zsh-autosuggestions on `briefcase`
 
 A bug log for the Atuin / zsh-autosuggestions integration on this machine.
-The **configuration** lives in `home/shell/zsh.nix` (autosuggestions,
-strategy, `initContent`) and `home/shell/integrations.nix` (Atuin itself);
+The shared **configuration** lives in `home/core/shell.nix` (autosuggestions,
+strategy, `initContent`, and Atuin itself);
 this file explains **why** each knob is set the way it is, so a future
 "clean up" doesn't quietly re-introduce a known failure mode.
 
@@ -13,12 +13,17 @@ Stack:
   ships `zsh-autosuggestions` **0.7.1**
 - `programs.atuin.enable = true` (currently 18.x), zsh integration via
   `eval "$(atuin init zsh)"` injected by home-manager
-- No oh-my-zsh, no sheldon — home-manager sources everything directly into
-  `~/.zshrc`
+- On `briefcase`: no oh-my-zsh, no sheldon — home-manager sources everything
+  directly into `~/.zshrc`.
+- On Darwin `air`: the same shared integration is used, with Oh My Zsh and
+  legacy local tool setup in `home/hosts/air/legacy-shell.nix`. HM orders
+  autosuggestions at 700, OMZ at 800, local setup at 900, program integrations
+  at 1000, and highlighting at 1200. Do not add a second Atuin initialization
+  to the host module. See [Darwin Home Manager migration](darwin-home-manager.md).
 
 What we want, simultaneously:
 
-1. **Up arrow** opens Atuin's full-screen TUI (session-scoped search).
+1. **Up arrow** opens Atuin's full-screen TUI (directory-scoped search).
 2. **Ctrl-R** opens Atuin's TUI (global search).
 3. **Ghost text** (the inline grey suggestion) keeps working, and prefers
    Atuin's smart matcher over plain history.
@@ -171,7 +176,7 @@ bypasses the wrapper entirely. We haven't needed it on 0.7.1.
 
 ---
 
-## 3. The final layout in `home/shell/zsh.nix`
+## 3. The final layout in `home/core/shell.nix`
 
 In execution order, the generated `~/.zshrc` becomes:
 

@@ -18,13 +18,23 @@ piece is configured the way it is. The **configuration** lives in:
   (`~/.config/1Password/ssh/agent.toml`).
 - `home/core/ssh.nix` — `programs.ssh` (renders `~/.ssh/config`); pins
   `IdentityAgent` for every host and declares the `github.com:443`
-  fall-through. *Pure ssh-config concerns only*; everything that names
-  "1Password" lives in the file above.
+  fall-through. The Linux agent path is a default that a platform module
+  can override; installing/configuring the provider remains separate.
 - `home/core/git.nix` — wires `gpg.ssh.program` to `op-ssh-sign` so
   `git commit -S` signs through 1Password directly.
 
-The entire `~/.ssh/config` is Nix-managed; see section 4 for how to
-add or temporarily override a host.
+On `briefcase`, the entire `~/.ssh/config` is Nix-managed; see section 4 for
+how to add or temporarily override a host.
+
+Darwin `air` reuses the shared Git/SSH policy, while `home/darwin/default.nix`
+selects the native 1Password app and its quoted Group Containers socket path.
+It sets both `IdentityAgent` and `SSH_AUTH_SOCK` from one value; it does not
+install another agent or import the Linux systemd configuration. The host
+entry preserves OrbStack's generated Include and a private, out-of-store
+`~/.ssh/config.local`. Git signing still calls `op-ssh-sign` directly,
+independently of SSH transport authentication. See
+[Darwin Home Manager migration](darwin-home-manager.md) for preparation,
+private-host ownership, and rollback.
 
 ---
 

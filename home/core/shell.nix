@@ -4,7 +4,7 @@
   programs.bash = {
     enable = true;
     enableCompletion = true;
-    bashrcExtra = ''
+    bashrcExtra = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
       export PATH="$PATH:$HOME/bin:$HOME/.local/bin:$HOME/go/bin"
     '';
     shellAliases = {
@@ -36,13 +36,13 @@
     };
 
     shellAliases = {
-      nhs = "nh os switch -- --show-trace";
+      nhs = lib.mkDefault "nh os switch -- --show-trace";
       # Cache-only rebuild: --max-jobs 0 forbids local builds, so any cache
       # miss aborts before mutating the system. Pair with `git checkout
       # flake.lock` to roll back a `nix flake update` that outran upstream
       # binary caches.
-      nhsc = "nh os switch -- --show-trace --max-jobs 0";
-      ze = "zeditor .";
+      nhsc = lib.mkDefault "nh os switch -- --show-trace --max-jobs 0";
+      ze = lib.mkDefault "zeditor .";
     };
 
     initContent = lib.mkMerge [
@@ -77,13 +77,13 @@
   programs.fish = {
     enable = true;
     shellAliases = {
-      nhs = "nh os switch -- --show-trace";
+      nhs = lib.mkDefault "nh os switch -- --show-trace";
       # Cache-only rebuild: --max-jobs 0 forbids local builds, so any cache
       # miss aborts before mutating the system. Pair with `git checkout
       # flake.lock` to roll back a `nix flake update` that outran upstream
       # binary caches.
-      nhsc = "nh os switch -- --show-trace --max-jobs 0";
-      ze = "zeditor .";
+      nhsc = lib.mkDefault "nh os switch -- --show-trace --max-jobs 0";
+      ze = lib.mkDefault "zeditor .";
     };
   };
 

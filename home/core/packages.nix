@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 
 {
   home.packages = with pkgs; [
@@ -21,8 +21,8 @@
 
     # nix related
     nix-output-monitor
-
-    # system tools
+  ] ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+    # Linux system tools
     sysstat
     lm_sensors
     ethtool

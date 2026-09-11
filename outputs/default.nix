@@ -119,11 +119,12 @@ let
     air = {
       arch = "aarch64-darwin";
       hostModule = ../hosts/air;
+      hmEntryPoint = ../home/hosts/air.nix;
     };
   };
 
-  darwinConfigurations = nixpkgs.lib.mapAttrs (_name: spec:
-    mkDarwin spec
+  darwinConfigurations = nixpkgs.lib.mapAttrs (name: spec:
+    mkDarwin (spec // { inherit name; })
   ) darwinHosts;
 in
 {

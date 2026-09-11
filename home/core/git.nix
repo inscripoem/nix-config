@@ -11,7 +11,7 @@ in
     enable = true;
     settings = {
       user = {
-        name = "inscripoem";
+        name = lib.mkDefault "inscripoem";
         email = "changxuben@gmail.com";
         signingkey = "key::${signingKey}";
       };
@@ -24,7 +24,7 @@ in
       # somehow forgets the key, $SSH_AUTH_SOCK is unset, or
       # `~/.config/1Password/ssh/agent.toml` excludes the signing vault.
       # See docs/ssh-agent.md §6.
-      gpg.ssh.program = lib.getExe' pkgs._1password-gui "op-ssh-sign";
+      gpg.ssh.program = lib.mkDefault (lib.getExe' pkgs._1password-gui "op-ssh-sign");
       commit.gpgsign = true;
       tag.gpgsign = true;
     };

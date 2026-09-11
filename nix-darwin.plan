@@ -1,9 +1,13 @@
 # nix-darwin 分阶段接管计划
 
 日期：2026-09-04
-完成日期：2026-09-06
+Phase 1 完成日期：2026-09-06
+Phase 2 激活日期：2026-09-07
+Phase 2 复核日期：2026-09-10
+Phase 2 实机验收日期：2026-09-11
 状态：Phase 1 system-only 已完成实现、静态验证、首次激活与 generation 注册；
-Phase 2 尚未开始。
+Phase 2 实现、非激活验证、迁移准备、首次 switch、自动化复核与实机验收
+均已完成。
 
 ## 1. 总体目标
 
@@ -40,15 +44,29 @@ Phase 1 只负责建立安全、可求值的 nix-darwin 基线：
 
 ## 3. Phase 2：Home Manager 与 Zsh
 
-Phase 2 使用仓库现有的 Home Manager 模块管理用户环境：
+Phase 2 合并本机有效配置与仓库现有模块，由 Home Manager 统一管理用户环境。
+共享的是声明来源，不要求 Darwin 与 Linux 生成的文件逐字相同。
 
 - Home Manager 接管 `.zshrc`、`.zprofile`、`.zshenv` 等用户 shell 文件。
-- 移除现有 Antigen 依赖。
+- Antigen 已由 Captain 卸载；本阶段移除对 `.antigen/bundles` 的残留依赖。
 - 保留由 Nix/Home Manager 管理的 Oh My Zsh、Atuin、Starship、zoxide、
   syntax-highlighting、autosuggestions 等组件。
 - 接入共享 Git、SSH、编辑器和 CLI 模块，并对 Linux-only 包做平台隔离。
 - Darwin rebuild alias 必须从 host spec 动态获取 target，不能硬编码 `air`。
-- 通用 macOS 用户配置与 `air` 专属配置分层，避免新增 Mac 时复制配置。
+- `home/core/` 定义共享行为，`home/darwin/` 只做必要的平台适配。
+- `air` 的 PATH 和所有本机特有 Shell 初始化严格放在
+  `home/hosts/air/legacy-shell.nix`，不能进入 core 或通用 Darwin 层。
+- 该本机模块保留 Brew/Zerobrew、证书路径、NVM/Bun/Go、Cargo/Rye、
+  Proto/Moon、本地 CLI 路径、OrbStack Shell 集成、OMZ 插件与别名。
+- 本阶段统一 dotfile/Shell 工具所有权，不整体启用 toolchain pack；语言工具
+  随后逐项迁移，每完成一项即移除对应的本机旧初始化，避免双重管理。
+- Mac 使用原生 1Password app；SSH socket 与环境变量共用一个定义，不安装
+  第二个 agent，不导入 Linux 的 systemd 集成。
+- Git 直接接管 Mac 的 `~/.gitconfig`，保留显示名、LFS 和 Xet custom transfer；
+  禁止旧 `.gitconfig` 覆盖另一份 XDG 配置。
+- SSH 保留 OrbStack 的生成文件 Include。三组私人主机不进入仓库或 Nix store，
+  使用 `~/.ssh/config.local`；新机器必须从安全的私人备份恢复该文件。
+- 不继续 source 整份旧 `.zshrc` 或旧 `.ssh/config`。
 
 启用前必须检查所有冲突目标及其 `.backup`。当前已知会被接管的现有文件包括：
 
@@ -60,8 +78,16 @@ Phase 2 使用仓库现有的 Home Manager 模块管理用户环境：
 - `~/.gitconfig`
 
 Home Manager 使用 `backupFileExtension = "backup"`；原文件不会直接删除。
-Phase 2 还需单独审查 Pueue、tldr-update 等用户 LaunchAgent 是否应在
-`air` 上启用。
+`air` 只接 core，不启用 Pueue；关闭 tealdeer 定时更新，保留按使用更新。
+不修改 Atuin 历史数据库、SSH 密钥或现有工具的数据目录。
+Darwin 的系统层和 HM 层都显式设置 `nix.enable = false`，保留外部 Lix。
+Darwin 关闭 HM 的 `man` 索引缓存生成，以避开当前 Fish 手册的 whatis 解析
+警告；普通手册和命令补全保留，仅不提供该缓存支撑的搜索/`man` 补全。
+原有 `~/.config/nvim` 是指向 `~/.SpaceVim` 的链接，现已备份为
+`~/.config/nvim.backup`，`.SpaceVim` 目录未修改。activation 会拒绝残留的
+父目录链接或与新 `init.lua` 冲突的 `init.vim`。
+
+详细的准备、切换、验收与回退步骤见 `docs/darwin-home-manager.md`。
 
 ## 4. 包管理策略
 
@@ -89,6 +115,9 @@ Manager；只有确实需要所有用户共享的工具才放进
 
 同一个 CLI 不同时由 Home Manager 和 Homebrew 声明，避免 PATH 和版本来源
 不明确。
+
+Phase 2 暂时保留既有 Brew/独立安装用于回退，但已纳管 CLI 的命令来源优先
+使用 HM；不在本阶段卸载重复工具。运行时管理器的迁移是后续独立变更。
 
 Phase 3 首次启用 `homebrew.enable` 时采用增量策略：不自动升级，并保持
 `onActivation.cleanup` 为 `none`/未启用。先声明并安装缺失项，不删除现有
@@ -118,7 +147,10 @@ Phase 1 不接管 Lix，因为首次部署时同时迁移 package manager、daem
 - `git diff --check`
 - `nix eval --no-warn-dirty .#darwinConfigurations.air.config.system.build.toplevel.drvPath`
 - `nix build --no-warn-dirty --no-link --dry-run .#darwinConfigurations.air.config.system.build.toplevel`
+- 构建但不激活 Darwin system，审查生成的 Shell/Git/SSH 文件和 activation。
 - 对比当前工作树与干净 `origin/main` 的 `briefcase` drvPath，必须完全一致。
+- Phase 2 另需完整的 home.file/备份冲突检查、Shell 语法和初始化顺序检查、
+  PATH/证书环境检查，以及私有 SSH fragment 的类型、所有权和权限检查。
 
 非激活验证不执行真实 `switch`；首次切换由 Captain 手动执行。
 
@@ -152,6 +184,88 @@ Phase 1 不接管 Lix，因为首次部署时同时迁移 package manager、daem
 - `dirty Git tree` 与缺少 root legacy channels 的提示均为非致命 warning；切换
   最终退出码为 0。
 
+### Phase 2 非激活验证记录（2026-09-07）
+
+- Darwin 求值、dry-run 和完整构建均退出 0，最终配置和构建没有 warning：
+  `/nix/store/silxbpmg3dbj62428dn3ql17wcv45lfp-darwin-system-26.11.4cff07d.drv`
+- 已构建但未激活的 system：
+  `/nix/store/05kfgy7l0p40w2blsdvlv2z3m0b10l69-darwin-system-26.11.4cff07d`。
+- 系统与 HM 的 `nix.enable` 都为 `false`，HM `nix.package = null`，
+  `homebrew.enable = false`；HM 没有启用任何 LaunchAgent。
+- HM 的 `bin` 不提供另一份 `nix`、SSH client、Node/Bun/Go/Rust 工具链或
+  `git-xet`；共享 CLI 使用 HM，原生 1Password 和既有语言工具继续保留。
+- `briefcase` 与干净 `HEAD`/`origin/main`（`15da910`）基线的 drvPath 完全
+  相同，仍为
+  `/nix/store/hb4ba4i7hmi596ss049vn3321xv2b47v-nixos-system-briefcase-26.11.20260826.9fbb54b.drv`。
+- 初次审计的 24 个 HM 文件目标中，10 个现有普通文件、14 个尚不存在；它们的
+  `.backup` 均不存在。父目录检查发现 `.config/nvim -> ~/.SpaceVim`，已加入
+  手动备份步骤和 activation 保护；当时尚未移动该链接。
+- `.gitconfig` 启用，XDG `git/config` 禁用且本机不存在；Git 显示名、邮箱、
+  signer、默认分支和 Xet 设置与本机一致。签名公钥指纹相同，只有 `key::`
+  包装和换行格式不同；验证未输出公钥、指纹或私人 SSH 内容。
+- 生成的 SSH 配置在排除外部 Include 的独立解析中正确得到
+  `git@ssh.github.com:443`，带空格的 1Password socket 解析无误；没有进行
+  真实 SSH 连接或签名操作。
+- Zsh/Bash/Fish 与 activation 的语法检查通过；共享初始化各出现一次，
+  OMZ 早于本机 completion，Atuin 早于后置 autosuggestion 设置。
+  用其他 host 名求值验证了 Zsh/Fish rebuild alias 的动态 target。
+- PATH 的 HM 优先级及 Zsh 去重验证通过；证书回退在没有有效 Zerobrew CA
+  文件时不新增覆盖。完整交互启动、运行时选择和 TLS 仍属于切换后验收。
+- 当时的一次性 SSH 准备脚本通过语法与夹具测试，包括不覆盖、0600 权限、
+  额外 Include、wildcard 和 symlink 拒绝。初次验证仅执行只读检查，确认可
+  提取三组私人 Host；迁移及实机验收完成后，该脚本及其测试已从仓库移除。
+- 仅单独执行了只读的迁移检查片段，确认未准备的账户会被拒绝；未执行完整
+  activation。该检查位于 HM 文件链接检查和写入边界之前。
+- `git diff --check`、`git diff --cached --check` 通过，`flake.lock` 未改变。
+  在该次非激活验证结束时，系统仍为 Phase 1 `system-1-link`，外部 Lix 仍为
+  `2.95.2`。
+
+### Phase 2 切换准备记录（2026-09-07）
+
+- Captain 使用当时的一次性准备脚本生成 `~/.ssh/config.local`；再次只读检查
+  确认文件存在，三组私人 Host 验证通过。原完整配置由 Home Manager 保留为
+  `~/.ssh/config.backup`。
+- Captain 确认改用仓库的 Neovim 配置后，已将原 `~/.config/nvim` 链接移动为
+  `~/.config/nvim.backup`。没有覆盖已有备份，没有修改或删除 `.SpaceVim`。
+- 最新 Darwin 求值退出 0、无 warning，drvPath 与已构建并审查的 generation
+  一致；构建产物仍存在。
+- 单独执行只读迁移检查片段已通过。24 个 HM 目标的 `.backup` 均无冲突，
+  父目录无阻碍接管的链接；目标均未启用 `force`，备份覆盖仍关闭。
+- 在该次切换准备结束时，系统仍为 Phase 1 `system-1-link`，尚未运行完整
+  activation 或 switch，也没有 commit/push。后续激活记录如下。
+
+### Phase 2 激活与自动化复核记录（2026-09-07；2026-09-10 复核）
+
+- 2026-09-07 的 switch 已注册并启用 `system-2-link`；system profile 与
+  `/run/current-system` 均指向已构建和审查的 Phase 2 system：
+  `/nix/store/05kfgy7l0p40w2blsdvlv2z3m0b10l69-darwin-system-26.11.4cff07d`。
+- 激活使用的命令为：
+
+```sh
+sudo -H darwin-rebuild switch --flake .#air
+```
+
+- 当前工作树重新求值得到同一个 system store path；Darwin dry-run 退出 0，
+  无 warning。系统和 HM 的 Nix 管理仍关闭，Homebrew 管理仍关闭，外部 Lix
+  仍为 `2.95.2`。
+- 24 个启用的 HM 文件目标均已成为 generation 链接，没有缺失或意外的普通
+  文件。切换前存在的 dotfiles 均保留 `.backup`；新的 `.config/nvim` 已由 HM
+  接管，原 SpaceVim 链接仍保存在 `.config/nvim.backup`。
+- 带 PTY 的新 Zsh 登录会话启动无报错。Git、Neovim、Atuin 和 Starship 来自
+  HM profile，系统 SSH 保持 `/usr/bin/ssh`，Node、Bun 和 Go 仍分别来自既有
+  NVM、本机 Bun 与 Homebrew；NVM、Proto、MoonBit 和 Rye 均可解析。
+- Git 签名配置存在，GitHub SSH 配置可解析；1Password agent socket、OrbStack
+  SSH 配置、私人 SSH fragment、Git LFS 和 Git Xet 均可用。没有出现 Pueue、
+  tldr-update 或 tealdeer 自动更新 LaunchAgent。
+- Captain 已确认 Atuin 按键、ghost text、Neovim 和编辑器 alias 的实际体验
+  正常，并完成 GitHub、私人主机与 OrbStack 的真实 SSH 验收。对 GitHub 的
+  HTTPS 检查返回 200，TLS 证书校验结果为 0。
+- 外部安装的 Proto `0.55.2` 可以启动，但仓库和全局模式均无已配置工具；
+  当前 Node、Bun 和 Go 不由它选择。Proto、MoonBit 和其他既有语言工具链均
+  有意保留在 Phase 2 所有权范围之外，不构成本阶段的迁移或验收项。
+- Phase 2 的配置、激活与功能验收已经关闭。以本阶段的正式完整文件提交验证
+  1Password 签名，不创建额外测试提交。
+
 ## 7. Phase 1 首次切换结果与回退
 
 首次切换使用 `flake.lock` 中固定的 nix-darwin revision：
@@ -175,7 +289,8 @@ sudo -H darwin-rebuild switch --flake .#air
 
 ## 8. Git 边界
 
-- Phase 1 的配置、lock file、架构文档与本计划以完整文件放入同一个 commit。
-- 不 push，不删除现有 stash。
-- 删除本地未跟踪的 `.zcode/`。
-- 只 stage 本次 Phase 1 实际包含的文件，不使用 `git add -A`。
+- Phase 1 的配置、lock file、文档与本计划已以完整文件提交并按 Captain 授权推送：
+  `15da910 darwin: bootstrap air with system-only nix-darwin`。
+- 原本未跟踪的 `.zcode/` 已按授权删除。
+- Phase 2 收尾时按完整文件暂存本阶段配置与文档，不使用 `git add -A`。
+- 本阶段不自动 commit/push，不删除 stash；提交和推送需另行授权。

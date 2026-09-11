@@ -12,7 +12,7 @@ Every host is defined by three orthogonal axes:
 |---|---|---|---|
 | **class** | NixOS system | Baseline profile of a machine or its network environment. Imported automatically based on `spec.classes`. | `desktop`, `server`, `vm`, `lan`, `public` |
 | **capability** | NixOS system | Optional system service/daemon/kernel feature. Toggled per host via `options.modules.capabilities.<name>.enable`, with optional per-component sub-toggles. | `gaming`, `sunshine`, `docker`, `tailscale`, `smart` |
-| **pack** | Home Manager | Optional bundle of user-level packages. Auto-imported into every host's HM via `hmBlock.sharedModules` (see [nixosModules.nix](../lib/nixosModules.nix)); each host only flips `packs.<name>.enable`, with per-package sub-toggles. | `creative`, `toolchain`, `ai`, `gaming` |
+| **pack** | Home Manager | Optional bundle of user-level packages. Auto-imported into every NixOS host's HM via `hmBlock.sharedModules` (see [nixosModules.nix](../lib/nixosModules.nix)); each host only flips `packs.<name>.enable`, with per-package sub-toggles. Darwin Phase 2 does not import packs. | `creative`, `toolchain`, `ai`, `gaming` |
 
 A host chooses a class stack, enables some capabilities, and selects some packs.
 
@@ -90,6 +90,7 @@ darwinHosts = {
   air = {
     arch = "aarch64-darwin";
     hostModule = ../hosts/air;
+    hmEntryPoint = ../home/hosts/air.nix;
   };
 };
 ```
@@ -187,7 +188,7 @@ assembly pattern. Each entry in `darwinHosts` becomes a
 `darwinConfigurations.<name>` target, while the flake target remains separate
 from the machine's macOS hostname.
 
-Phase 1 was deployed to `air` on 2026-09-06 and is deliberately system-only:
+Phase 1 was deployed to `air` on 2026-09-06. That generation is system-only:
 
 - `nix.enable = false` leaves the existing Lix installation, daemon, build
   users, and `/etc/nix/nix.conf` externally managed.
@@ -201,8 +202,24 @@ The original `/etc/pam.d/sudo_local` is retained as
 `/etc/pam.d/sudo_local.before-nix-darwin`. The Phase 1 generation is the
 rollback anchor for the Home Manager migration in Phase 2.
 
-Home Manager, shared user packages, and shell migration are Phase 2. Homebrew
-inventory is Phase 3.
+Phase 2 now wires Home Manager through `spec.hmEntryPoint`, with the host
+name passed as `hostSpec.name`. It uses global pkgs, user packages, and
+non-overwriting `.backup` files. The existing macOS user's home directory is
+declared explicitly. Homebrew inventory remains Phase 3; the Lix ownership
+decision remains a separate optional phase. Both the system and Darwin HM
+explicitly disable Nix management. Darwin also omits the Fish-triggered
+`mandb` index until the pinned Fish manuals are compatible with its parser;
+ordinary man pages remain available.
+
+Phase 2 was activated on `air` on 2026-09-07 as `system-2-link`. The automated
+audit and 2026-09-11 live acceptance confirmed that the system matches the
+current flake output, all 24 enabled HM file targets are linked, expected
+backups remain available, and Atuin, editor, HTTPS/TLS, GitHub SSH, private SSH,
+and OrbStack SSH behavior work. Homebrew, Lix, and existing language toolchain
+ownership remain outside nix-darwin as designed. Phase 1 generation 1 remains
+the rollback anchor. The formal whole-file commit provides the native-signing
+check and repository boundary. See
+[Darwin Home Manager migration](darwin-home-manager.md).
 
 ---
 
@@ -212,9 +229,10 @@ inventory is Phase 3.
 
 | Entry | Imports | Used by |
 |---|---|---|
-| `home/core.nix` | `home/core/` | Current NixOS hosts; Darwin from Phase 2 |
+| `home/core.nix` | `home/core/` | NixOS and Darwin shared user configuration |
 | `home/tui.nix` | `home/core/` + `home/tui/` | Terminal-oriented dev hosts |
 | `home/desktop.nix` | `home/core/` + `home/tui/` + `home/desktop/` | GUI hosts |
+| `home/darwin/default.nix` | `home/core.nix` + platform adaptations | Darwin hosts |
 
 ### 4.2 Layer Contents
 
@@ -223,10 +241,21 @@ inventory is Phase 3.
 | `core/` | git, ssh, shell (zsh/fish/starship/bat/yazi/atuin/tealdeer/fzf/eza/zoxide/carapace/direnv), CLI editors (nvim/helix), basic CLI tools (ripgrep/fd/jq/yq-go/duf/dust/htop/bottom/lazygit/gping), compression, fastfetch, nix-output-monitor, nix-index |
 | `tui/` | pueue (task queue), tokei (line counter) |
 | `desktop/` | GUI terminals (alacritty/wezterm/zellij), desktop env (plasma/niri/deskflow/wl-clipboard), GUI editors (vscode/zed/trae-cn), browsers (vivaldi/zen), media (vlc), productivity (libreoffice/localsend/siyuan), social (qq), 1password GUI, glances, rime, cc-switch |
+| `darwin/` | Core entry, native 1Password Git signer/SSH socket, Git configuration target and Zsh dot-directory adaptation; no host-specific PATH or tool initialization |
+
+`home/hosts/air/legacy-shell.nix` is the strict boundary for the existing
+machine's PATH, Brew/Zerobrew, certificate selection, NVM/Bun/Go, Cargo/Rye,
+Proto/Moon, local CLI paths, OrbStack shell integration, OMZ plugins, and
+aliases. New Macs must not inherit these settings through the generic Darwin
+layer. A later tool migration removes the corresponding legacy initialization
+when a Nix module takes ownership; Phase 2 does not replace language toolchains.
+
+`air` imports core only, not tui or desktop. Pueue is not enabled, and the
+host disables tealdeer's scheduled updater while keeping on-use updates.
 
 ### 4.3 Packs
 
-Packs are optional user-level package sets. Each pack is a home-manager module declaring `options.packs.<name>.{enable, <child>.enable}`. All pack files are aggregated in `home/packs/default.nix` and auto-injected into every host's HM via `hmBlock.sharedModules` in [nixosModules.nix](../lib/nixosModules.nix). Hosts do **not** import pack files themselves; they only flip `packs.<name>.enable = true;` in `home/hosts/<name>.nix`. Child toggles default to the parent value and can be flipped off individually to trim the closure.
+Packs are optional user-level package sets. Each pack is a home-manager module declaring `options.packs.<name>.{enable, <child>.enable}`. All pack files are aggregated in `home/packs/default.nix` and auto-injected into every NixOS host's HM via `hmBlock.sharedModules` in [nixosModules.nix](../lib/nixosModules.nix). NixOS hosts do **not** import pack files themselves; they only flip `packs.<name>.enable = true;` in `home/hosts/<name>.nix`. Child toggles default to the parent value and can be flipped off individually to trim the closure. Darwin Phase 2 deliberately does not enable this package-bundle layer.
 
 | Pack | Sub-toggles → contents |
 |---|---|
@@ -237,7 +266,10 @@ Packs are optional user-level package sets. Each pack is a home-manager module d
 
 ### 4.4 Per-host HM Entries
 
-Each entry only picks a base layer (`core.nix` / `tui.nix` / `desktop.nix`) and flips the packs it wants — pack files are auto-imported.
+NixOS entries pick a base layer (`core.nix` / `tui.nix` / `desktop.nix`) and
+flip the packs they want. `home/hosts/air.nix` instead imports `../darwin`
+and its own `air/legacy-shell.nix`, preserves host-specific Git/SSH settings,
+and requires the externally restored private SSH fragment before HM links files.
 
 ```nix
 # home/hosts/briefcase.nix
@@ -273,7 +305,7 @@ nix-config/
 │   ├── mkNixos.nix        # Host → nixosSystem
 │   ├── nixosModules.nix   # NixOS module list (classes + caps + base)
 │   ├── mkDarwin.nix       # Host → darwinSystem
-│   └── darwinModules.nix  # Darwin system module list
+│   └── darwinModules.nix  # Darwin system + Home Manager assembly
 ├── vars/
 │   └── default.nix        # username, builders, builderClientKeys
 ├── hosts/
@@ -295,8 +327,10 @@ nix-config/
 │   ├── core/              # All hosts (shell, git, ssh, editors, CLI tools)
 │   ├── tui/               # Dev hosts (pueue, tokei)
 │   ├── desktop/           # GUI hosts (terminals, browsers, desktop env, apps)
+│   ├── darwin/            # Shared Darwin platform adaptations, no local PATH
 │   ├── packs/             # Optional bundles (creative, toolchain, ai, gaming)
-│   ├── hosts/             # Per-host entry point selection
+│   ├── hosts/             # Per-host entries, including air.nix
+│   │   └── air/           # air-only legacy shell/tool initialization
 │   ├── core.nix
 │   ├── tui.nix
 │   └── desktop.nix
@@ -320,12 +354,14 @@ For NixOS:
 5. Run `nix eval` for the new host
 6. If remote-build client: generate keypair, add to `secrets/builder.yaml` and `keys/`
 
-For macOS Phase 1:
+For macOS:
 
-1. Add `arch` and `hostModule` to `darwinHosts`.
+1. Add `arch`, `hostModule`, and `hmEntryPoint` to `darwinHosts`.
 2. Create `hosts/<name>/default.nix`; macOS needs no NixOS hardware file.
-3. Evaluate `darwinConfigurations.<name>` and run a dry-run.
-4. Add the host's Home Manager entry point separately in Phase 2.
+3. Create `home/hosts/<name>.nix`, importing `../darwin`. Do not reuse air's
+   legacy shell module; audit the new machine's own settings and collisions.
+4. Evaluate `darwinConfigurations.<name>`, run a dry-run, build, and review
+   generated files before manually switching.
 
 ---
 
@@ -392,11 +428,14 @@ the non-mutating gates for this revision; do not rely on `check` as a dry run.
 
 ---
 
-**Document version**: v2.4 (2026-09-06)
-**Status**: Current (`air` Phase 1 deployed; Home Manager planned for Phase 2)
+**Document version**: v2.7 (2026-09-11)
+**Status**: Current (`air` Phase 2 active and accepted)
 
 ### Changelog
 
+- **v2.7**: Recorded completed live SSH acceptance, kept external language toolchains outside Phase 2 ownership, and defined the formal signed commit as the repository boundary.
+- **v2.6**: Recorded the successful `air` Phase 2 activation, live HM ownership, automated post-switch audit, partial interactive acceptance, external Proto status, and retained Phase 1 rollback anchor.
+- **v2.5**: Added Darwin Home Manager assembly, shared/platform/host ownership boundaries, air-only transitional shell setup, private SSH preparation, and the Phase 2 migration guide. Language toolchain migration stays separate.
 - **v2.4**: Recorded the successful `air` Phase 1 deployment, first system generation, PAM backup, default system Bash ownership, and the pinned revision's mutating `darwin-rebuild check` behavior.
 - **v2.3**: Added the `air` nix-darwin target with a system-only first phase. Existing Lix, Homebrew, hostname, macOS defaults, and user dotfiles remain externally managed until their explicitly reviewed follow-up phases.
 - **v2.2**: Pack files are now auto-imported into every host's HM via `hmBlock.sharedModules` in [nixosModules.nix](../lib/nixosModules.nix), aggregated by `home/packs/default.nix`. Each host only writes `packs.<name>.enable = true;`, mirroring the capability layer. `gaming` pack module-ized with 3 sub-toggles: `lutris`, `maa` (maa-assistant-arknights + maa-cli, same upstream software), `ww-manager`. Fixed wyse3040 pack drift (was importing `toolchain`/`ai` without ever enabling them).

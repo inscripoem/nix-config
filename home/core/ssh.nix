@@ -1,4 +1,4 @@
-{ ... }:
+{ lib, ... }:
 
 let
   onePasswordAgent = "~/.1password/agent.sock";
@@ -24,7 +24,7 @@ in
       # allowlist (agent.toml), and the $SSH_AUTH_SOCK export are
       # configured in home/secrets/1password.nix.
       "*" = {
-        IdentityAgent = onePasswordAgent;
+        IdentityAgent = lib.mkDefault onePasswordAgent;
       };
 
       # github.com over port 443: the SSH-over-HTTPS endpoint, used to
