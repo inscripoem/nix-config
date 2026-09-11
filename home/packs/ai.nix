@@ -53,6 +53,16 @@ in {
       default = cfg.enable;
       description = "zcode CLI";
     };
+
+    # Opt-in extra, not part of the pack bundle: unlike the members above it
+    # defaults to false and is enabled per host in home/hosts/<host>.nix
+    # (currently briefcase only). Promote to `default = cfg.enable` if it
+    # ever becomes standard issue.
+    hermes-agent.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "hermes-agent CLI (Nous Research), opt-in per host";
+    };
   };
 
   config = lib.mkMerge [
@@ -106,6 +116,12 @@ in {
         [Added Associations]
         x-scheme-handler/zcode=zcode.desktop;
       '';
+    })
+
+    (lib.mkIf cfg.hermes-agent.enable {
+      # Sealed nix package: runtime pip/npm self-install and `hermes update`
+      # are patched out by llm-agents.nix; state lives in ~/.hermes.
+      home.packages = [ agentPkgs.hermes-agent ];
     })
   ];
 }
