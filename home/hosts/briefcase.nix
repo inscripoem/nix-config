@@ -6,6 +6,7 @@
   packs.ai.hermes-agent.enable = true;
   packs.creative.enable = true;
   packs.gaming.enable = true;
+  packs.office.enable = true;
   packs.toolchain.enable = true;
 
   # Uninstall trae-cn on briefcase only; vm keeps trae-cn.
