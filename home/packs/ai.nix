@@ -2,6 +2,27 @@
 let
   cfg = config.packs.ai;
   agentPkgs = llm-agents.packages.${pkgs.stdenv.hostPlatform.system};
+
+  # Hermes wrapper PATH: mirrors the official flake's runtimeDeps minus node
+  # (llm-agents already prefixes it) and tirith (self-bootstrapped into
+  # ~/.hermes/bin and referenced by config.yaml). llm-agents only prefixes
+  # node, so launches outside a login shell (GUI launchers, the gateway
+  # service) would otherwise miss rg/git/ssh entirely.
+  hermesPkg = agentPkgs.hermes-agent.overrideAttrs (old: {
+    makeWrapperArgs = (old.makeWrapperArgs or [ ]) ++ [
+      "--prefix"
+      "PATH"
+      ":"
+      (lib.makeBinPath [
+        pkgs.ripgrep
+        pkgs.git
+        pkgs.openssh
+        pkgs.ffmpeg
+        pkgs.wl-clipboard
+        pkgs.xclip
+      ])
+    ];
+  });
 in {
   options.packs.ai = {
     enable = lib.mkEnableOption "AI CLI toolchain (aichat + llm-agents.*)";
@@ -121,7 +142,56 @@ in {
     (lib.mkIf cfg.hermes-agent.enable {
       # Sealed nix package: runtime pip/npm self-install and `hermes update`
       # are patched out by llm-agents.nix; state lives in ~/.hermes.
-      home.packages = [ agentPkgs.hermes-agent ];
+      home.packages = [ hermesPkg ];
+    })
+
+    # Declarative replacement for the gateway unit that `hermes gateway
+    # install` generates: its template ExecStart is a bare `python -m
+    # hermes_cli.main` that crash-loops under Nix, and the running gateway
+    # rewrites the unit file, so hand edits require a drop-in. This unit
+    # routes through the wrapper and carries the full agent toolchain on
+    # PATH. Deliberately no HERMES_MANAGED — config.yaml stays
+    # runtime-editable (that write-lock is the official HM module's managed
+    # mode, which we chose not to adopt).
+    (lib.mkIf (cfg.hermes-agent.enable && pkgs.stdenv.hostPlatform.isLinux) {
+      systemd.user.services.hermes-gateway = {
+        Unit = {
+          Description = "Hermes Agent Gateway - Messaging Platform Integration";
+          # network-online.target is a system target; a user unit can only
+          # meaningfully order after default.target.
+          After = [ "default.target" ];
+          StartLimitIntervalSec = 0;
+        };
+        Install.WantedBy = [ "default.target" ];
+        Service = {
+          Type = "simple";
+          ExecStart = "${hermesPkg}/bin/hermes gateway run";
+          WorkingDirectory = "${config.home.homeDirectory}/.hermes";
+          Environment = [
+            # Agent terminal-session toolchain. The HM user profile carries
+            # rg/jq/fd/gh/uv, the system profile grep/find/curl, plus the
+            # nix CLI and flatpak. /run/wrappers/bin (setuid) is excluded
+            # on purpose.
+            "PATH=${hermesPkg}/bin:/etc/profiles/per-user/${config.home.username}/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:${config.home.homeDirectory}/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:${config.home.homeDirectory}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+            # Feishu SDK (lark-oapi) lives outside the sealed store in the
+            # durable lazy-install target; removing this disconnects feishu.
+            "HERMES_LAZY_INSTALL_TARGET=${config.home.homeDirectory}/.hermes/lazy-packages"
+            "HERMES_HOME=${config.home.homeDirectory}/.hermes"
+            "HERMES_SUPERVISED_CHILD=1"
+          ];
+          Restart = "always";
+          RestartSec = 5;
+          # hermes gateway exits 75 to request an immediate restart and 78
+          # to signal a non-retryable failure.
+          RestartForceExitStatus = 75;
+          RestartPreventExitStatus = 78;
+          KillMode = "mixed";
+          KillSignal = "SIGTERM";
+          TimeoutStopSec = 210;
+          StandardOutput = "journal";
+          StandardError = "journal";
+        };
+      };
     })
   ];
 }
