@@ -23,6 +23,12 @@ in {
       description = "Rust toolchain (rustup)";
     };
 
+    go.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = cfg.enable;
+      description = "Go toolchain (go)";
+    };
+
     build.enable = lib.mkOption {
       type = lib.types.bool;
       default = cfg.enable;
@@ -39,6 +45,7 @@ in {
     ]
     ++ lib.optional cfg.python.enable pkgs.uv
     ++ lib.optional cfg.rust.enable pkgs.rustup
+    ++ lib.optional cfg.go.enable pkgs.go
     ++ lib.optionals cfg.build.enable [
       pkgs.just
       pkgs.devenv
