@@ -1,28 +1,13 @@
-{ config, lib, pkgs, llm-agents, ... }:
+{ config, lib, pkgs, llm-agents, hermes-agent, ... }:
 let
   cfg = config.packs.ai;
   agentPkgs = llm-agents.packages.${pkgs.stdenv.hostPlatform.system};
 
-  # Hermes wrapper PATH: mirrors the official flake's runtimeDeps minus node
-  # (llm-agents already prefixes it) and tirith (self-bootstrapped into
-  # ~/.hermes/bin and referenced by config.yaml). llm-agents only prefixes
-  # node, so launches outside a login shell (GUI launchers, the gateway
-  # service) would otherwise miss rg/git/ssh entirely.
-  hermesPkg = agentPkgs.hermes-agent.overrideAttrs (old: {
-    makeWrapperArgs = (old.makeWrapperArgs or [ ]) ++ [
-      "--prefix"
-      "PATH"
-      ":"
-      (lib.makeBinPath [
-        pkgs.ripgrep
-        pkgs.git
-        pkgs.openssh
-        pkgs.ffmpeg
-        pkgs.wl-clipboard
-        pkgs.xclip
-      ])
-    ];
-  });
+  # Official upstream package (full dependency set): feishu SDK, tirith and
+  # locales are preinstalled, and the wrapper already suffixes the complete
+  # runtime toolchain (rg/git/ssh/ffmpeg/tirith/clipboard + node+npm), so no
+  # PATH override is needed here.
+  hermesPkg = hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default;
 in {
   options.packs.ai = {
     enable = lib.mkEnableOption "AI CLI toolchain (aichat + llm-agents.*)";
@@ -140,8 +125,11 @@ in {
     })
 
     (lib.mkIf cfg.hermes-agent.enable {
-      # Sealed nix package: runtime pip/npm self-install and `hermes update`
-      # are patched out by llm-agents.nix; state lives in ~/.hermes.
+      # Official upstream flake package; state lives in ~/.hermes. Upstream
+      # does not seal runtime lazy installs: a missing dep attempts a pip
+      # install into the read-only store and fails cleanly. The durable
+      # target set on the gateway unit below gives them a working escape
+      # hatch instead.
       home.packages = [ hermesPkg ];
     })
 
@@ -173,8 +161,10 @@ in {
             # nix CLI and flatpak. /run/wrappers/bin (setuid) is excluded
             # on purpose.
             "PATH=${hermesPkg}/bin:/etc/profiles/per-user/${config.home.username}/bin:/run/current-system/sw/bin:/nix/var/nix/profiles/default/bin:${config.home.homeDirectory}/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:${config.home.homeDirectory}/.local/bin:/usr/local/bin:/usr/bin:/bin"
-            # Feishu SDK (lark-oapi) lives outside the sealed store in the
-            # durable lazy-install target; removing this disconnects feishu.
+            # Durable lazy-install target (the Docker-image escape hatch).
+            # The official package preinstalls feishu/lark-oapi, so this is
+            # no longer load-bearing — it only catches deps missing from
+            # upstream's `full` set (e.g. the ddgs web-search backend).
             "HERMES_LAZY_INSTALL_TARGET=${config.home.homeDirectory}/.hermes/lazy-packages"
             "HERMES_HOME=${config.home.homeDirectory}/.hermes"
             "HERMES_SUPERVISED_CHILD=1"
