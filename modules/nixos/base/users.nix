@@ -13,6 +13,7 @@
       "video"
       "render"
       "uinput"
+      "dialout"
     ];
     openssh.authorizedKeys.keys = vars.sshKeys;
     shell = pkgs.zsh;
