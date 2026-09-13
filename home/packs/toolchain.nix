@@ -36,18 +36,26 @@ in {
     };
   };
 
-  config.home.packages =
-    lib.optionals cfg.node.enable [
-      pkgs.bun
-      pkgs.nodejs_22
-      pkgs.pnpm
-      pkgs.yarn
-    ]
-    ++ lib.optional cfg.python.enable pkgs.uv
-    ++ lib.optional cfg.rust.enable pkgs.rustup
-    ++ lib.optional cfg.go.enable pkgs.go
-    ++ lib.optionals cfg.build.enable [
-      pkgs.just
-      pkgs.devenv
+  config = {
+    home.packages =
+      lib.optionals cfg.node.enable [
+        pkgs.bun
+        pkgs.nodejs_22
+        pkgs.pnpm
+        pkgs.yarn
+      ]
+      ++ lib.optional cfg.python.enable pkgs.uv
+      ++ lib.optional cfg.rust.enable pkgs.rustup
+      ++ lib.optional cfg.go.enable pkgs.go
+      ++ lib.optionals cfg.build.enable [
+        pkgs.just
+        pkgs.devenv
+      ];
+
+    # cargo install puts binaries in ~/.cargo/bin; rustup expects it on PATH
+    # ahead of the profile so its shims resolve to the active toolchain.
+    home.sessionPath = lib.mkIf cfg.rust.enable [
+      "${config.home.homeDirectory}/.cargo/bin"
     ];
+  };
 }
