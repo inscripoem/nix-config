@@ -221,6 +221,21 @@ the rollback anchor. The formal whole-file commit provides the native-signing
 check and repository boundary. See
 [Darwin Home Manager migration](darwin-home-manager.md).
 
+Phase 3 was activated on 2026-09-12 as generation 4. System, Bundle and HM
+checks passed, but app-path inspection found six stale cask records. The
+corrected `hosts/air/homebrew.nix` declares one tap, 20 formulae and 38 casks;
+eight formulae already supplied by HM are omitted while their installed Brew
+copies are retained. Bundle runs as `system.primaryUser`, reuses `/opt/homebrew`,
+and explicitly disables activation auto-update, upgrades and cleanup. The
+generated Brewfile passes `brew bundle check --no-upgrade`. That check trusts
+receipts, so app paths must also be checked. The corrected list is active as
+generation 5, verified on 2026-09-13. The six stale records were then removed
+with Captain's authorization, without zap or automatic dependency removal;
+the formula version list is unchanged and Bundle checks pass. Shell integration
+and runtime sources stay unchanged. Phase 2 generation 3 remains the rollback
+target for Homebrew adoption; generation 4 would reintroduce the six casks. See
+[the phase plan](../nix-darwin.plan) for validation and acceptance records.
+
 ---
 
 ## 4. Home Manager Architecture
@@ -428,11 +443,13 @@ the non-mutating gates for this revision; do not rely on `check` as a dry run.
 
 ---
 
-**Document version**: v2.7 (2026-09-11)
-**Status**: Current (`air` Phase 2 active and accepted)
+**Document version**: v2.9 (2026-09-13)
+**Status**: Current (`air` Phase 3 generation 5 active; inventory checks passed)
 
 ### Changelog
 
+- **v2.9**: Verified generation 5 activation, removed six stale cask records after authorization, and recorded unchanged formula versions and the generation 4 rollback caveat.
+- **v2.8**: Added the air Homebrew inventory and conservative Bundle policy, recorded generation 4 activation and HM checks, and prepared a correction for six stale cask records. Phase 2 generation 3 remains the adoption rollback anchor.
 - **v2.7**: Recorded completed live SSH acceptance, kept external language toolchains outside Phase 2 ownership, and defined the formal signed commit as the repository boundary.
 - **v2.6**: Recorded the successful `air` Phase 2 activation, live HM ownership, automated post-switch audit, partial interactive acceptance, external Proto status, and retained Phase 1 rollback anchor.
 - **v2.5**: Added Darwin Home Manager assembly, shared/platform/host ownership boundaries, air-only transitional shell setup, private SSH preparation, and the Phase 2 migration guide. Language toolchain migration stays separate.

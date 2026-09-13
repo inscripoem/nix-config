@@ -5,13 +5,20 @@ CLI configuration. Implementation/build verification and live activation are
 separate gates. The live switch completed on 2026-09-07; Phase 1 generation 1
 remains the system rollback anchor throughout acceptance.
 
-As of the 2026-09-11 acceptance, the account is on Phase 2 `system-2-link`, the
-live system matches the current flake output, all 24 enabled HM targets are
-linked, and the automatable post-switch checks pass. Private SSH preparation
+At the 2026-09-11 acceptance, the account was on Phase 2 `system-2-link`, the
+live system matched the Phase 2 flake output, all 24 enabled HM targets were
+linked, and the automatable post-switch checks passed. Private SSH preparation
 and the SpaceVim link backup remain intact. Captain has accepted Atuin, editor,
 HTTPS/TLS, GitHub SSH, private SSH, and OrbStack SSH behavior. The formal Phase
 2 commit serves as the native-signing check instead of a separate test commit.
 See [the phase plan](../nix-darwin.plan) for the recorded derivations and checks.
+
+Phase 3 was activated on 2026-09-12 as `system-4-link`; all 24 HM targets and
+the expected command sources passed the post-switch checks. Phase 2 generation
+3 matches commit `77515ed` and remains the rollback target for Homebrew adoption.
+The corrected 38-cask list is active as `system-5-link`, verified on 2026-09-13.
+The six stale cask records were then removed with Captain's authorization;
+see the phase plan for checks and rollback implications.
 
 ## Ownership
 
@@ -180,7 +187,8 @@ commit is needed, and pushing remains a separately authorized action.
 
 Neovim becomes the default editor and owns the `vi`/`vim` aliases. Mac's
 `ze` alias uses the existing `zed` command. Brew installations are retained
-for rollback; Phase 3 will separately consider declarations and cleanup.
+for rollback; Phase 3 prepares their declarations, with cleanup reserved for
+a separately reviewed change.
 
 ## Implementation review
 

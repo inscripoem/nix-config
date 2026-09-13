@@ -1,0 +1,96 @@
+{ vars, ... }:
+
+{
+  # Required by nix-darwin for Homebrew activation to run as the account that
+  # owns the existing /opt/homebrew installation.
+  system.primaryUser = vars.username;
+
+  homebrew = {
+    enable = true;
+
+    # Phase 3 adopts the existing inventory without mutating it beyond
+    # installing a subsequently declared missing item. Upgrades and strict
+    # cleanup remain explicit follow-up decisions.
+    onActivation = {
+      autoUpdate = false;
+      upgrade = false;
+      cleanup = "none";
+    };
+
+    taps = [
+      {
+        name = "anomalyco/tap";
+        trusted = true;
+      }
+    ];
+
+    # Formulae already supplied by Home Manager are intentionally omitted:
+    # fastfetch, fd, git, neovim, starship, unzip, xz, and zoxide. Their
+    # existing Homebrew copies remain installed while cleanup stays disabled.
+    brews = [
+      "bzip2"
+      "c-blosc"
+      "ffmpeg"
+      "gh"
+      "git-filter-repo"
+      "git-xet"
+      "go"
+      "gzip"
+      "hdf5"
+      "lynx"
+      "lz4"
+      "lzo"
+      "mole"
+      "pdm"
+      "pipx"
+      "pkgconf"
+      "poetry"
+      "protobuf"
+      "smartmontools"
+      "anomalyco/tap/opencode"
+    ];
+
+    # Exclude stale receipts whose app bundles are absent; see nix-darwin.plan.
+    # cleanup = "none" also leaves those Homebrew records untouched.
+    casks = [
+      "1password"
+      "appcleaner"
+      "blender"
+      "claude-code"
+      "codex"
+      "feishu"
+      "font-maple-mono-nf-cn"
+      "font-source-sans-3"
+      "godot"
+      "handbrake-app"
+      "heptabase"
+      "hiddenbar"
+      "iina"
+      "iterm2"
+      "keka"
+      "krita"
+      "localsend"
+      "maccy"
+      "microsoft-auto-update"
+      "microsoft-office"
+      "notion"
+      "obsidian"
+      "orbstack"
+      "pearcleaner"
+      "raycast"
+      "stats"
+      "steam"
+      "steamcmd"
+      "tailscale-app"
+      "telegram"
+      "termius"
+      "typora"
+      "uninstallpkg"
+      "vivaldi"
+      "warp"
+      "zcode"
+      "zoom"
+      "zotero"
+    ];
+  };
+}
