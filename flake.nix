@@ -38,6 +38,11 @@
     # nixpkgs-unstable to guarantee binary-cache hits via cache.numtide.com.
     llm-agents.url = "github:numtide/llm-agents.nix";
 
+    # Hermes Agent (Nous Research) upstream flake. Also pins its own nixpkgs
+    # (no follows). No binary cache, but releases land here the moment
+    # upstream cuts them — no waiting on llm-agents packaging.
+    hermes-agent.url = "github:NousResearch/hermes-agent";
+
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
       inputs.nixpkgs.follows = "nixpkgs";
