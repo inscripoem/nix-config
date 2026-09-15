@@ -142,12 +142,29 @@ the parent is off. Components that require deliberate opt-in can default to
 Run from the repository:
 
 ```sh
-# NixOS: one host, or all NixOS hosts when the argument is omitted.
-just check briefcase
+# List available commands; the default no longer updates packages.
+just
 
-# Darwin: evaluate and preview build requirements.
-nix eval --no-warn-dirty .#darwinConfigurations.air.config.system.build.toplevel.drvPath
-nix build --no-link --dry-run .#darwinConfigurations.air.config.system.build.toplevel
+# Evaluate one host on either platform.
+just check briefcase
+just check air
+
+# Evaluate all NixOS and Darwin hosts.
+just check
+
+# Preview build requirements without building or activating (either platform).
+just dry-run air
+
+# Custom package updates remain explicit; this is separate from flake.lock.
+just update siyuan --dry-run
+```
+
+Host names are discovered from the flake outputs. Unknown names and discovery
+failures return an error. If `just` is not installed, use the locked nixpkgs
+input, for example:
+
+```sh
+nix run --no-warn-dirty --inputs-from . nixpkgs#just -- check air
 ```
 
 Use the verification requirements in [AGENTS.md](../AGENTS.md) for configuration

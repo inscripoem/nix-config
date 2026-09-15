@@ -1,5 +1,8 @@
-default: update
+# Show available commands.
+default:
+    @{{quote(just_executable())}} --list
 
+# Update custom package versions (optional package, trae-cn version, --dry-run).
 update *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -22,6 +25,7 @@ update *args:
         ./scripts/update-versions.sh --only="$pkg" $dry
     fi
 
+# Deploy NixOS hosts via Colmena (optional host or selector).
 apply target="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -49,9 +53,10 @@ apply target="":
 # package from this flake's locked nixpkgs input.
 # Generated hardware files retain upstream boilerplate. The scan path
 # precedes `--exclude` because deadnix consumes all following values.
-# `just check` iterates every host in .#nixosConfigurations and
-# forces evaluation of its top-level derivation path.
+# `just check` evaluates every NixOS and Darwin host, or one named host.
+# `just dry-run <host>` previews build requirements without activation.
 # ══════════════════════════════════════════════════════════════
+# Check unused Nix declarations using the locked nixpkgs input.
 lint:
     nix run --no-warn-dirty --inputs-from . 'nixpkgs#deadnix' -- \
         --fail \
@@ -61,17 +66,45 @@ lint:
         hosts/vm/hardware-configuration.nix \
         hosts/wyse3040/hardware-configuration.nix
 
-check host="":
+# Evaluate one host, or all NixOS and Darwin hosts when omitted.
+check host="": (_verify "eval" host)
+
+# Preview a host's build requirements without building or activating it.
+dry-run host: (_verify "dry-run" host)
+
+[positional-arguments]
+_verify action host:
     #!/usr/bin/env bash
     set -euo pipefail
-    if [[ -z "{{host}}" ]]; then
-        for h in $(nix eval --json --no-warn-dirty '.#nixosConfigurations' --apply 'builtins.attrNames' | jq -r '.[]'); do
-            echo "▶ $h"
-            nix eval --no-warn-dirty ".#nixosConfigurations.$h.config.system.build.toplevel.drvPath" > /dev/null
-        done
-    else
-        nix eval --no-warn-dirty ".#nixosConfigurations.{{host}}.config.system.build.toplevel.drvPath"
+    action="$1"
+    host="$2"
+    targets=()
+    for collection in nixosConfigurations darwinConfigurations; do
+        # Keep discovery in an assignment: failures must not become an empty,
+        # successful loop (including when nix or jq fails in the pipeline).
+        hosts=$(nix eval --json --no-warn-dirty ".#$collection" --apply 'builtins.attrNames' | jq -r '.[]')
+        while IFS= read -r h; do
+            [[ -n "$h" ]] || continue
+            if [[ -z "$host" || "$host" == "$h" ]]; then
+                targets+=("$collection.$h")
+            fi
+        done <<< "$hosts"
+    done
+    if [[ ${#targets[@]} -eq 0 ]]; then
+        echo "Unknown host: $host (see outputs/default.nix)" >&2
+        exit 2
     fi
+    for target in "${targets[@]}"; do
+        echo "▶ $target"
+        case "$action" in
+            eval)
+                nix eval --no-warn-dirty ".#$target.config.system.build.toplevel.drvPath"
+                ;;
+            dry-run)
+                nix build --no-warn-dirty --no-link --dry-run ".#$target.config.system.build.toplevel"
+                ;;
+        esac
+    done
 
 # ══════════════════════════════════════════════════════════════
 # Initial install (bare host or Live USB). Runs on briefcase;
