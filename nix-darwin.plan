@@ -8,10 +8,18 @@ Phase 2 实机验收日期：2026-09-11
 Phase 3 非激活验证日期：2026-09-12
 Phase 3 首次激活日期：2026-09-12
 Phase 3 修订清单验收及授权清理日期：2026-09-13
+Phase 3 推送及 Phase 4 准备日期：2026-09-14
+Phase 4 实机切换准备完成日期：2026-09-15
+Phase 4 首次激活与自动化验收日期：2026-09-15
+Phase 4 重启验收日期：2026-09-15
 状态：Phase 1 system-only 已完成实现、静态验证、首次激活与 generation 注册；
 Phase 2 实现、非激活验证、迁移准备、首次 switch、自动化复核与实机验收
 均已完成。Phase 3 的 38-cask 修订清单已激活为 generation 5，系统、HM 与
 清单自动化检查通过；6 条失效 cask 记录已按 Captain 授权定点清理。
+Phase 3 已提交并推送为 `9b9a49e`。Phase 4 实现与非激活验证已通过；
+四个系统文件已独立备份，安装器 shell hook 已停用。Captain 已运行 `nhs`，
+generation 6 已激活，自动化与重启验收均通过；配置与验收记录纳入本次
+Phase 4 完整提交，旧安装与恢复材料继续保留。
 
 ## 1. 总体目标
 
@@ -84,7 +92,8 @@ Phase 2 合并本机有效配置与仓库现有模块，由 Home Manager 统一�
 Home Manager 使用 `backupFileExtension = "backup"`；原文件不会直接删除。
 `air` 只接 core，不启用 Pueue；关闭 tealdeer 定时更新，保留按使用更新。
 不修改 Atuin 历史数据库、SSH 密钥或现有工具的数据目录。
-Darwin 的系统层和 HM 层都显式设置 `nix.enable = false`，保留外部 Lix。
+Phase 2–3 的 Darwin 系统层和 HM 层都显式设置 `nix.enable = false`，
+保留外部 Lix；Phase 4 仅开启系统层，HM 层继续关闭。
 Darwin 关闭 HM 的 `man` 索引缓存生成，以避开当前 Fish 手册的 whatis 解析
 警告；普通手册和命令补全保留，仅不提供该缓存支撑的搜索/`man` 补全。
 原有 `~/.config/nvim` 是指向 `~/.SpaceVim` 的链接，现已备份为
@@ -163,12 +172,116 @@ Phase 1 不接管 Lix，因为首次部署时同时迁移 package manager、daem
 配置会显著扩大故障面。`nix.enable = false` 是 nix-darwin 官方支持的外部 Nix
 安装模式。
 
-如果以后需要声明式管理 Lix，作为独立阶段完成：
+Phase 4 按独立阶段接管 Lix：
 
 1. 确认现有 Lix 安装器、launchd daemon、build users 和配置文件的所有权。
 2. 确认当前 nixpkgs/nix-darwin 对 Lix package 的支持方式。
 3. 明确选择继续使用 Lix，而不是无意切换到 nixpkgs 默认的官方 Nix。
 4. 先构建和审查 activation，再在已有 Darwin generation 的前提下迁移。
+
+2026-09-14 已完成只读兼容性检查并准备配置：
+
+- 当前安装器为 Lix installer 3.95.0，客户端为 Lix 2.95.2；锁定 nixpkgs
+  的 `pkgs.lix` 也是 2.95.2。显式选择 Lix，不切换官方 Nix。
+- 实机 `nixbld` GID 350、32 个 `_nixbld` 用户 UID 351–382 与当前
+  nix-darwin 默认值一致，无需 UID/GID 迁移。
+- `nix.conf` 和仅含注释的 `nix.custom.conf` 都命中上游接管 hash 白名单。
+  保留 flakes、Lix cache 信任和仅 root 为 trusted user 的边界；不启用
+  自动 GC/optimise。保留 daemon 日志路径。
+- `nixpkgs` registry 将固定到系统的 lock 输入，不再跟随全局 registry 的
+  移动分支；NIX_PATH 保留 flake lookup，不引入缺失的 root channel。
+- 安装器的 APFS 挂载服务、receipt 和原 global profile 不动。原 profile
+  中的 daemon plist 是退回 unmanaged 模式的来源。
+- 检查时旧 shell repair hook 正等待不存在的 `/nix/lix-installer`；实际安装器在
+  `/nix/nix-installer`。切换前备份并停用该 hook，不能修路径后运行 repair，
+  以免重新引入 Shell 文件的第二个管理者。实机准备已于 2026-09-15 完成。
+- generation 5 为 Phase 4 回退锚点，但 generation rollback 不会自动恢复
+  原 `nix.conf`；必须另行恢复配置并重启原 daemon。
+
+完整准备、验收与回退步骤见 `docs/darwin-lix.md`。首次 switch 已由 Captain
+运行 `nhs` 完成；本次完整提交作为 Phase 4 的仓库边界。
+
+### Phase 4 非激活验证记录（2026-09-14–15）
+
+- Darwin eval、dry-run 和完整 build 均退出 0，无 warning。drvPath：
+  `/nix/store/vb2g3mp13j8hx0mwsz00nw88ffsiaa18-darwin-system-26.11.4cff07d.drv`。
+- 已构建但未激活的 system：
+  `/nix/store/3w1v4ajlf0h08jg0k0fw7d28743bqbfl-darwin-system-26.11.4cff07d`。
+- dry-run 初次列出 15 个 derivation、21 个 fetch path；下载 15.12 MiB，
+  解包 54.64 MiB。生成的 nix.conf 通过所选 Lix 的构建期校验。
+- daemon plist 指向 `/nix/store/gz67hm146ll3jbkvri3rf33idvjk8bcl-lix-2.95.2`；
+  该客户端运行并报告 Lix 2.95.2。plist 语法检查通过。
+- 使用 activation shebang 指定的 Bash 5.3 检查 activation 和 bashrc，
+  以及 Zsh 检查 zshenv，均通过。macOS `/bin/bash` 为旧版本，不能用于
+  校验已有 HM activation 中的 `[[ -v ... ]]`。
+- 新旧 HM activation 均为 `d41w2k76qkk8p5824al4lfma63vq92fj-activation-inscripoem`，
+  Brewfile 均为 `bd8irpxrp7hspw1965a7a3cj6gh4iikl-Brewfile`，没有引入用户配置或
+  Brew 清单变更。系统 shell 环境仅增加 NIX_PATH 及已有用户 channel lookup。
+- 当前工作树与干净 `origin/main`（`9b9a49ef40fedc66d2140c662c3f50b256c86eeb`）
+  的 briefcase drvPath 完全相同：
+  `/nix/store/6q49f0v8pxjh50kf5jina6fz3z4b5wfa-nixos-system-briefcase-26.11.20260826.9fbb54b.drv`。
+- 复核确认只有 32 个带下划线的 build users，不存在上游脚本拟清理的旧式
+  `nixbldN` 用户。原配置 hash 未变，备份名称和 registry 目标仍为空闲。
+- `git diff --check` 通过。当时 system profile 仍为 generation 5；未备份
+  系统文件、停用 hook、执行 repair、重启 daemon 或运行 switch。
+
+### Phase 4 实机切换准备（2026-09-15）
+
+- Captain 明确授权后，新建 `/var/root/nix-config-phase4-backup-20260915`，
+  root:wheel、0700，备份两份 Nix 配置、原 daemon plist 和 shell hook plist。
+  四份副本分别通过 `cmp`，未覆盖已有目录或备份。
+- 仅对 `systems.lix.nix-installer.nix-hook` 执行 `launchctl disable` 和
+  `bootout`，均退出 0。复核 disabled override 已生效，服务已卸载，
+  等待进程已退出；原 hook plist 保留且 hash 不变。
+- 原 Nix daemon PID 805、runs=1 未变；daemon-store 查询通过。
+  `/nix` 挂载正常，挂载 job 已加载且上次退出 0，挂载 plist 未改动。
+- 原配置 hash、build-user ID/GID 和 global profile 未变；配置自动备份名
+  与 registry 目标仍为空闲。系统仍为 generation 5。
+- 再次 Darwin eval 与完整 build 均退出 0，无 warning，输出仍为上述
+  Phase 4 drv/system。未运行 repair/uninstall、重启 daemon 或执行 switch。
+- 可以由 Captain 在仓库运行 `nhs`；之后验收客户端/daemon、实际构建、
+  HM/Brew 和重启。Phase 4 尚未提交或推送。
+
+### Phase 4 激活与自动化验收（2026-09-15）
+
+- Captain 运行 `nhs` 后，system profile 为 `system-6-link`，与
+  `/run/current-system` 同指向已审查的 `3w1v4ajlf0h08jg0k0fw7d28743bqbfl` system。
+- 新登录 Zsh 的 `nix` 来自 `/run/current-system/sw/bin/nix`，版本 Lix 2.95.2；
+  daemon 使用已审查的 `gz67hm146ll3jbkvri3rf33idvjk8bcl-lix-2.95.2` 包。
+  live plist 与 generation 一致，服务运行正常。
+- 新建的不可替代、本机构建测试通过 UID 351–382/GID 350 断言，实际输出
+  `uid=351 gid=350`，daemon 查询也通过；并非仅验证求值。
+- `nix.conf`/registry 已链接至 `/etc/static`；两份自动备份 hash 与原件一致，
+  trusted-users 仍只有 root，cache 与 sandbox 策略符合审查结果。
+- 24 个 HM 链接全部正确；Git/Neovim、Node/Bun/Go 来源未变，登录 Shell
+  与 Nix 证书路径检查通过。Brew Bundle `check --no-upgrade` 通过。
+- 旧 repair hook 仍禁用，未引入自动 GC/optimise 服务。原 global profile、
+  APFS 挂载 job/plist 与 generation 5 回退点保留，`/nix` 正常挂载。
+- 当时自动化验收通过，尚需 Captain 重启后复核挂载、daemon、Shell 与实际构建。
+  未清理旧 profile 或备份，未提交/推送 Phase 4。
+
+### Phase 4 重启验收（2026-09-15）
+
+- Captain 重启后，系统报告开机时间为 20:35:34（Asia/Shanghai）；
+  generation 6 及审查过的 system 输出保持生效，没有再执行 switch。
+- `/nix` 自动挂载，原挂载 job 运行一次并退出 0，plist hash 未变。
+- managed Lix daemon 已随开机启动：PID 502、runs=1、never exited，
+  使用已审查的 Lix 2.95.2 store 路径。旧 shell repair hook 仍禁用。
+- 新登录 Zsh、Lix/其他工具来源、证书路径、24 个 HM 链接和 Brew Bundle
+  `check --no-upgrade` 全部通过；cache/trust 设置未变。
+- 新建的不可替代本地测试构建通过，实际 UID 351/GID 350，输出：
+  `/nix/store/72azbvjf59nipgcd2zs324j45lq3l5la-air-lix-reboot-acceptance-1789478618`。
+  daemon-store 查询也通过。
+- 两份自动配置备份 hash、原 global profile 和 generation 5 回退点保留。
+  Phase 4 接管与实机验收已完成；截至该次验收时未提交/推送，未清理旧安装与恢复材料。
+
+### Phase 4 提交前复核（2026-09-15）
+
+- Captain 明确授权提交与推送，并要求先检查上游。`git fetch origin` 成功后，
+  HEAD 与 origin/main 均为 `9b9a49ef40fedc66d2140c662c3f50b256c86eeb`，
+  ahead/behind 为 0/0，无需整合上游变更。
+- 配置和准备、激活、重启验收记录按六个完整文件纳入同一个签名提交。
+  不清理旧 profile、安装器或备份，不执行额外 switch。
 
 ## 6. 验证门槛
 

@@ -205,9 +205,9 @@ rollback anchor for the Home Manager migration in Phase 2.
 Phase 2 now wires Home Manager through `spec.hmEntryPoint`, with the host
 name passed as `hostSpec.name`. It uses global pkgs, user packages, and
 non-overwriting `.backup` files. The existing macOS user's home directory is
-declared explicitly. Homebrew inventory remains Phase 3; the Lix ownership
-decision remains a separate optional phase. Both the system and Darwin HM
-explicitly disable Nix management. Darwin also omits the Fish-triggered
+declared explicitly. Homebrew inventory is handled in Phase 3; Lix ownership
+is handled separately in Phase 4. Through Phase 3, both the system and Darwin
+HM explicitly disable Nix management. Darwin also omits the Fish-triggered
 `mandb` index until the pinned Fish manuals are compatible with its parser;
 ordinary man pages remain available.
 
@@ -235,6 +235,23 @@ the formula version list is unchanged and Bundle checks pass. Shell integration
 and runtime sources stay unchanged. Phase 2 generation 3 remains the rollback
 target for Homebrew adoption; generation 4 would reintroduce the six casks. See
 [the phase plan](../nix-darwin.plan) for validation and acceptance records.
+
+Phase 3 commit `9b9a49e` is pushed. Phase 4 enables system ownership of Lix
+with `nix.enable = true` and `nix.package = pkgs.lix`; both the installer and
+locked nixpkgs supply version 2.95.2. HM still disables Nix management. The
+system takes over the daemon, configuration, matching build-user IDs and a
+locked nixpkgs registry entry. Cache trust is retained without adding trusted
+users or automatic GC. The installer APFS mount service and original global
+profile remain intact for recovery. Generation 5 is the rollback anchor. On 2026-09-15,
+the four-file root-only backup was verified and the installer shell hook was
+disabled/unloaded with Captain's authorization; the existing daemon and APFS
+mount service were left unchanged. Captain then activated generation 6 with
+`nhs`. Client/daemon provenance, an actual build under UID 351/GID 350, all 24
+HM links and Brew Bundle checks passed. Reboot acceptance also passed: `/nix`
+mounted, the managed daemon started, and a new build under UID 351/GID 350,
+fresh shell, HM links and Brew checks succeeded. Old recovery material remains. See
+[Lix ownership migration](darwin-lix.md), including the manual config restore
+required in addition to generation rollback.
 
 ---
 
@@ -443,11 +460,12 @@ the non-mutating gates for this revision; do not rely on `check` as a dry run.
 
 ---
 
-**Document version**: v2.9 (2026-09-13)
-**Status**: Current (`air` Phase 3 generation 5 active; inventory checks passed)
+**Document version**: v2.10 (2026-09-15)
+**Status**: Current (`air` Phase 4 generation 6 active; automated and reboot acceptance passed)
 
 ### Changelog
 
+- **v2.10**: Enabled Lix system ownership with the same 2.95.2 version, documented the installer shell-hook boundary and separate config-file rollback, and completed authorized backup/hook deactivation. Captain activated generation 6; automated and reboot checks including real builds passed. Phase 4 configuration and acceptance records form one authorized commit; old recovery material is retained.
 - **v2.9**: Verified generation 5 activation, removed six stale cask records after authorization, and recorded unchanged formula versions and the generation 4 rollback caveat.
 - **v2.8**: Added the air Homebrew inventory and conservative Bundle policy, recorded generation 4 activation and HM checks, and prepared a correction for six stale cask records. Phase 2 generation 3 remains the adoption rollback anchor.
 - **v2.7**: Recorded completed live SSH acceptance, kept external language toolchains outside Phase 2 ownership, and defined the formal signed commit as the repository boundary.

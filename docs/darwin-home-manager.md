@@ -37,10 +37,14 @@ and removes that setup here in the same change. Phase 2 does not enable the
 toolchain pack or replace Node/Bun/Rust installations wholesale. Existing
 tool data, caches, Atuin history, and private keys are not migrated or deleted.
 
-Both nix-darwin and Darwin HM explicitly set `nix.enable = false`, keeping
-the existing Lix installation externally managed. The pinned HM module does
-not inherit this switch reliably from nix-darwin; the home-level setting is
-intentional, even while `nix.package` remains unset.
+Through Phase 3, both nix-darwin and Darwin HM explicitly set
+`nix.enable = false`, keeping Lix externally managed. The Phase 4
+configuration enables system ownership with `pkgs.lix`; HM keeps its explicit
+`nix.enable = false` to avoid a second Nix configuration writer. Phase 4 was
+activated as generation 6 on 2026-09-15; all 24 HM links and expected tool
+sources passed verification. Reboot acceptance also passed on 2026-09-15.
+See [Lix ownership migration](darwin-lix.md) for the
+installer-hook preparation and configuration-file rollback requirements.
 
 Darwin also sets `programs.man.generateCaches = false`: Fish's completion
 module otherwise enables `mandb`, whose whatis parser rejects several Fish
