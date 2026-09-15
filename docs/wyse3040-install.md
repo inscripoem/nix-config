@@ -1,682 +1,171 @@
-# Wyse 3040 → NixOS Install Plan
+# Wyse 3040 installation and maintenance
 
-## 1. Hardware overview
+The Wyse is an Ethernet-connected server with an ephemeral root filesystem
+and a remote Nix builder. Its host entry is in
+[outputs/default.nix](../outputs/default.nix).
 
-| Component | Spec | Notes |
-|-----------|------|-------|
-| CPU | Intel Atom x5-Z8350 @ 1.44 GHz | 4 cores, Cherry Trail, x86_64 |
-| RAM | 1.8 GB DDR3L | Soldered, not upgradeable |
-| eMMC | 8 GB | mmcblk0; by-id `mmc-H8G4a__0x4fa1ec64` |
-| SD card | 32 GB | mmcblk1; by-id `mmc-SDABC_0xaa000150` |
-| Boot | UEFI only | No Legacy/CSM option |
-| NIC | 1× GbE | Realtek RTL8111 via `r8169` |
-| WiFi | 1× 802.11ac | Broadcom BCM4356 (`brcmfmac`) |
+## 1. Hardware
 
-## 2. Known quirks
+The Atom x5-Z8350 system has about 1.8 GB usable RAM, an 8 GB soldered eMMC,
+and a replaceable SD card. Limited RAM makes local builds impractical.
 
-### 2.1 UEFI fallback boot
-The Wyse 3040 firmware ignores NVRAM boot entries and only honours
-`\EFI\BOOT\BOOTX64.EFI` on the EFI system partition. Setting
-`efiInstallAsRemovable = true` makes GRUB write to that exact path.
+[hardware.nix](../hosts/wyse3040/hardware.nix) carries the machine-specific
+boot and service workarounds; keep them out of the generated
+[hardware-configuration.nix](../hosts/wyse3040/hardware-configuration.nix),
+which the installation recipe regenerates.
 
-### 2.2 `dw_dmac_core` hangs on shutdown
-This DMA controller driver deadlocks the Atom on reboot/shutdown. It is
-blacklisted in `hardware.nix`; the kernel parameter `reboot=efi` is
-also set so the firmware bypasses the BIOS-style reboot path.
+## 2. Storage and boot
 
-### 2.3 eMMC + SD enumeration order flips across kernels
-On Debian 5.10 the eMMC was `mmcblk0` and SD was `mmcblk1`. On the
-NixOS installer kernel 6.18 they are swapped. Hard-coding `/dev/mmcblkN`
-would silently wipe the wrong disk on a re-install. All disk references
-in `disk-config.nix` use `/dev/disk/by-id/` symlinks instead.
+### 2.1 Disk layout
 
-### 2.4 PrivateTmp fails with boot.tmp.useTmpfs
-When `boot.tmp.useTmpfs = true` (set by `wear-leveling.nix` for SD-card
-wear protection), systemd mounts a global tmpfs on `/tmp` at boot. The
-`PrivateTmp=yes` directive creates a new mount namespace and attempts to
-overmount a per-service tmpfs on `/tmp` — this clone(CLONE_NEWNS) fails
-with `EPERM` because the pre-existing tmpfs mount cannot be overmounted
-this way.
+[disk-config.nix](../hosts/wyse3040/disk-config.nix) uses physical disk IDs,
+because `/dev/mmcblkN` enumeration has changed between kernels.
 
-The Atom x5-Z8350 CPU itself has no seccomp or namespace issues; `kernel
-6.18.5` with `CONFIG_SECCOMP=y` runs every other hardening option
-correctly. The fix uses `TemporaryFileSystem="/tmp /var/tmp"` (a
-different systemd code path that does not trigger the overmount
-conflict) and disables `PrivateTmp`. See §12.1 for the full diagnosis.
+| Device | Recorded ID | Use |
+|---|---|---|
+| eMMC | `mmc-H8G4a__0x4fa1ec64` | 512 MB EFI partition; remainder unallocated |
+| SD | `mmc-SDABC_0xaa000150` | Btrfs root, store, persistent state, and swap |
 
-### 2.5 eMMC wear
-The eMMC is soldered and already showing age. The layout keeps the eMMC
-read-heavy: only the 512 MiB EFI system partition lives there; the
-remaining ~7.5 GiB is left unpartitioned as an emergency reserve.
+Verify IDs on the actual target before installation or after replacing media.
+Both disks are partitioned by the install recipe.
 
-### 2.6 NixOS bug #74899 — avahi mDNS dropped after deploy
-A 10-year-old bug in `switch-to-configuration.pl`: the script has a
-literal `FIXME` comment for socket-unit changes. When `avahi-daemon`
-changes (our per-deploy hardening override triggers this), the socket
-is restarted but the service is never re-activated, so `wyse3040.local`
-stops resolving.
+The firmware uses the removable-media EFI fallback path. GRUB is configured
+with `efiInstallAsRemovable = true` and without NVRAM writes. The host also
+blacklists `dw_dmac_core` and uses `reboot=efi` for shutdown/reboot problems.
+MMC/SDHCI drivers are included in the initrd.
 
-## 3. Design decisions
+### 2.2 Persistence and wear
 
-### 3.1 Disk strategy
-- **eMMC (`mmcblk0`):** 512 MiB FAT32 ESP mounted at `/boot`. Nothing
-  else — preserves eMMC wear budget.
-- **SD card (`mmcblk1`):** Single GPT partition, whole-disk Btrfs with
-  the subvolumes listed below. The SD is the only write target.
+The [impermanence capability](../modules/nixos/capabilities/impermanence.nix)
+restores `@root` from `@root-blank` before mounting root. Its systemd-initrd
+service waits for the Btrfs device and initializes the blank snapshot on first
+boot. `/nix` and `/persist` are separate subvolumes; `/persist` is mounted early.
 
-### 3.2 Statelessness with impermanence
-`@root` is deleted and re-snapshot from `@root-blank` on every boot
-inside an `initrd` systemd service. The system always boots into a
-"just installed" state. Data that must survive lives under `/persist`
-(bind-mounted from the `@persist` subvolume).
+Only the declared persistence list survives root rollback. It includes host
+SSH keys, machine identity, NetworkManager state, service data, and selected
+user directories. Add required application state to the appropriate persistence
+module before relying on it. Docker adds its own persistent state.
 
-### 3.3 Build separation
-1.8 GiB of RAM makes local Nix builds impractical — derivations OOM
-before completing. `max-jobs = 0` and `distributedBuilds = true`
-route everything to `briefcase.local` over SSH. The Wyse itself never
-builds.
+The [SD-card capability](../modules/nixos/capabilities/sdcard.nix) uses tmpfs
+for `/tmp`, zram before disk swap, bounded journals, GC, optimisation, and TRIM.
+These reduce writes and store pressure; they do not replace a data backup.
 
-### 3.4 Runtime data tiers
-| Tier | Location | Survives reboot? | Managed by |
-|------|----------|-----------------|------------|
-| Declarative | `/etc`, `/nix/store` | Yes (NixOS activation) | Nix |
-| Ephemeral | `/`, `/var/tmp` | No | impermanence |
-| Whitelisted | `/persist` (logs, srv, ssh host keys) | Yes | impermanence |
-| Imperative | `/srv` | Yes | human |
+## 3. Secrets and remote builds
 
-## 4. Repo setup checklist (all files created/modified)
+The [host module](../hosts/wyse3040/default.nix) decrypts the builder SSH key to
+`/persist/root/.ssh/builder_ed25519`. Its public half must be listed in
+`vars.builderClientKeys` on the builder. The
+[client capability](../modules/nixos/capabilities/remote-build-client.nix)
+uses `vars.builders` and sets local `max-jobs = 0`.
 
-- `hosts/wyse3040/default.nix` — host entry, imports sub-modules
-- `hosts/wyse3040/hardware.nix` — PrivateTmp→TemporaryFileSystem fix,
-  GRUB, blacklists, logind timeouts, SSH KexAlgorithms
-- `hosts/wyse3040/disk-config.nix` — disko layout, by-id disks, Btrfs
-  subvolumes, mount options
-- `hosts/wyse3040/impermanence.nix` — initrd rollback service,
-  `/persist` whitelist
-- `hosts/wyse3040/wear-leveling.nix` — tmpfs, zram, GC, journald cap,
-  fstrim
-- `hosts/wyse3040/hardware-configuration.nix` — generated by
-  `nixos-generate-config`; do not hand-edit
-- `home/hosts/wyse3040.nix` — imports `../tui.nix`
-- `modules/nixos/base/wifi.nix` — SOPS-backed NetworkManager system
-  connection
-- `vars/default.nix` — `builders` table, `builderClientKeys`
-  (populated from `keys/wyse3040-builder-ed25519.pub`)
-- `.sops.yaml` — age keys for editor, recovery, briefcase, wyse3040
-- `justfile` — `apply`, `check`, `install-remote` recipes; avahi
-  workaround
-- `outputs/default.nix` — `wyse3040` host spec with `deploy = true`
-- `flake.nix` — `impermanence` input (others pre-existing)
+Before a reinstall, preserve the registered host Ed25519 key privately so the
+new system can decrypt `secrets/builder.yaml`. For replacement hardware, either
+provision that identity deliberately or register a new host key with SOPS and
+rewrap the required file. See [secrets](secrets.md).
 
-## 5. Pre-flight verification: `just check`
+The current host does not enable the WiFi profiles capability. If WiFi is
+needed, configure it explicitly and verify connectivity before removing Ethernet.
 
-```bash
-just check wyse3040
-```
+## 4. Pre-install checks
 
-This forces evaluation of
-`.#nixosConfigurations.wyse3040.config.system.build.toplevel.drvPath`.
-The command must exit 0 with no `error:` lines. Do not proceed to
-installation if evaluation fails.
-
-## 6. Phase 1: Boot into nixseed Live USB
-
-Prepare a USB installer with a recent NixOS ISO. On the Wyse, press
-`F12` during POST to bring up the one-time boot menu and select the
-USB. The Wyse's UEFI firmware will only boot removable media with a
-standard x86_64 EFI binary.
-
-Once in the live environment:
-
-```bash
-# Verify disk identity (critical — never trust mmcblkN order)
-ls -l /dev/disk/by-id/mmc-*
-
-# Confirm eMMC and SD by serial
-# Expected:
-#   mmc-H8G4a__0x4fa1ec64 -> ../mmcblk0
-#   mmc-SDABC_0xaa000150 -> ../mmcblk1
-```
-
-If the by-id symlinks are missing, the SD card is not seated correctly
-or is defective.
-
-## 7. Phase 2: nixos-anywhere one-shot install
-
-From a machine that already has the repo checked out (in this case,
-`briefcase`), run:
-
-```bash
-just install-remote wyse3040 <wyse3040-ip>
-```
-
-This invokes `nixos-anywhere` with:
-- `--flake .#wyse3040`
-- `--generate-hardware-config` to write
-  `hosts/wyse3040/hardware-configuration.nix`
-- `root@<wyse3040-ip>` as the target
-
-**Requirements:**
-- Root SSH access to the Wyse (use `ssh-copy-id` first if needed).
-- The Wyse must be on the same L2 segment as the builder (briefcase)
-  so it can fetch the Nix store closure from `cache.nixos.org` and
-  remote-build derivations.
-
-**What happens during install:**
-1. `nixos-anywhere` copies the flake's closure to `/nix/var/nix/profiles`
-   on the target.
-2. `nixos-generate-config` detects hardware and writes
-   `hardware-configuration.nix`.
-3. Disko partitions the disks according to `disk-config.nix` and formats
-   the Btrfs subvolumes.
-4. The new system is activated. The bootloader (GRUB as removable EFI)
-   is installed to the ESP.
-
-## 8. Phase 3: SOS WiFi (manual key registration + sops updatekeys + first safe-apply)
-
-After the wired install the Wyse has no WiFi credentials yet.
-
-### 8.1 Generate the host age key
-The host's ed25519 SSH key doubles as the SOPS decryption key. On the
-Wyse:
-
-```bash
-cat /etc/ssh/ssh_host_ed25519_key.pub | ssh-to-age
-```
-
-Append the resulting age public key to `.sops.yaml` under the
-`wyse3040` recipient block (it is already pre-seeded there).
-
-### 8.2 Create `secrets/wifi.yaml`
-Encrypt the WiFi SSID and PSK:
-
-```bash
-sops secrets/wifi.yaml
-```
-
-Paste the following template:
-
-```yaml
-WIFI_SSID: "HKHomeNet_5G"
-WIFI_PSK: "your-psk-here"
-```
-
-Save. SOPS will encrypt it for all recipients in `.sops.yaml` (editor,
-recovery, briefcase, wyse3040).
-
-### 8.3 Builder key (declarative via sops)
-The builder SSH keypair is generated on the deployer machine and stored
-declaratively:
-
-- Private key → `secrets/builder.yaml` (SOPS-encrypted, auto-decrypted
-  on the Wyse to `/persist/root/.ssh/builder_ed25519` at activation).
-- Public key → `keys/wyse3040-builder-ed25519.pub`, referenced by
-  `vars/default.nix` → `builderClientKeys`.
-
-No manual `ssh-keygen` on the Wyse is needed. To add another remote-build
-client, generate a new keypair and repeat the same pattern.
-
-### 8.4 First `just apply wyse3040`
-```bash
-just apply wyse3040
-```
-
-This triggers colmena, which builds the new config on `briefcase` and
-pushes the closure to the Wyse. The post-apply SSH workaround (avahi
-restart) runs automatically.
-
-## 9. Phase 4: Enable remote builders
-
-The `remote-build.nix` module already points the Wyse at `briefcase` as
-its sole builder. After the first successful deploy, verify:
-
-```bash
-# On the Wyse
-nix show-config | grep buildMachines
-# Should list briefcase.local with ssh-ng protocol
-```
-
-On `briefcase`, ensure the `nix-builder` user exists (the
-`nix-builder.nix` module creates it automatically) and its
-`~/.ssh/authorized_keys` contains the Wyse's builder public key.
-
-A quick smoke test:
-
-```bash
-# On the Wyse
-nix build "git+file:///etc/nixos#legacyPackages.x86_64-linux.hello" --no-link
-```
-
-If the build runs on `briefcase` and the closure streams to the Wyse,
-remote building is working.
-
-## 10. Phase 5: WiFi takes over, unplug ethernet
-
-At this point `NetworkManager` should have connected to the SSID
-automatically (system-level connection, no user session required).
-
-```bash
-# Verify
-nmcli -t connection show --active
-
-# Confirm mDNS still works
-ping -c1 wyse3040.local
-
-# Unplug ethernet
-ip link set eth0 down
-```
-
-If mDNS is broken (NixOS bug #74899), the `just apply` workaround
-already restarted `avahi-daemon`. If it is still dead, run the manual
-restart from the justfile's fallback section, or use the hard-coded IP:
-
-```bash
-ssh root@<wyse3040-ip>
-```
-
-## 11. Daily ops
-
-### `just apply [target]`
-```bash
-# Deploy all deployable hosts
-just apply
-
-# Deploy only the Wyse
-just apply wyse3040
-```
-
-The recipe automatically runs the post-colmena avahi SSH workaround.
-If the target is `wyse3040`, it falls back to the hard-coded IP
-`<wyse3040-ip>` when `.local` resolution fails.
-
-### `just check [host]`
-```bash
-# Verify all hosts
-just check
-
-# Verify only the Wyse
-just check wyse3040
-```
-
-This evaluates the toplevel derivation path for each host. Exit 0 with
-no warnings means the flake is clean.
-
-### Emergency local rebuild
-If the network is down and colmena cannot reach the Wyse, boot the
-Wyse from the Live USB again and run:
-
-```bash
-nixos-anywhere --flake .#wyse3040 root@<ip>
-```
-
-Because the system is fully declarative, this produces an identical
-result to a remote colmena deploy.
-
-## 12. Pitfalls discovered during 2026-07 install (CRITICAL)
-
-This is the most valuable section. Every trap below was hit during the
-actual installation and operation of the Wyse 3040. Read it before you
-run into them.
-
-### 12.1 PrivateTmp + boot.tmp.useTmpfs incompatibility
-
-**The problem.** `wear-leveling.nix` sets `boot.tmp.useTmpfs = true`,
-which mounts a tmpfs over `/tmp`. When systemd's `PrivateTmp=yes` tries
-to create a per-service mount namespace and overmount a new tmpfs on
-`/tmp`, the `clone(CLONE_NEWNS)` syscall fails with `EPERM`:
-
-```
-Failed to spawn 'start' task: Operation not permitted
-```
-
-This was initially misdiagnosed as an "Atom CPU seccomp issue." In
-reality, the Atom x5-Z8350 CPU with kernel 6.18.5 and `CONFIG_SECCOMP=y`
-runs **every** other hardening option correctly — seccomp-BPF syscall
-filtering, mount namespaces (ProtectSystem, ProtectHome, PrivateDevices,
-etc.), cgroup device control, and even the `TemporaryFileSystem`
-directive all work.
-
-The root cause is purely a mount conflict: you can't `PrivateTmp`
-overmount a pre-existing tmpfs. briefcase (the laptop) has `/tmp` as a
-plain directory on btrfs, so `PrivateTmp` works there without issue.
-
-**The fix.** `hosts/wyse3040/hardware.nix` defines a minimal
-`atomSeccompFix` with two settings:
-
-```nix
-atomSeccompFix = {
-  PrivateTmp = lib.mkForce false;
-  TemporaryFileSystem = lib.mkForce "/tmp /var/tmp";
-};
-```
-
-`TemporaryFileSystem` provides the same per-service `/tmp` isolation as
-`PrivateTmp` but uses a different code path in systemd that does not
-trigger the overmount conflict. It also puts `/var/tmp` in RAM (it
-currently lives on the SD card btrfs), which is a net improvement for
-wear levelling.
-
-An additional benefit: because all other hardening options are no longer
-overridden, the services (avahi-daemon, wpa_supplicant, systemd-logind,
-nscd, systemd-hostnamed) now receive NixOS's full default sandboxing —
-seccomp-BPF syscall filters, mount namespace isolation, and more.
-
-**Verification.** Check that the services start cleanly after deploy:
-
-```bash
-systemctl status avahi-daemon wpa_supplicant systemd-logind nscd systemd-hostnamed
-```
-
-All should show `active (running)`. Verify hardening is active:
-
-```bash
-systemd-analyze security avahi-daemon.service | head -5
-# Overall exposure score should be well below 9.0 (previously ~9.6
-# because all hardening was disabled)
-```
-
-### 12.2 systemd-logind: the root cause of 25-second SSH and colmena SIGSEGV
-
-**The problem.** `systemd-logind`'s upstream unit file includes
-`PrivateTmp=yes`, which fails on this host for the same reason as
-§12.1. When logind is dead, the consequence is two-fold:
-
-1. **Every SSH login takes exactly 25 seconds.** `pam_systemd.so` opens
-   a D-Bus connection to logind and waits for the `StartSession` reply.
-   When logind is dead, PAM falls back only after the D-Bus timeout
-   expires — which is 25 seconds by default.
-
-2. **colmena activation crashes with exit code 11 (SIGSEGV).**
-   `switch-to-configuration` enumerates users via logind to determine
-   session state. When logind is dead, the subprocess segfaults. The
-   colmena run dies with `error: ... process '/nix/store/.../switch-to-configuration' failed with exit code 11`.
-
-**Symptoms.**
-```bash
-# SSH login:
-ssh root@wyse3040.local
-# ... 25 seconds of silence ...
-root@wyse3040:~#
-
-# colmena deploy:
-colmena apply --on wyse3040
-# error: ... process .../switch-to-configuration' failed with exit code 11
-```
-
-**The fix.** Two changes in `hardware.nix`:
-
-1. `atomSeccompFix` applied to `systemd-logind.service` (unconditional
-   — logind is always needed). This replaces `PrivateTmp` with
-   `TemporaryFileSystem` as described in §12.1.
-2. `systemd.settings.Manager` timeouts raised to 5 minutes so any
-   residual start/stop races do not cause premature failures:
-
-```nix
-systemd.settings.Manager = {
-  DefaultTimeoutStartSec = "5min";
-  DefaultTimeoutStopSec = "5min";
-};
-```
-
-**Verification.**
-
-```bash
-# SSH should now connect in <1 second:
-time ssh root@wyse3040.local true
-
-# colmena should complete without SIGSEGV:
-just apply wyse3040
-```
-
-### 12.3 NixOS bug #74899 — avahi mDNS dropped after every deploy
-
-**The problem.** `switch-to-configuration.pl` contains a literal
-`FIXME` comment for socket-activated services. When `avahi-daemon`
-changes between generations (our per-service hardening override from
-§12.1 causes `avahi-daemon` to change on every deploy, because the
-`serviceConfig` hash changes), the `avahi-daemon.socket` unit is
-restarted by systemd, but the `avahi-daemon.service` unit is **never
-re-activated**. The result: the mDNS responder socket is listening but
-nobody is accepting connections.
-
-**Symptom.** Immediately after a colmena deploy:
-
-```bash
-ping -c1 wyse3040.local
-# ping: wyse3040.local: Name or service not known
-
-# Or on another host:
-avahi-browse -a
-# wyse3040.local disappears from the list
-```
-
-**The fix.** Two layers:
-
-1. **Preventive:** `just apply` runs a post-colmena SSH command that
-   checks `avahi-daemon` is active and restarts both the socket and
-   service if it is not:
-
-```bash
-ssh -o ConnectTimeout=8 "root@{{target}}.local" \
-    'systemctl is-active avahi-daemon -q || systemctl restart avahi-daemon.socket avahi-daemon.service'
-```
-
-2. **Fallback IP:** The justfile contains an IP-based fallback for
-   `wyse3040` specifically. If mDNS itself is the casualty (rare, but
-   possible if the local network's multicast is broken), the fallback
-   `<wyse3040-ip>` is used instead of `.local`:
-
-```bash
-case "{{target}}" in
-    wyse3040)
-        ssh -o ConnectTimeout=8 "root@<wyse3040-ip>" \
-            'systemctl is-active avahi-daemon -q || systemctl restart avahi-daemon.socket avahi-daemon.service'
-        ;;
-esac
-```
-
-**Verification.** After every deploy, immediately run:
-
-```bash
-ping -c1 wyse3040.local
-```
-
-If the ping fails, the post-deploy SSH workaround did not run (e.g.,
-you deployed with raw `colmena` instead of `just apply`). Run the
-restart manually:
-
-```bash
-ssh root@wyse3040.local 'systemctl restart avahi-daemon.socket avahi-daemon.service'
-```
-
-### 12.4 Post-quantum key exchange too slow
-
-**The problem.** OpenSSH's default `KexAlgorithms` on NixOS includes
-`mlkem768x25519-sha256` (a post-quantum hybrid key exchange). The
-ML-KEM lattice operations are computed entirely in software on the
-Atom. A single SSH handshake takes ~25 seconds while the CPU crunches
-the 768-dimensional module-lattice operations.
-
-**Symptom.** Every SSH command, including colmena's remote-exec
-transport, takes 20-30 seconds to establish the connection even on a
-fast local network.
-
-**The fix.** `hardware.nix` forces the Kex list to classic
-X25519-only:
-
-```nix
-services.openssh.settings.KexAlgorithms = lib.mkForce [
-  "curve25519-sha256"
-  "curve25519-sha256@libssh.org"
-  "diffie-hellman-group-exchange-sha256"
-  "diffie-hellman-group14-sha256"
-];
-```
-
-**Verification.**
-
-```bash
-# Before fix (typical):
-time ssh root@wyse3040.local true
-# real    0m25.143s
-
-# After fix:
-time ssh root@wyse3040.local true
-# real    0m0.412s
-```
-
-### 12.5 wpa_supplicant + nscd: same PrivateTmp issue
-
-**The problem.** Both services fail silently because their upstream unit
-files or NixOS modules set `PrivateTmp=yes`, which triggers the same
-overmount conflict as §12.1.
-
-- `wpa_supplicant` failure means WiFi cannot associate at all.
-- `nscd` failure means DNS and user/group lookups are served directly
-  from files, which is slow but functional.
-
-**The fix.** Both services receive `atomSeccompFix`.
-`wpa_supplicant` needs the extended `atomSeccompFixWpa` variant because
-it additionally requires `AF_PACKET` address family for raw WiFi frame
-transmission (the NixOS default already includes this; our override
-matches it).
-
-```nix
-systemd.services.wpa_supplicant = lib.mkIf config.networking.wireless.enable {
-  serviceConfig = atomSeccompFixWpa;
-};
-
-systemd.services.nscd.serviceConfig = atomSeccompFix;
-```
-
-Unlike the previous version, `RootDirectory` is no longer cleared —
-NixOS's default chroot into `/run/wpa_supplicant` works correctly on
-this hardware (it uses `pivot_root`, not mount namespaces).
-
-**Verification.**
-
-```bash
-# WiFi association:
-nmcli -t device wifi list
-# Should show your SSID
-
-# nscd:
-systemctl status nscd
-# active (running)
-
-# DNS resolution speed (should not be slow):
-time dig +short wyse3040.local
-```
-
-### 12.6 Summary table
-
-| Service | Default hardening | Problem | Fix applied | User-visible symptom |
-|---------|------------------|---------|-------------|---------------------|
-| `systemd-logind` | `PrivateTmp`, `SystemCallFilter`, `RestrictNamespaces`, etc. | PrivateTmp fails (tmpfs overmount) | `atomSeccompFix` | SSH 25-second login; colmena exit 11 |
-| `avahi-daemon` | `PrivateTmp`, `SystemCallFilter`, `ProtectSystem=strict`, etc. | PrivateTmp fails (tmpfs overmount) | `atomSeccompFix` | `.local` resolution drops after deploy |
-| `wpa_supplicant` | `PrivateTmp`, `RootDirectory`, `SystemCallFilter`, etc. | PrivateTmp fails (tmpfs overmount) | `atomSeccompFixWpa` | WiFi cannot associate |
-| `nscd` | `PrivateTmp`, `RestrictSUIDSGID`, `ProtectSystem=strict` | PrivateTmp fails (tmpfs overmount) | `atomSeccompFix` | Slow DNS / user lookups |
-| `systemd-hostnamed` | `PrivateTmp`, `SystemCallFilter`, `PrivateNetwork` | PrivateTmp fails (tmpfs overmount) | `atomSeccompFix` | hostnamectl commands fail |
-
-**Key insight:** The Atom x5-Z8350 CPU has no seccomp or namespace
-issues. The only incompatibility is `PrivateTmp` + `boot.tmp.useTmpfs`.
-All other hardening options (seccomp-BPF, mount namespaces, etc.) work
-correctly and are now active, providing stronger security than the
-previous "disable everything" approach.
-
-### 12.7 eMMC by-id changes after physical swap
-
-**The problem.** The `by-id` symlink for the eMMC is derived from the
-chip's internal serial (`H8G4a__0x4fa1ec64`). If the mainboard is
-replaced (or the device is cloned to a different physical unit), the
-symlink changes. `disk-config.nix` hard-codes the old by-id, so a
-re-install on a new mainboard would target the wrong disk.
-
-**The fix.** Before any re-install, re-list the by-id symlinks on the
-target hardware:
-
-```bash
-ls -l /dev/disk/by-id/mmc-*
-```
-
-Update `disk-config.nix` to match the new serials. The act of editing
-`disk-config.nix` doubles as a record that the wear-part was swapped.
-
-### 12.8 SD card replacement workflow
-
-The original 32 GB SU32G card developed SDHCI IRQ storms mid-install,
-forcing an emergency Btrfs remount read-only. The replacement card
-(`SDABC_0xaa000150`) was swapped and `disk-config.nix` was updated.
-
-When replacing the SD:
-1. Power off, swap card.
-2. Boot a Live USB.
-3. Re-list `/dev/disk/by-id/` and update `sd.device` in
+1. Back up `/persist`, required user/service data, and host keys off the target.
+2. Boot a NixOS live USB using F12. Establish root SSH access over Ethernet.
+3. Run `ls -l /dev/disk/by-id/mmc-*` on the target and compare both IDs with
    `disk-config.nix`.
-4. Re-run `just install-remote wyse3040 <wyse3040-ip>`.
-5. Disko will re-partition the new card and re-format from scratch.
+4. Prepare a private `--extra-files` directory containing the registered host
+   key at `etc/ssh/ssh_host_ed25519_key` and its public half beside it, with
+   ownership and permissions suitable for root SSH keys. Keep it outside Git.
+5. Evaluate the configuration on the deployer:
 
-### 12.9 Builder client key must be in `vars/default.nix`
+   ```sh
+   just check wyse3040
+   ```
 
-The builder keypair is generated on the deployer machine and stored
-declaratively (see §8.3). If you add a new remote-build client but
-forget to add its public key to `vars.builderClientKeys`, the Wyse can
-authenticate to `briefcase` over SSH but `nix-daemon` will reject its
-build requests. The error in the builder's journal looks like:
+New `.nix` files must be tracked before flake evaluation. Resolve evaluation
+errors and warnings before installation.
 
+## 5. Initial installation or deliberate reinstall
+
+This operation repartitions the configured disks and destroys their existing
+data. It is not a routine deployment or an emergency rebuild command.
+
+From the Linux deployer, with `HOST_IP` and `PRIVATE_EXTRA_FILES` set to the
+verified target and prepared directory:
+
+```sh
+just install-remote wyse3040 "$HOST_IP" --extra-files "$PRIVATE_EXTRA_FILES"
 ```
-nix-daemon: user 'nix-builder' is not in trusted-users
-```
 
-Or, if the key is missing from `authorized_keys`:
+The [recipe](../justfile) invokes nixos-anywhere, regenerates hardware
+configuration, runs Disko, and installs the system. Inspect the generated file
+changes afterward. On the installed system, verify SOPS decryption and builder
+access before relying on remote builds. Restore persistent application data
+from backup as needed.
 
-```
-nix-daemon: authentication cookie mismatch
-```
+For an SD replacement, power down, replace the card, boot the live USB, and
+update the disk ID before following this procedure. The original card developed
+SDHCI errors and a read-only Btrfs remount; copying its old device ID is not a
+substitute for identifying the replacement.
 
-**Fix.** Generate a new keypair, add the private key to
-`secrets/builder.yaml` (SOPS-encrypted), add the public key to
-`keys/`, reference it in `vars/default.nix` → `builderClientKeys`,
-and deploy.
+## 6. Routine deployment and recovery
 
-### 12.10 `hardware-configuration.nix` is regenerated
-
-`nixos-anywhere --generate-hardware-config` overwrites this file on
-every install. Never hand-edit it; make hardware tweaks in
-`hardware.nix` instead. If you accidentally edit the generated file,
-your changes will be silently lost on the next re-install.
-
-## 13. Verification checklist
-
-Run this checklist after every deploy to confirm the system is healthy:
-
-```bash
-# 1. Toplevel evaluates (already done by just check)
+```sh
 just check wyse3040
-
-# 2. SSH is fast (< 2s)
-time ssh root@wyse3040.local true
-
-# 3. logind is running
-ssh root@wyse3040.local 'systemctl is-active systemd-logind'
-
-# 4. avahi is running and mDNS resolves
-ping -c1 wyse3040.local
-ssh root@wyse3040.local 'systemctl is-active avahi-daemon'
-
-# 5. WiFi is associated (if not on wired)
-ssh root@wyse3040.local 'nmcli -t connection show --active | grep wifi'
-
-# 6. Remote builder reachable
-ssh root@wyse3040.local 'nix show-config | grep buildMachines'
-
-# 7. wpa_supplicant, nscd, and hostnamed are running
-ssh root@wyse3040.local 'systemctl is-active wpa_supplicant nscd systemd-hostnamed'
-
-# 8. SD wear-leveling knobs are active
-ssh root@wyse3040.local 'systemctl is-active fstrim.timer'
-ssh root@wyse3040.local 'cat /proc/swaps'
-# Should show zram0 first, /.swapvol second
+just apply wyse3040
 ```
 
-If every command above succeeds, the Wyse is in a known-good state.
+`just apply wyse3040` runs Colmena, then attempts an Avahi health check over
+`wyse3040.local`, even if deployment fails. It preserves Colmena's exit status.
+The current recipe has no IP fallback, and `just apply` without a target does
+not run per-host Avahi recovery.
+
+If `.local` resolution fails, use a known IP to inspect the host and, if needed,
+restart Avahi:
+
+```sh
+ssh "root@$HOST_IP" 'systemctl restart avahi-daemon.socket avahi-daemon.service'
+```
+
+For an activation failure, inspect the system journal and use a retained boot
+generation when available. For a boot failure, use the console or a live USB
+to inspect and recover existing filesystems. Do not run the install recipe
+unless you intend to erase and recreate the configured disks.
+
+## 7. Service workarounds
+
+The host's recorded service-start failures included `Operation not permitted`
+with `PrivateTmp` enabled. Its workaround replaces `PrivateTmp` with
+`TemporaryFileSystem=/tmp /var/tmp`, retaining other hardening. This is a
+host-specific observation, not a general incompatibility between tmpfs and
+systemd namespaces.
+
+The override covers logind, nscd, hostnamed, and enabled Avahi services. The
+wpa_supplicant variant is conditional on `networking.wireless.enable` and
+includes `AF_PACKET`; do not assume it applies to every NetworkManager setup.
+
+A failed logind coincided with roughly 25-second SSH login delays and activation
+failures. Check its journal before attributing a slow SSH connection to key
+exchange. The host also restricts KEX algorithms to classical algorithms;
+reassess that restriction using `ssh -vv` timing when updating OpenSSH.
+
+Avahi sometimes failed to reactivate after deployment; the recipe's health
+check handles that recorded case. A successful Colmena exit does not establish
+that mDNS is working.
+
+## 8. Verification
+
+After deployment, check from the deployer:
+
+```sh
+time ssh root@wyse3040.local true
+ssh root@wyse3040.local 'systemctl is-active systemd-logind avahi-daemon nscd'
+ssh root@wyse3040.local 'systemctl --failed'
+ssh root@wyse3040.local 'findmnt /persist; cat /proc/swaps'
+```
+
+On the Wyse, inspect `nix show-config` for the configured `builders`, confirm
+the root-owned builder key exists with restricted permissions, and test a build
+that is not already cached. A substituted `hello` package does not prove remote
+execution. Distinguish SSH authentication failures from Nix trusted-user errors;
+[remote-builder.nix](../modules/nixos/capabilities/remote-builder.nix) configures
+both authorization and the `nix-builder` trust setting.

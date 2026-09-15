@@ -11,7 +11,8 @@ After **any** edit to a `*.nix` file, run at least one of:
 - `nix build --no-link --dry-run .#nixosConfigurations.<host>.config.system.build.toplevel` (when touching packages / overlays)
 - `sudo nixos-rebuild dry-activate --flake .#<host>` (when touching activation / systemd / PAM)
 
-NixOS hosts: `briefcase` (primary), `vm`. Darwin host: `air`.
+NixOS hosts: `briefcase` (primary), `vm`, `wyse3040`, `nutshell` (WSL).
+Darwin host: `air`.
 
 A change is only "done" when the chosen command exits 0 with no `error:` or
 "will become an error" warnings. Don't ignore warnings — fix them in the
@@ -24,7 +25,9 @@ The user runs `nhs` themselves. Don't trigger a real rebuild unsolicited.
 
 ## 2. Layout
 
-- `configuration.nix` — system-level (services, kernel, networking, PAM, firewall)
+- `outputs/default.nix` — host declarations and configuration outputs
+- `modules/nixos/` — system defaults, classes, and optional capabilities
+- `modules/darwin/` — shared nix-darwin configuration
 - `hosts/<host>/` — per-host hardware
 - `home/<group>/` — home-manager modules; add a new file and import it in
   the group's `default.nix`
@@ -39,7 +42,9 @@ The user runs `nhs` themselves. Don't trigger a real rebuild unsolicited.
 
 ## 4. Language
 
-Reply in Simplified Chinese. Code, paths, and commands stay English.
+Reply in Simplified Chinese. Write documentation in English; preserve literal
+UI messages and user-defined names in their original language. Code, paths,
+and commands stay English.
 
 ## 5. Commit hygiene
 

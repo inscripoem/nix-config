@@ -1,189 +1,161 @@
-# Secrets management (SOPS + age)
+# Secrets with SOPS and age
 
-This repo uses [sops-nix](https://github.com/Mic92/sops-nix) to manage
-host secrets (WiFi PSKs, future API tokens, etc.) in a way that:
+[.sops.yaml](../.sops.yaml) defines recipients for encrypted YAML files in
+[secrets](../secrets). NixOS uses sops-nix to decrypt declared secrets at
+activation. Plaintext is read through runtime paths, not embedded in Nix store
+files. The module's `owner`, `mode`, and optional `path` control access.
 
-1. Secrets are **encrypted at rest** in the git repo (age-encrypted
-   YAML files under `secrets/`).
-2. At NixOS activation, sops-nix decrypts them to `/run/secrets/`
-   (tmpfs, root-readable only) — they never enter the Nix store.
-3. **No plaintext** secret is ever committed to git.
-4. Each host decrypts with its own SSH ed25519 host key (auto-derived
-   to age format). No separate age key needs to be distributed to
-   hosts — `/etc/ssh/ssh_host_ed25519_key` already lives there.
+## 1. Key roles
 
-The encryption config lives in `.sops.yaml`; the secrets themselves in
-`secrets/*.yaml`; the NixOS-side consumption in
-`modules/nixos/base/wifi.nix`.
+- **Editor key:** a local age key at `~/.config/sops/age/keys.txt` for routine
+  editing.
+- **Recovery key:** derived from a personal Ed25519 key stored in 1Password.
+  Recovery requires access to the private key bytes; the SSH agent alone
+  cannot decrypt SOPS files.
+- **Host keys:** each registered machine decrypts using its SSH Ed25519 host
+  key. Preserve that key across reinstalls or update the SOPS recipients.
 
----
+The current creation rule shares one recipient list across `secrets/*.yaml`.
+Adding a recipient to a file grants access to every secret in that file.
 
-## 1. How the encryption keys work
+## 2. Editor setup
 
-SOPS uses [age](https://age-encryption.org/) encryption. `.sops.yaml`
-lists **public** age keys (safe to commit to git). Anyone with the
-matching **private** key can decrypt.
+For a new editor key, create the directory and generate the key only if the
+key file does not already exist:
 
-```
-/etc/ssh/ssh_host_ed25519_key (SSH 私钥, chmod 600 root)
-  → Ed25519 seed → SHA-512 → X25519 → age 私钥 (运行时解密用)
-  → edwards25519 → montgomery → bech32 → age1... 公钥 (在 .sops.yaml 里)
-```
-
-Hosts have the private key automatically (it's their SSH host key).
-The editor needs a **separate** age keypair — see §2.
-
-**Three-key model.** `.sops.yaml` lists three recipients:
-
-1. **Editor key** (daily use) — an independent age keypair generated via
-   `age-keygen` at `~/.config/sops/age/keys.txt`. This is the key SOPS
-   uses when you run `sops secrets/...` from the workstation.
-2. **Recovery key** (last resort) — derived from a personal SSH ed25519
-   key stored in 1Password via `ssh-to-age -i pub`. If the editor
-   machine is lost, extract the SSH key from 1Password and run
-   `ssh-to-age -private-key` to recover decryption ability. We do
-   **not** use the 1Password SSH key as the daily editor key because
-   the 1Password agent never exposes raw private key bytes to the
-   filesystem, and SOPS needs a disk file.
-3. **Host key** (auto-decrypt at activation) — derived from each
-   host's `/etc/ssh/ssh_host_ed25519_key`. sops-nix reads it at
-   activation time; no distribution needed.
-
----
-
-## 2. One-time editor setup
-
-```bash
-# 1. Generate a brand-new age keypair (NOT linked to your SSH keys)
-nix shell nixpkgs#age
+```sh
+install -d -m 700 ~/.config/sops/age
 age-keygen -o ~/.config/sops/age/keys.txt
 chmod 600 ~/.config/sops/age/keys.txt
+```
 
-# 2. Copy the PUBLIC key from the output (the age1... line) and add it
-#    to .sops.yaml under `age:` in the `creation_rules` block.
-#    (There's a placeholder comment in .sops.yaml for this.)
+Use `nix shell nixpkgs#age nixpkgs#sops` if the tools are unavailable. Add the
+public `age1...` recipient to `.sops.yaml`. The shared shell configuration
+already exports `SOPS_AGE_KEY_FILE`; in an unmanaged shell use:
 
-# 3. Tell SOPS where your private key lives:
-#    Add this to your shell rc (.zshrc / .bashrc):
-export SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt
+```sh
+export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
+```
 
-# 4. Re-encrypt secrets so your editor key is a recipient:
+An existing recipient must rewrap each affected encrypted file:
+
+```sh
 sops updatekeys secrets/wifi.yaml
-
-# 5. (Optional) Back up the age key to 1Password:
-op document create ~/.config/sops/age/keys.txt --title "sops-nix age key"
+sops updatekeys secrets/builder.yaml
 ```
 
----
+A newly generated key cannot decrypt old files until this is done. Back up the
+editor key privately. If it is lost, use a surviving recipient or the recovery
+key to grant access to its replacement.
 
-## 3. Adding a new host to the recipients
+### Recovering a lost editor key
 
-This is how you onboard a future server or laptop.
+Use `nix shell nixpkgs#ssh-to-age nixpkgs#age nixpkgs#sops` if needed. Create a
+private directory outside the checkout:
 
-**Phase 1 — First deployment (needs one-time wired network):**
-
-```bash
-# Deploy the machine while it's on wired Ethernet (or any working network).
-# NixOS auto-generates an SSH host key on first boot.
-nixos-rebuild switch --flake .#server --target-host root@new-host
-
-# SSH in and retrieve the host's age public key:
-ssh root@new-host "nix shell nixpkgs#ssh-to-age --command ssh-to-age -i /etc/ssh/ssh_host_ed25519_key.pub"
-# → age1...
-
-# Add this public key to .sops.yaml under `age:`, then re-encrypt:
-sops updatekeys secrets/wifi.yaml
-git add .sops.yaml secrets/wifi.yaml && git commit -m "sops: add server host key"
-
-# Re-deploy. Now the host can decrypt secrets — WiFi auto-connects
-# on subsequent boots.
-nixos-rebuild switch --flake .#server --target-host root@new-host
+```sh
+sops_recovery_dir=$(mktemp -d "$HOME/sops-recovery.XXXXXX")
 ```
 
-After Phase 1 the host has its age key registered and WiFi is
-declaratively managed. All future rebuilds "just work" — the password
-comes from the encrypted `secrets/wifi.yaml`.
+From a device where 1Password is accessible, export the registered recovery
+SSH item's Ed25519 private key to `$sops_recovery_dir/id_ed25519`. Convert it
+to an age identity; the subshell restricts permissions and refuses to overwrite
+an existing output:
 
-**Alternative: one-shot with nixos-anywhere + pre-generated SSH host key**
-
-If you don't want the two-phase deploy, generate an SSH host key pair
-beforehand, put the public half in `.sops.yaml`, and pass the private
-half to `nixos-anywhere --extra-files`. The first boot then already
-has a known SSH host key and can decrypt WiFi immediately. See
-[nixos-anywhere docs](https://github.com/nix-community/nixos-anywhere).
-
----
-
-## 4. Editing a secrets file
-
-```bash
-sops secrets/wifi.yaml   # opens in $EDITOR; sops re-encrypts on save
+```sh
+(
+  set -euC
+  umask 077
+  chmod 600 "$sops_recovery_dir/id_ed25519"
+  ssh-to-age -private-key -i "$sops_recovery_dir/id_ed25519" \
+    > "$sops_recovery_dir/age-key.txt"
+)
+age-keygen -y "$sops_recovery_dir/age-key.txt"
 ```
 
-Cleartext contents (visible only in the editor window):
+Stop if conversion fails. Compare the printed public recipient with the recovery
+entry in `.sops.yaml`. Generate a replacement editor key using the setup above
+(preserve any existing key file first), and replace the lost editor recipient
+in `.sops.yaml`, keeping the recovery and host recipients. Rewrap both files
+using the recovery identity:
 
-```yaml
-WIFI_SSID: HKHomeNet_5G
-WIFI_PSK: your_actual_password
+```sh
+SOPS_AGE_KEY_FILE="$sops_recovery_dir/age-key.txt" sops updatekeys secrets/wifi.yaml
+SOPS_AGE_KEY_FILE="$sops_recovery_dir/age-key.txt" sops updatekeys secrets/builder.yaml
 ```
 
-Git stores only the encrypted ciphertext.
+Verify each file with the replacement editor key without printing plaintext:
 
----
+```sh
+SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt" sops --decrypt secrets/wifi.yaml > /dev/null
+SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt" sops --decrypt secrets/builder.yaml > /dev/null
+```
 
-## 5. Adding a new secret
+After both succeed and the replacement key has a private backup, remove the
+temporary exported SSH key and converted age identity. Keep the recovery item
+in 1Password for future use.
 
-1. Add the key to the YAML file:
-   ```bash
-   sops secrets/wifi.yaml   # or a new secrets/<name>.yaml
-   ```
+## 3. Registering a host
 
-2. Declare it in a NixOS module:
-   ```nix
-   sops.secrets."MY_API_KEY" = {
-     sopsFile = ../../../secrets/wifi.yaml;   # path from this module to the secrets file
-     owner = "root";
-     mode = "0400";
-   };
-   ```
+Obtain the host's age public key over a trusted connection:
 
-3. Reference at runtime: `config.sops.secrets."MY_API_KEY".path`
-   (points to `/run/secrets/MY_API_KEY`).
+```sh
+ssh root@HOST 'ssh-to-age -i /etc/ssh/ssh_host_ed25519_key.pub'
+```
 
----
+Add it to `.sops.yaml`, then run `sops updatekeys` for the required files using
+an existing recipient. On a new installation, either deploy a baseline that
+does not require undecryptable secrets, or provision the registered host key
+with `nixos-anywhere --extra-files`. Wired networking alone does not fix a
+SOPS activation failure.
 
-## 6. Current secrets
+## 4. Editing and adding secrets
 
-| File | Keys | Used by |
-|------|------|---------|
-| `secrets/wifi.yaml` | `WIFI_SSID`, `WIFI_PSK` | `modules/nixos/base/wifi.nix` → NetworkManager `ensureProfiles` |
+```sh
+sops secrets/wifi.yaml
+```
 
----
+SOPS re-encrypts on save. Add a new key in the encrypted editor, declare it in
+the consuming module, and reference `config.sops.secrets.<name>.path` at
+runtime. Use `sops.templates` when a service needs a generated configuration
+containing several secrets.
 
-## 7. Security model
+For example, after adding `MY_API_KEY` with SOPS to `secrets/example.yaml`, a
+module under `modules/nixos/capabilities/` can declare:
 
-- **`.sops.yaml`** — only public keys (safe to commit). Anyone can
-  encrypt *for* a recipient; only the recipient can decrypt.
-- **Host private key** (`/etc/ssh/ssh_host_ed25519_key`) — chmod 600
-  root. The age private key is derived from it at runtime (SHA-512 of
-  the ed25519 seed) and never written to disk. If an attacker gains
-  root and reads this file, they can also read `/run/secrets/` — the
-  two files share the same threat model. The sops-nix community
-  considers SSH host keys an acceptable "master key" for host secrets.
-- **Editor private key** (`~/.config/sops/age/keys.txt`) — never
-  committed to git. Back up to 1Password. If lost, generate a new one
-  and run `sops updatekeys`.
+```nix
+{ ... }:
+{
+  sops.secrets.MY_API_KEY = {
+    sopsFile = ../../../secrets/example.yaml;
+    owner = "root";
+    mode = "0400";
+  };
+}
+```
 
----
+The consumer uses `config.sops.secrets.MY_API_KEY.path` at runtime. Adjust the
+owner for the consuming service and the relative source path for the module's
+location. Add the new encrypted file to Git before evaluating the flake. Do
+not use `builtins.readFile` to put plaintext into an evaluated Nix string.
+The [WiFi module](../modules/nixos/capabilities/wifi-profiles.nix) is a complete
+example of a `sops.templates` environment file consumed by a service.
 
-## 8. Why SOPS and not agenix
+## 5. Current consumers
 
-- **NetworkManager `ensureProfiles.environmentFiles` is designed for
-  envsubst + environment-file consumption.** sops-nix's `sops.templates`
-  generates exactly that format natively.
-- **Multiple secrets in one file** — a YAML holds many keys. At our
-  scale (a handful of secrets across 2-3 hosts) this is tidier than
-  agenix's one-file-per-secret model.
-- The trade-off is a slightly steeper initial learning curve
-  (`.sops.yaml` rules, `sops.templates`). Once set up, adding a new
-  secret or host costs 2-3 commands.
+| File | Keys | Consumer |
+|---|---|---|
+| `secrets/wifi.yaml` | `wifi_HKHomeNet_5G_ssid`, `wifi_HKHomeNet_5G_psk`, `wifi_HKHomeNet_ssid`, `wifi_HKHomeNet_psk` | [WiFi profiles capability](../modules/nixos/capabilities/wifi-profiles.nix) |
+| `secrets/builder.yaml` | `wyse3040_builder_ed25519` | [Wyse host](../hosts/wyse3040/default.nix), at `/persist/root/.ssh/builder_ed25519` |
+
+WiFi profiles are opt-in through `modules.capabilities.wifi-profiles.enable`.
+They use a root-only environment template with NetworkManager system
+connections, so networking does not depend on a desktop keyring unlock.
+`briefcase` enables them; Wyse currently uses Ethernet.
+
+A remote-build client's public key belongs in `keys/` and
+`vars.builderClientKeys`; its private half belongs in the encrypted builder
+file. Deploy both the client secret and builder authorization.
+
+SOPS is used here because grouped YAML keys and runtime templates fit the WiFi
+and builder configuration. Keep plaintext keys and decrypted files out of Git.

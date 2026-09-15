@@ -1,107 +1,48 @@
-# SDDM login broken by hardcoded WAYLAND_DISPLAY
+# SDDM and display environment variables
 
-A pitfall discovered in June 2026: hardcoding `WAYLAND_DISPLAY` in
-`systemd.user.sessionVariables` breaks SDDM login on Wayland.
+Do not set a global `WAYLAND_DISPLAY` or `DISPLAY` for every user session.
+The compositor supplies these values at runtime; greeter and desktop sessions
+can use different sockets.
 
----
+## Recorded failure
 
-## Symptoms
+Hardcoded display variables in `systemd.user.sessionVariables` coincided with
+successful SDDM authentication followed by a return to the greeter, a black
+screen, or modeset errors such as:
 
-1. SDDM greeter starts normally (Wayland or X11).
-2. User enters password, authentication succeeds.
-3. Session starts, then **immediately dies** — back to greeter, or
-   black screen with cursor.
-4. `journalctl` shows:
-
-   ```
-   kwin_wayland_drm: Atomic modeset test failed! Permission denied
-   kwin_core: Applying output configuration failed!
-   ```
-
-   or (with Nouveau):
-
-   ```
-   kwin_wayland_drm: Modeset failed! Permission denied
-   ```
-
-5. Switching to X11 session (`plasmax11`) also fails — stuck loading
-   screen, `plasmashell: QRhiGles2: Context is lost`.
-
-The error looks like a DRM permission issue, but the real cause is
-KWin choosing the wrong backend.
-
----
-
-## Root cause
-
-`WAYLAND_DISPLAY` was set in `systemd.user.sessionVariables`:
-
-```nix
-# WRONG — do NOT do this
-systemd.user.sessionVariables = {
-  DISPLAY = ":0";
-  WAYLAND_DISPLAY = "wayland-0";
-};
+```
+kwin_wayland_drm: Atomic modeset test failed! Permission denied
 ```
 
-This injects `WAYLAND_DISPLAY=wayland-0` into **every** systemd user
-session — including the SDDM greeter's session. KWin sees it, assumes
-a Wayland compositor is running, and tries the Wayland backend instead
-of DRM. No compositor exists → KWin crashes → session dies.
+An inherited `WAYLAND_DISPLAY` can make a compositor attempt a nested Wayland
+backend instead of opening the intended DRM display. Modeset errors alone do
+not establish this cause; inspect the startup environment and journal.
 
-The `DISPLAY` and `WAYLAND_DISPLAY` variables are **runtime** values
-set by the compositor at startup. Hardcoding them is always wrong —
-the socket name (`wayland-0`) is not guaranteed.
+## Diagnosis and fix
 
----
+Remove global hardcoded values, activate the configuration, and start a fresh
+session. Inspect the affected session's environment and compositor log:
 
-## How to diagnose
-
-```bash
-# Check if WAYLAND_DISPLAY is leaking into the greeter session
-journalctl -b --user -u sddm-helper-start-wayland | grep "backend"
+```sh
+systemctl --user show-environment | rg '^(DISPLAY|WAYLAND_DISPLAY)='
+journalctl -b -u display-manager
+journalctl --user -b | rg -i 'kwin|backend|modeset'
 ```
 
-If KWin says `automatically choosing Wayland because WAYLAND_DISPLAY
-is set` during the greeter phase, the variable is leaking.
+The user-manager command describes the current account, not SDDM's separate
+greeter account. Inspect the greeter's startup logs when the failure is there.
 
----
+If an already running graphical session has correct shell variables but newly
+launched services cannot see them, import those actual values:
 
-## The fix
+```sh
+systemctl --user import-environment DISPLAY WAYLAND_DISPLAY
+```
 
-Remove the hardcoded variables from `systemd.user.sessionVariables`.
-The compositor (`startplasma-wayland`) sets `WAYLAND_DISPLAY` and
-exports it to the systemd user environment via `systemd --user
-import-environment` at session startup.
+Run that from the graphical session whose environment should be imported.
+Moving hardcoded values into `home.sessionVariables` does not solve the socket
+selection problem.
 
-If KRunner-launched apps can't find `DISPLAY` / `WAYLAND_DISPLAY`
-(a separate issue), use one of these instead:
-
-1. **`systemd --user import-environment`** — run once after login, or
-   add to a Plasma autostart script:
-
-   ```bash
-   systemd --user import-environment WAYLAND_DISPLAY DISPLAY
-   ```
-
-2. **`home.sessionVariables`** (home-manager) — writes to `~/.profile`,
-   only sourced by login shells, does NOT pollute systemd user sessions:
-
-   ```nix
-   home.sessionVariables = {
-     DISPLAY = ":0";
-     WAYLAND_DISPLAY = "wayland-0";
-   };
-   ```
-
-   Note: this also hardcodes the values, which is fragile. Prefer
-   option 1.
-
----
-
-## Key takeaway
-
-`WAYLAND_DISPLAY` and `DISPLAY` are set by the compositor, not by
-the system config. Never hardcode them in `systemd.user.sessionVariables`
-— it will break SDDM and any other display manager that runs its
-greeter as a systemd user session.
+A service explicitly targeting a known display may set a scoped value. The
+[Sunshine greeter service](remote-desktop.md#2-service-handoff) deliberately
+uses `DISPLAY=:0`; that is separate from setting it for all user sessions.

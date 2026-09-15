@@ -1,108 +1,53 @@
-# Darwin Home Manager migration on air
+# Home Manager on air
 
-Phase 2 makes Home Manager the writer of Shell, Git, SSH, editor, and shared
-CLI configuration. Implementation/build verification and live activation are
-separate gates. The live switch completed on 2026-09-07; Phase 1 generation 1
-remains the system rollback anchor throughout acceptance.
+Home Manager owns the shell, Git, SSH configuration, editors, and shared CLI
+tools on `air`. Existing language runtimes remain configured in the host's
+legacy shell module. The [migration record](../nix-darwin.plan) contains the
+completed rollout and recovery generations.
 
-At the 2026-09-11 acceptance, the account was on Phase 2 `system-2-link`, the
-live system matched the Phase 2 flake output, all 24 enabled HM targets were
-linked, and the automatable post-switch checks passed. Private SSH preparation
-and the SpaceVim link backup remain intact. Captain has accepted Atuin, editor,
-HTTPS/TLS, GitHub SSH, private SSH, and OrbStack SSH behavior. The formal Phase
-2 commit serves as the native-signing check instead of a separate test commit.
-See [the phase plan](../nix-darwin.plan) for the recorded derivations and checks.
+## Configuration ownership
 
-Phase 3 was activated on 2026-09-12 as `system-4-link`; all 24 HM targets and
-the expected command sources passed the post-switch checks. Phase 2 generation
-3 matches commit `77515ed` and remains the rollback target for Homebrew adoption.
-The corrected 38-cask list is active as `system-5-link`, verified on 2026-09-13.
-The six stale cask records were then removed with Captain's authorization;
-see the phase plan for checks and rollback implications.
+| Source | Responsibility |
+|---|---|
+| [home/core](../home/core/default.nix) | Shared behavior and CLI tools |
+| [home/darwin](../home/darwin/default.nix) | Native 1Password paths, Git file target, Zsh dot directory, Darwin adaptations |
+| [air.nix](../home/hosts/air.nix) | Git identity, LFS/Xet, SSH Includes, activation guards, background-service choices |
+| [legacy-shell.nix](../home/hosts/air/legacy-shell.nix) | Host-specific PATH, existing runtimes, certificates, OrbStack, plugins, and aliases |
 
-## Ownership
+When migrating a tool to Nix, remove its manual initialization from the legacy
+module in the same change. Keep this machine's local paths out of the shared
+Darwin layer.
 
-- `home/core/`: shared behavior; Linux-only system packages stay Linux-only.
-- `home/darwin/default.nix`: native 1Password paths, Git file target, and
-  platform-required HM adaptations. No local PATH/tool initialization.
-- `home/hosts/air.nix`: the host's Git identity, LFS/Xet, SSH Includes, and
-  conservative background-service choices.
-- `home/hosts/air/legacy-shell.nix`: all existing air-specific PATH and Shell
-  setup. This includes Brew/Zerobrew and certificate selection; Cargo, NVM,
-  Bun, Go, Rye, Proto/Moon and local CLI paths; OrbStack Shell integration;
-  OMZ plugins and aliases. Other Macs must not import this file.
+HM supplies Oh My Zsh and highlighting. Atuin, Starship, and zoxide initialize
+through their shared integrations; nix-index supplies command-not-found.
+The HM user bin directory takes precedence over retained installations, and
+Zsh deduplicates PATH. See [Atuin](atuin-zsh.md) for widget ordering.
 
-Future tool migration replaces one tool's manual setup with its Nix module
-and removes that setup here in the same change. Phase 2 does not enable the
-toolchain pack or replace Node/Bun/Rust installations wholesale. Existing
-tool data, caches, Atuin history, and private keys are not migrated or deleted.
-
-Through Phase 3, both nix-darwin and Darwin HM explicitly set
-`nix.enable = false`, keeping Lix externally managed. The Phase 4
-configuration enables system ownership with `pkgs.lix`; HM keeps its explicit
-`nix.enable = false` to avoid a second Nix configuration writer. Phase 4 was
-activated as generation 6 on 2026-09-15; all 24 HM links and expected tool
-sources passed verification. Reboot acceptance also passed on 2026-09-15.
-See [Lix ownership migration](darwin-lix.md) for the
-installer-hook preparation and configuration-file rollback requirements.
-
-Darwin also sets `programs.man.generateCaches = false`: Fish's completion
-module otherwise enables `mandb`, whose whatis parser rejects several Fish
-manuals in the pinned package. Manual pages and generated command completions
-remain available; the HM-built `apropos` index and index-based Fish completion
-for `man` are omitted. Linux's settings are unchanged.
-
-HM supplies OMZ and highlighting rather than sourcing `.antigen/bundles`.
-The OMZ `git`, `heroku`, and `pip` plugins remain. nix-index is the sole
-command-not-found handler. Atuin, Starship, and zoxide are initialized only
-by their shared HM integrations. See [Atuin integration](atuin-zsh.md).
-
-After local tool setup, HM's per-user bin directory is promoted ahead of
-the legacy installations. Unmigrated runtimes remain available because no
-replacement language toolchain is installed by this phase. Zsh deduplicates
-PATH. `nhs` and `nhsc` derive the target from `hostSpec.name`; run these
-aliases from the flake's repository directory. They use `sudo -H`.
+Darwin disables HM's `mandb` cache because the pinned Fish manuals fail its
+whatis parser. Manual pages remain available; the generated `apropos` index
+and index-based Fish completion for `man` are omitted. Pueue is not imported,
+and `air` disables tealdeer's scheduled updater.
 
 ## Git and SSH
 
-Git stays at `~/.gitconfig` on Mac, now generated by HM. The otherwise
-generated XDG Git file is disabled, avoiding two competing global files.
-The host preserves its author display name, LFS filters and Xet transfer
-settings. `git-xet` still comes from the existing local installation; its
-runtime is not silently replaced. Shared delta and commit/tag signing policy
-apply. The signer is the native app's
-`/Applications/1Password.app/Contents/MacOS/op-ssh-sign`.
+Git uses HM's `~/.gitconfig`; the XDG Git target is disabled to avoid competing
+global files. Git signing uses the native 1Password app. Git Xet remains an
+external command, while HM enables Git LFS.
 
-SSH uses the existing system client, not a new SSH agent. The common host
-policy routes GitHub to `ssh.github.com:443`. Darwin uses the native
-1Password Group Containers socket, quoted in `IdentityAgent` and exported
-as `SSH_AUTH_SOCK`. Signing through `op-ssh-sign` is independent of that
-SSH transport path. See [SSH/1Password rationale](ssh-agent.md).
+SSH uses the native 1Password socket and shared GitHub-over-port-443 policy.
+The generated configuration includes OrbStack's `~/.orbstack/ssh/config` and
+`~/.ssh/config.local`. The latter is a private, user-owned regular file:
+Nix never reads its contents or copies it to the store. Keep it in a private
+backup; a public checkout cannot reconstruct it. See [SSH](ssh-agent.md).
 
-The generated SSH config includes:
+## Restoring or onboarding the user environment
 
-1. `~/.orbstack/ssh/config`, still owned/generated by OrbStack.
-2. `~/.ssh/config.local`, a user-owned private host fragment, never read by
-   Nix evaluation and never copied to the store or committed.
+Keep a working terminal open until a new login shell has been tested.
 
-The private fragment contains only the original private Host blocks, not a
-second copy of all legacy defaults. A public checkout alone cannot recreate
-these private addresses: keep this file in the user's private backup.
-
-## Before the first switch
-
-Keep the current working terminal open throughout the migration.
-
-1. Restore `~/.ssh/config.local` from the user's secure private backup as a
-   readable, user-owned regular file rather than a symlink. A public checkout
-   cannot recreate its private Host blocks. On the original `air` migration, a
-   one-time audited script extracted the fragment without printing hostnames or
-   overwriting files; that script and its fixture tests were removed after live
-   acceptance. Home Manager still enforces the file-type and ownership guard
-   before linking files.
-
-2. Recheck all enabled HM targets and their `.backup` paths. This lists paths
-   only, not configuration contents:
+1. Restore `~/.ssh/config.local` as a readable, user-owned regular file.
+   The activation guard rejects a missing file or symlink.
+2. Inspect enabled HM targets, existing files, their parent directories, and
+   `.backup` names. Resolve collisions without overwriting earlier backups:
 
    ```sh
    nix eval --no-warn-dirty --json \
@@ -110,19 +55,18 @@ Keep the current working terminal open throughout the migration.
      --apply 'files: map (f: f.target) (builtins.filter (f: f.enable) (builtins.attrValues files))'
    ```
 
-   Record which targets already exist and which are new. Known original
-   files include `.zshrc`, `.zprofile`, `.zshenv`, `.bash_profile`, `.bashrc`,
-   `.profile`, `.config/fish/config.fish`, `.config/atuin/config.toml`,
-   `.ssh/config`, and `.gitconfig`. Additional generated targets must also
-   be checked, including their parent directories. Non-HM symlinks need
-   manual review; do not assume they receive the same automatic backup
-   treatment as regular files.
+   Save a private inventory before changing files. For each target, record
+   whether it is absent, a regular file, or a symlink; record symlink targets
+   without following them, the intended backup name, and whether that backup
+   already exists. Include parent symlinks and dangling links. This distinguishes
+   files to restore from links that should simply be moved away during recovery.
+   A list of HM targets alone does not capture their original state.
 
-   Before preparation, `~/.config/nvim` was a symlink to `~/.SpaceVim`, whose
-   `init.vim` conflicts with HM's `init.lua`. Preserve the symlink itself,
-   not the file inside its target. After confirming the recorded target and
-   that the backup name is unused, use the procedure below. This backup is
-   already complete on `air`; do not repeat it or overwrite `nvim.backup`.
+3. Preserve any `~/.config/nvim` symlink itself before linking HM files.
+   Do not modify its SpaceVim target. HM rejects that parent symlink or an
+   existing `init.vim`, which conflicts with the managed `init.lua`.
+   The original air migration saved the link as `~/.config/nvim.backup`.
+   On a machine with the same SpaceVim layout, the guarded move is:
 
    ```sh
    test -L "$HOME/.config/nvim" &&
@@ -132,102 +76,37 @@ Keep the current working terminal open throughout the migration.
      mv -n "$HOME/.config/nvim" "$HOME/.config/nvim.backup"
    ```
 
-   This leaves `.SpaceVim` untouched. Record `nvim.backup` separately from
-   the per-file inventory. HM refuses activation while the old parent
-   symlink or a conflicting `init.vim` remains. It then creates a fresh
-   `.config/nvim` directory for the shared Neovim configuration.
+   If a check fails, inspect the actual layout before choosing a backup path.
+   Record this parent-link backup separately. Do not repeat the move on the
+   already migrated `air`, or use `force = true` to bypass HM file conflicts.
+4. Verify native 1Password, OrbStack, Git Xet, and retained runtimes are
+   available. Evaluate and build the Darwin target using the
+   [deployment guide](nix-config-orchestration.md#validation-and-deployment).
+5. After the user runs `nhs`, test a fresh shell, Atuin keys, editor aliases,
+   HTTPS, Git signing, and GitHub/private/OrbStack SSH connections.
 
-   `backupFileExtension = "backup"` does not authorize overwriting an
-   existing backup. Stop if one exists. Do not use `force = true` to bypass
-   a collision. Backups may contain private data and must stay out of Git.
+## Recovery
 
-3. Confirm the native 1Password app and OrbStack integration are available.
-   Confirm `git-xet` and the retained development tools still resolve.
-   Validate the build and read generated configuration before activation:
+A system generation rollback does not restore pre-HM dotfiles. If undoing HM
+adoption, first follow [Lix recovery](darwin-lix.md#rollback) when crossing
+back to an installer-managed generation. Then verify the intended generation
+against the [migration record](../nix-darwin.plan).
 
-   ```sh
-   nix eval --no-warn-dirty .#darwinConfigurations.air.config.system.build.toplevel.drvPath
-   nix build --no-warn-dirty --no-link --dry-run .#darwinConfigurations.air.config.system.build.toplevel
-   nix build --no-warn-dirty --no-link .#darwinConfigurations.air.config.system.build.toplevel
-   ```
+Use the saved inventory to recover each target:
 
-   Do not run `darwin-rebuild check`: the pinned revision cleared its
-   `checkActivation` flag and performed real activation during Phase 1.
+- For a pre-existing file, inspect the current HM link, move it to an unused
+  recovery name, and restore its matching backup.
+- For a target that was originally absent, move away only the link confirmed
+  to belong to this HM installation. Do not remove the containing data directory.
+- For the Neovim parent link, preserve the new `.config/nvim` directory under
+  an unused name before restoring `nvim.backup` as the parent symlink.
 
-## Switch record and acceptance
+Keep unrelated files, histories, private keys, and `.SpaceVim` intact. If the
+inventory is missing, inspect links and backups individually; the current HM
+target list cannot reconstruct which files existed before migration.
 
-The Phase 2 switch completed on 2026-09-07 using:
-
-```sh
-sudo -H darwin-rebuild switch --flake .#air
-```
-
-The 2026-09-10 automated audit confirmed:
-
-- `/nix/var/nix/profiles/system` is `system-2-link`, and `/run/current-system`
-  matches the current flake's Darwin system output.
-- All 24 enabled HM targets are linked. Expected dotfile backups and the saved
-  SpaceVim link remain available.
-- A new PTY-backed Zsh login starts without errors. Git, SSH, Neovim, Atuin,
-  Starship, Node, Bun, and Go resolve from their intended sources; NVM, Proto,
-  MoonBit, and Rye remain available.
-- The external Proto `0.55.2` installation starts successfully, but both local
-  and global status checks report no configured tools. It does not select the
-  current Node, Bun, or Go runtimes. Proto, MoonBit, and the other retained
-  language toolchains intentionally remain outside Phase 2 ownership.
-- Git signing is configured, GitHub SSH configuration parses, and the native
-  1Password socket, OrbStack SSH configuration, private SSH fragment, Git LFS,
-  and Git Xet are available without exposing private configuration content.
-- Certificate variables do not point to missing files. An HTTPS request to
-  GitHub returned 200 with a successful TLS certificate result. No Pueue,
-  tldr-update, or tealdeer auto-update LaunchAgent is loaded.
-
-Captain confirmed that directory-scoped Atuin search, global Atuin search,
-ghost text, Neovim, the editor aliases, GitHub SSH, private SSH, and OrbStack
-SSH behave normally.
-
-The signed Phase 2 commit verifies native 1Password signing; no separate test
-commit is needed, and pushing remains a separately authorized action.
-
-Neovim becomes the default editor and owns the `vi`/`vim` aliases. Mac's
-`ze` alias uses the existing `zed` command. Brew installations are retained
-for rollback; Phase 3 prepares their declarations, with cleanup reserved for
-a separately reviewed change.
-
-## Implementation review
-
-- High: private SSH loss and writing through the SpaceVim parent symlink are
-  guarded before HM links files. Both preparation steps are complete on air;
-  do not use a failed switch as a substitute for the pre-switch checks.
-- Medium: native signing is exercised by the formal Phase 2 commit. Retained
-  external language toolchains are explicitly outside this phase.
-- Low: the Darwin `apropos` cache is intentionally omitted for the pinned
-  Fish manuals. No second legacy `.zshrc` or duplicate shared initialization
-  was introduced; no unrelated cleanup is included.
-
-## Rollback
-
-System rollback alone does not restore pre-HM user files. If needed:
-
-1. Confirm generation 1 is still the recorded Phase 1 system, then run:
-
-   ```sh
-   sudo -H darwin-rebuild --switch-generation 1
-   ```
-
-2. Using the pre-switch target inventory, inspect each current link before
-   changing it. Move this phase's HM links to unused recovery names, then
-   restore the corresponding `.backup` files. Do not overwrite a recovery
-   name or unrelated file.
-3. For targets that did not exist before Phase 2, remove/move only links
-   proven to belong to this phase. Preserve user data directories, histories,
-   keys, existing packages, and the private SSH fragment.
-4. If the SpaceVim link was saved, move the new `.config/nvim` directory
-   to an unused recovery name and restore `.config/nvim.backup` as the
-   original link. Never remove or edit `.SpaceVim` as part of this rollback.
-5. Open a fresh shell. The original tools and `.antigen/bundles` are still
-   available because this phase does not delete them.
-
-Keep backups through repository closeout. Committing/pushing configuration,
-cleaning old installations, and migrating language toolchains require separate
-approval.
+The old Antigen installation is not a reliable recovery dependency: the
+migration record says it was removed. Inspect restored shell files for
+`.antigen/bundles` references and restore the required dependency or adapt those
+files before using them as a working shell. Do not assume a generation rollback
+reinstalls external tools.
