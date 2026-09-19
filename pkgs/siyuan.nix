@@ -1,25 +1,25 @@
 { pkgs }:
 
 let
-  version = "3.8.2";
+  version = "3.8.4";
 
   srcTag = pkgs.fetchFromGitHub {
     owner = "siyuan-note";
     repo = "siyuan";
     rev = "v${version}";
-    hash = "sha256-MzsfeAWApHLDt4+aC9/O+5Dl8OD8p0l+/8tb2ZZyTos=";
+    hash = "sha256-6UwmOxGyK4JC52TP88sE2JcYX8lOHdqtJmzWFdj350M=";
   };
 
   srcDeb =
     if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then
       pkgs.fetchurl {
         url = "https://github.com/siyuan-note/siyuan/releases/download/v${version}/siyuan-${version}-linux.deb";
-        hash = "sha256-3tWPLxm2p7dtdiqMOvU85yVZddcXv4Aj8w7E7QiO+dc=";
+        hash = "sha256-jRxKTgNGGhfSq2DrD1blWPrvpP2+4bAIZY0VmMgck3A=";
       }
     else if pkgs.stdenv.hostPlatform.system == "aarch64-linux" then
       pkgs.fetchurl {
         url = "https://github.com/siyuan-note/siyuan/releases/download/v${version}/siyuan-${version}-linux-arm64.deb";
-        hash = "sha256-78OT7yW+YO15OUEwZqdlz4whfFuJTMpAaP898ZKYRAk=";
+        hash = "sha256-jRe82wabtz1fbr1iyMMdBl44nen7Ipa0YtqaQ0Ejrpg=";
       }
     else
       throw "siyuan: unsupported system ${pkgs.stdenv.hostPlatform.system}";
@@ -29,7 +29,7 @@ let
     inherit version;
     src = srcTag;
     sourceRoot = "${srcTag.name}/kernel";
-    vendorHash = "sha256-x8saxKDLeZdEbTBjNXnOBU9zkliZXm6D92Mom8CUCbs=";
+    vendorHash = "sha256-atcvKc9q4Spuo20Ik8aFENgFf4zGBy8RiPhJsWUHr6w=";
 
     ldflags = [
       "-s"
@@ -42,8 +42,12 @@ let
 
     modPostBuild = ''
       chmod +w vendor/github.com/88250/gulu
+      # gulu ≥ 1a37069fad34 moved the mode assignment out of os.Chmod;
+      # CopyFile must still force 0644 so read-only sync snapshots cannot
+      # propagate (kernel exit 26). CopyWritable overrides destMode again,
+      # which is fine — it always adds the owner-write bit.
       substituteInPlace vendor/github.com/88250/gulu/file.go \
-        --replace-fail "os.Chmod(dest, sourceinfo.Mode())" "os.Chmod(dest, 0644)"
+        --replace-fail "destMode := sourceinfo.Mode()" "destMode := os.FileMode(0644)"
     '';
 
     postInstall = ''
