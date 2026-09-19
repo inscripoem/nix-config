@@ -284,18 +284,57 @@ if should_update "siyuan"; then
       sed -i "/siyuan-\${version}-linux-arm64\.deb/{n;s|hash = \".*\"|hash = \"${arm64_hash}\"|;}" "$siyuan_nix"
 
       # vendorHash: reset to zero-hash so the next `nix build` will fail with the
-      # correct one. We probe automatically and copy it back in.
+      # correct one. We probe automatically and copy it back in. The probe
+      # targets whichever NixOS host first lists siyuan in its home-manager
+      # packages (siyuan is linux-only, so darwin hosts are skipped) —
+      # no host name is hardcoded.
       zero_hash="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
       sed -i "s|vendorHash = \".*\"|vendorHash = \"${zero_hash}\"|" "$siyuan_nix"
       echo "    probing vendorHash (this triggers one build attempt that is expected to fail) ..."
-      vendor_probe_output=$(nix --extra-experimental-features 'nix-command flakes' build \
-        --no-link --no-warn-dirty \
-        --impure --expr \
-        "let f = builtins.getFlake (toString \"$REPO_ROOT\"); m = f.nixosConfigurations.briefcase.config.home-manager.users.inscripoem.home.packages; in builtins.head (builtins.filter (p: p.pname or \"\" == \"siyuan\") m)" \
-        2>&1 || true)
-      vendor_hash=$(echo "$vendor_probe_output" | awk '/got:/{print $2; exit}')
+      vendor_hash=""
+      probe_attempt=1
+      probe_max_attempts=3
+      while [[ "$probe_attempt" -le "$probe_max_attempts" ]]; do
+        vendor_probe_output=$(nix --extra-experimental-features 'nix-command flakes' build \
+          --no-link --no-warn-dirty \
+          --impure --expr "
+            let
+              f = builtins.getFlake (toString \"$REPO_ROOT\");
+              hosts = f.nixosConfigurations;
+              pkg = \"siyuan\";
+              hasPkg = u: builtins.any (p: (p.pname or \"\") == pkg) (u.home.packages or [ ]);
+              hostName = builtins.head (builtins.filter (n:
+                builtins.any hasPkg
+                  (builtins.attrValues (hosts.\${n}.config.home-manager.users or { }))
+              ) (builtins.attrNames hosts));
+              users = hosts.\${hostName}.config.home-manager.users;
+            in
+            builtins.head (builtins.filter (p: (p.pname or \"\") == pkg)
+              ((builtins.head (builtins.filter hasPkg (builtins.attrValues users))).home.packages))" \
+          2>&1 || true)
+        vendor_hash=$(echo "$vendor_probe_output" | awk '/got:/{print $2; exit}')
+        [[ -n "$vendor_hash" ]] && break
+        # Structural failures cannot be fixed by retrying; fall through to the
+        # diagnostics below. Anything else (e.g. proxy.golang.org EOFs) is
+        # usually transient — try again.
+        if echo "$vendor_probe_output" | grep -qE "doesn't match anything|called on an empty list"; then
+          break
+        fi
+        echo "    probe attempt ${probe_attempt}/${probe_max_attempts} produced no hash; retrying ..."
+        probe_attempt=$((probe_attempt + 1))
+        sleep 5
+      done
       if [[ -z "$vendor_hash" ]]; then
-        echo "    ERROR: could not extract vendorHash from probe output. Last 20 lines:"
+        echo "    ERROR: vendorHash probe failed:"
+        if echo "$vendor_probe_output" | grep -q "doesn't match anything"; then
+          echo "          A modPostBuild substituteInPlace anchor no longer matches"
+          echo "          upstream (most likely the gulu 0644 patch in pkgs/siyuan.nix)."
+          echo "          Update the patch anchor for the new version, then re-run."
+        elif echo "$vendor_probe_output" | grep -q "called on an empty list"; then
+          echo "          No Linux host in this flake installs siyuan via"
+          echo "          home-manager, so there is nowhere to probe from."
+        fi
+        echo "    Last 20 lines of probe output:"
         echo "$vendor_probe_output" | tail -20
         exit 1
       fi
