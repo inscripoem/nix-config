@@ -55,10 +55,10 @@ in {
     boot.kernel.sysctl."vm.swappiness" = 10;
 
     # Cap journal size; a runaway service should not fill the SD.
-    services.journald.extraConfig = ''
-      SystemMaxUse=100M
-      RuntimeMaxUse=50M
-    '';
+    services.journald.settings.Journal = {
+      SystemMaxUse = "100M";
+      RuntimeMaxUse = "50M";
+    };
 
     # Weekly TRIM.
     services.fstrim = {
