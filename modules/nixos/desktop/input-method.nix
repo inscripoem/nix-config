@@ -3,6 +3,13 @@
 
 { pkgs, inputs, ... }:
 
+let
+  # Voice input addon (push-to-talk / hotkey trigger, coexists with Rime —
+  # it registers as an fcitx5 Module, not an input method). The package
+  # carries the addon library, vinput / vinput-gui CLIs and the daemon.
+  vinput = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
+in
+
 {
   i18n.inputMethod = {
     type = "fcitx5";
@@ -10,6 +17,7 @@
     fcitx5.waylandFrontend = true;
     fcitx5.addons = with pkgs; [
       fcitx5-gtk
+      vinput
       qt6Packages.fcitx5-chinese-addons
       (fcitx5-rime.overrideAttrs (old: {
         postInstall = (old.postInstall or "") + ''
@@ -52,6 +60,22 @@
     fcitx5.settings.addons.classicui.globalSection = {
       Theme = "catppuccin-mocha-mauve";
       Font = ''"Sans 13"'';
+    };
+  };
+
+  environment.systemPackages = [ vinput ];
+
+  # Upstream unit, mirrored declaratively: Type=dbus, wanted by
+  # default.target. The daemon keeps the ASR model resident so trigger-key
+  # latency stays low; the D-Bus activation file in the package resolves to
+  # the same BusName.
+  systemd.user.services.vinput-daemon = {
+    after = [ "pipewire.service" ];
+    wantedBy = [ "default.target" ];
+    serviceConfig = {
+      Type = "dbus";
+      BusName = "org.fcitx.Vinput";
+      ExecStart = "${vinput}/bin/vinput-daemon";
     };
   };
 }

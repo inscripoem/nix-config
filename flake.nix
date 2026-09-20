@@ -43,6 +43,13 @@
     # upstream cuts them — no waiting on llm-agents packaging.
     hermes-agent.url = "github:NousResearch/hermes-agent";
 
+    # fcitx5-vinput - voice input addon for fcitx5 (local sherpa-onnx or
+    # cloud ASR + LLM post-processing). NOT following our nixpkgs: upstream
+    # pins nixos-unstable and publishes prebuilt results to
+    # fcitx5-vinput.cachix.org keyed on that pin; following ours would force
+    # a local sherpa-onnx rebuild on every unrelated bump.
+    fcitx5-vinput.url = "github:xifan2333/fcitx5-vinput";
+
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
       inputs.nixpkgs.follows = "nixpkgs";
