@@ -13,6 +13,16 @@
     update.onActivation = true;
   };
 
+  # nix-flatpak's activation unit only orders After=multi-user.target, which
+  # does not imply connectivity: on Wi-Fi the first flathub summary fetch
+  # races DNS resolution and fails (every journal failure is "Could not
+  # resolve hostname"). Pulling network-online holds the first attempt until
+  # NM actually reports a connection.
+  systemd.services.flatpak-managed-install = {
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
+  };
+
   # NixOS does not automatically refresh the desktop entry / MIME cache for
   # Flatpak exports. Run update-desktop-database after nix-flatpak activation so
   # launchers and file managers pick up newly installed/removed Flatpak apps
