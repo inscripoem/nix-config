@@ -175,9 +175,16 @@ in {
           # to signal a non-retryable failure.
           RestartForceExitStatus = 75;
           RestartPreventExitStatus = 78;
+          # SIGTERM drains in-flight agent turns and can outlast any generous
+          # timeout (210s still ended in SIGKILL while blocking, and failing,
+          # the whole home-manager activation). ExecStop takes the upstream
+          # CLI path: it marks a planned stop, spends its own 90s client
+          # bound, and the remainder of the 150s budget stays for a clean
+          # drain before systemd escalates to SIGKILL.
+          ExecStop = "${hermesPkg}/bin/hermes gateway stop";
           KillMode = "mixed";
           KillSignal = "SIGTERM";
-          TimeoutStopSec = 210;
+          TimeoutStopSec = 150;
           StandardOutput = "journal";
           StandardError = "journal";
         };
