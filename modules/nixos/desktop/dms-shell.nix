@@ -18,7 +18,6 @@ in
   programs.dms-shell = {
     enable = true;
     systemd.enable = false;
-    enableSystemMonitoring = true;
     enableDynamicTheming = true;
 
     plugins = {
