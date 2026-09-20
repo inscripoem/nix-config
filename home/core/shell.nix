@@ -1,24 +1,6 @@
-{ config, lib, pkgs, ... }:
+{ pkgs, lib, ... }:
 
 {
-  # fzf-tab's load order is a hard upstream requirement: after compinit,
-  # before widget-wrapping plugins like zsh-autosuggestions. The order is
-  # enforced only by the mkOrder values in initContent below, so assert the
-  # resulting layout -- an HM upgrade that shifts those blocks fails the
-  # build here instead of silently breaking Tab completion. builtins.match
-  # needs a single line (hence the flattening) and .* is order-sensitive.
-  # Checked only when fzf-tab is actually enabled: on air, OMZ runs
-  # compinit internally and the string never appears in initContent.
-  assertions = [
-    {
-      assertion =
-        let zshInit = lib.replaceStrings [ "\n" ] [ " " ] config.programs.zsh.initContent;
-            hasFzfTab = builtins.match ".*fzf-tab.plugin.zsh.*" zshInit != null;
-        in !hasFzfTab || builtins.match ".*compinit.*fzf-tab.*zsh-autosuggestions.*" zshInit != null;
-      message = "zsh: expected load order compinit -> fzf-tab -> zsh-autosuggestions (home-manager init order changed?)";
-    }
-  ];
-
   programs.bash = {
     enable = true;
     enableCompletion = true;
@@ -61,37 +43,20 @@
     };
 
     initContent = lib.mkMerge [
-      # Render completion candidates in an fzf UI; data sources (compinit,
-      # carapace) are untouched. Must source AFTER compinit (home-manager
-      # order 570) but BEFORE zsh-autosuggestions (order 700 below), which
-      # wraps widgets -- see fzf-tab README, "Install"; not via
-      # programs.zsh.plugins, which offers no ordering control. The
-      # assertion at the top of this file fails the build if an HM upgrade
-      # breaks this order.
-      #
-      # Linux-only for now: air still boots zsh through oh-my-zsh, whose
-      # compinit fires inside the OMZ block at order 800 -- after 680 here,
-      # and there is no order slot that can satisfy fzf-tab while OMZ stays.
-      # Drop the mkIf when air's legacy shell setup is retired.
-      (lib.mkIf (!pkgs.stdenv.hostPlatform.isDarwin) (lib.mkOrder 680 ''
-        source ${pkgs.zsh-fzf-tab}/share/fzf-tab/fzf-tab.plugin.zsh
-
-        # Recommended setup from the fzf-tab README ("Configure"):
+      # Native completion menu (zsh/complist): Tab cycles candidates with
+      # each highlighted one inserted live into the command line, and Return
+      # accepts and executes. Styled with the parts of the fzf-tab README's
+      # common configuration that also benefit the native menu.
+      (lib.mkOrder 680 ''
+        zmodload zsh/complist
+        zstyle ':completion:*' menu select
         # keep git's own branch order for checkout
         zstyle ':completion:*:git-checkout:*' sort false
-        # render group headers like [directory]; enables F1/F2 group switching
+        # render group headers like [directory]
         zstyle ':completion:*:descriptions' format '[%d]'
         # colorize filename candidates (no-op when LS_COLORS is unset)
         zstyle ':completion:*' list-colors ''${(s.:.)LS_COLORS}
-        # suppress the native menu so fzf-tab captures the unambiguous prefix
-        zstyle ':completion:*' menu no
-        # preview the candidate directory with eza while completing cd
-        zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
-        # fzf treats Tab as multi-select toggle; rebind it to accept the
-        # highlighted candidate so Tab still fills in the completion the way
-        # the native menu did, and Enter keeps meaning "run the command"
-        zstyle ':fzf-tab:*' fzf-flags --bind=tab:accept
-      ''))
+      '')
 
       # Sourced WITHOUT ZSH_AUTOSUGGEST_STRATEGY set: on startup the plugin
       # validates every entry in that variable, and "atuin" would fail with
