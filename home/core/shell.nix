@@ -1,6 +1,24 @@
-{ pkgs, lib, ... }:
+{ config, lib, pkgs, ... }:
 
 {
+  # fzf-tab's load order is a hard upstream requirement: after compinit,
+  # before widget-wrapping plugins like zsh-autosuggestions. The order is
+  # enforced only by the mkOrder values in initContent below, so assert the
+  # resulting layout -- an HM upgrade that shifts those blocks fails the
+  # build here instead of silently breaking Tab completion. builtins.match
+  # needs a single line (hence the flattening) and .* is order-sensitive.
+  # Checked only when fzf-tab is actually enabled: on air, OMZ runs
+  # compinit internally and the string never appears in initContent.
+  assertions = [
+    {
+      assertion =
+        let zshInit = lib.replaceStrings [ "\n" ] [ " " ] config.programs.zsh.initContent;
+            hasFzfTab = builtins.match ".*fzf-tab.plugin.zsh.*" zshInit != null;
+        in !hasFzfTab || builtins.match ".*compinit.*fzf-tab.*zsh-autosuggestions.*" zshInit != null;
+      message = "zsh: expected load order compinit -> fzf-tab -> zsh-autosuggestions (home-manager init order changed?)";
+    }
+  ];
+
   programs.bash = {
     enable = true;
     enableCompletion = true;
@@ -11,19 +29,16 @@
     };
   };
 
+  # zsh-autosuggestions is wired manually in initContent below instead of via
+  # programs.zsh.autosuggestion: that option's `strategy` only accepts the
+  # three built-in strategies and rejects "atuin", which would keep forcing
+  # the integration into scattered mkBefore/mkAfter hacks.
+  home.packages = [ pkgs.zsh-autosuggestions ];
+
   programs.zsh = {
     enable = true;
     enableCompletion = true;
     syntaxHighlighting.enable = true;
-
-    autosuggestion = {
-      enable = true;
-      # Intentionally empty so home-manager skips emitting
-      # `ZSH_AUTOSUGGEST_STRATEGY=...`. We set it ourselves in `initContent`
-      # below because home-manager's `strategy` option only accepts
-      # "history" | "completion" | "match_prev_cmd" and rejects "atuin".
-      strategy = [ ];
-    };
 
     history = {
       size = 100000;
@@ -46,30 +61,60 @@
     };
 
     initContent = lib.mkMerge [
-      # Declare an empty `_zsh_autosuggest_strategy_atuin` BEFORE
-      # zsh-autosuggestions is sourced, so its startup does not fail with
-      # "function not found" when it sees the "atuin" entry in
-      # ZSH_AUTOSUGGEST_STRATEGY. `atuin init zsh` later overrides this stub
-      # with the real implementation.
-      (lib.mkBefore ''
-        _zsh_autosuggest_strategy_atuin() { :; }
+      # Render completion candidates in an fzf UI; data sources (compinit,
+      # carapace) are untouched. Must source AFTER compinit (home-manager
+      # order 570) but BEFORE zsh-autosuggestions (order 700 below), which
+      # wraps widgets -- see fzf-tab README, "Install"; not via
+      # programs.zsh.plugins, which offers no ordering control. The
+      # assertion at the top of this file fails the build if an HM upgrade
+      # breaks this order.
+      #
+      # Linux-only for now: air still boots zsh through oh-my-zsh, whose
+      # compinit fires inside the OMZ block at order 800 -- after 680 here,
+      # and there is no order slot that can satisfy fzf-tab while OMZ stays.
+      # Drop the mkIf when air's legacy shell setup is retired.
+      (lib.mkIf (!pkgs.stdenv.hostPlatform.isDarwin) (lib.mkOrder 680 ''
+        source ${pkgs.zsh-fzf-tab}/share/fzf-tab/fzf-tab.plugin.zsh
+
+        # Recommended setup from the fzf-tab README ("Configure"):
+        # keep git's own branch order for checkout
+        zstyle ':completion:*:git-checkout:*' sort false
+        # render group headers like [directory]; enables F1/F2 group switching
+        zstyle ':completion:*:descriptions' format '[%d]'
+        # colorize filename candidates (no-op when LS_COLORS is unset)
+        zstyle ':completion:*' list-colors ''${(s.:.)LS_COLORS}
+        # suppress the native menu so fzf-tab captures the unambiguous prefix
+        zstyle ':completion:*' menu no
+        # preview the candidate directory with eza while completing cd
+        zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
+        # fzf treats Tab as multi-select toggle; rebind it to accept the
+        # highlighted candidate so Tab still fills in the completion the way
+        # the native menu did, and Enter keeps meaning "run the command"
+        zstyle ':fzf-tab:*' fzf-flags --bind=tab:accept
+      ''))
+
+      # Sourced WITHOUT ZSH_AUTOSUGGEST_STRATEGY set: on startup the plugin
+      # validates every entry in that variable, and "atuin" would fail with
+      # "function not found". atuin's init (order 1000, below) injects the
+      # real strategy function; the variable is set at 1050.
+      (lib.mkOrder 700 ''
+        source ${pkgs.zsh-autosuggestions}/share/zsh-autosuggestions/zsh-autosuggestions.zsh
       '')
 
-      # Run AFTER `atuin init zsh`:
-      # 1) Set atuin as the preferred ghost-text strategy (history/completion
-      #    as fallback). Done here because home-manager's `strategy` option
-      #    rejects "atuin" (see comment above).
+      # Runs after `atuin init zsh`, which injects the real
+      # `_zsh_autosuggest_strategy_atuin`:
+      # 1) atuin as the preferred ghost-text strategy (history/completion
+      #    as fallback).
       # 2) Whitelist atuin's widgets in ZSH_AUTOSUGGEST_ACCEPT_WIDGETS so
-      #    pressing Up / Ctrl-R is not swallowed by autosuggestions' default
-      #    clear-on-unknown-widget behaviour, and reaches atuin's TUI.
-      (lib.mkAfter ''
+      #    Up / Ctrl-R reach atuin's TUI instead of being swallowed by
+      #    autosuggestions' clear-on-unknown-widget behaviour. The array
+      #    exists by now -- autosuggestions created it when sourced at 700.
+      (lib.mkOrder 1050 ''
         ZSH_AUTOSUGGEST_STRATEGY=(atuin history completion)
-        if typeset -p ZSH_AUTOSUGGEST_ACCEPT_WIDGETS >/dev/null 2>&1; then
-          ZSH_AUTOSUGGEST_ACCEPT_WIDGETS+=(
-            atuin-search atuin-search-vicmd atuin-search-viins
-            atuin-up-search atuin-up-search-vicmd atuin-up-search-viins
-          )
-        fi
+        ZSH_AUTOSUGGEST_ACCEPT_WIDGETS+=(
+          atuin-search atuin-search-vicmd atuin-search-viins
+          atuin-up-search atuin-up-search-vicmd atuin-up-search-viins
+        )
       '')
     ];
   };
