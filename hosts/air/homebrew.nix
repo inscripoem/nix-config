@@ -25,7 +25,7 @@
     ];
 
     # Formulae already supplied by Home Manager are intentionally omitted:
-    # fastfetch, fd, git, neovim, starship, unzip, xz, and zoxide. Their
+    # fastfetch, fd, git, go, neovim, starship, unzip, xz, and zoxide. Their
     # existing Homebrew copies remain installed while cleanup stays disabled.
     brews = [
       "bzip2"
@@ -34,7 +34,6 @@
       "gh"
       "git-filter-repo"
       "git-xet"
-      "go"
       "gzip"
       "hdf5"
       "lynx"

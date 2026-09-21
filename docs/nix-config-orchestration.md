@@ -49,7 +49,9 @@ Read each child's default: expensive AAGL launchers require explicit opt-in.
 NixOS imports [home/packs](../home/packs/default.nix) centrally. Host entries
 select `packs.<name>.enable` and optional child switches for `ai`, `creative`,
 `gaming`, and `toolchain`; they do not import individual packs again. Darwin's
-assembly does not import these packs.
+assembly does not import the whole pack collection. `air` explicitly imports
+[toolchain.nix](../home/packs/toolchain.nix) and enables it; Linux desktop packs
+and AI software are not implicitly enabled on Darwin.
 
 Both platforms use global packages, user packages, and `.backup` for conflicting
 user files. Existing backup names must be resolved before activation.
@@ -66,8 +68,11 @@ On `air`:
 - Home Manager owns shared CLI tools and dotfiles; its Nix management stays off.
 - [hosts/air/homebrew.nix](../hosts/air/homebrew.nix) declares Homebrew software,
   with activation updates, upgrades, and cleanup disabled.
-- [home/hosts/air/legacy-shell.nix](../home/hosts/air/legacy-shell.nix) holds
-  existing local tool initialization. New Macs must not inherit it.
+- [home/core/shell.nix](../home/core/shell.nix) owns shell initialization on both
+  platforms. Darwin branches provide its rebuild commands, Homebrew environment,
+  and OrbStack paths. The host entry supplies local utility paths as data.
+- The toolchain pack supplies development tools; existing user-installed Go,
+  Cargo, and uv tools remain accessible through their bin directories.
 - The Lix installer still owns the APFS store mount.
 
 See [Home Manager](darwin-home-manager.md) and [Lix](darwin-lix.md) for operating
@@ -135,7 +140,8 @@ Import it in `home/packs/default.nix`, then set
 `packs.diagnostics.strace.enable = false` excludes that child. In this pattern
 the parent supplies a default; explicitly enabling a child still works when
 the parent is off. Components that require deliberate opt-in can default to
-`false` instead. This example uses a Linux package; Darwin does not import packs.
+`false` instead. This example uses a Linux package; Darwin hosts must import only
+packs compatible with their platform, as `air` does for the toolchain pack.
 
 ## Validation and deployment
 

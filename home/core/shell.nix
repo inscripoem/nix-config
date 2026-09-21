@@ -1,14 +1,66 @@
-{ pkgs, lib, ... }:
+{ config, pkgs, lib, hostSpec ? { }, ... }:
 
+let
+  isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
+  brewPrefix = if pkgs.stdenv.hostPlatform.isAarch64 then "/opt/homebrew" else "/usr/local";
+  switchCommand = if isDarwin then
+    "sudo -H darwin-rebuild switch --flake ${lib.escapeShellArg ".#${hostSpec.name}"} --show-trace"
+  else
+    "nh os switch -- --show-trace";
+  shellAliases = lib.mapAttrs (_: value: lib.mkDefault value) {
+    nhs = switchCommand;
+    nhsc = "${switchCommand} --max-jobs 0";
+    ze = if isDarwin then "zed ." else "zeditor .";
+  };
+  darwinPaths = lib.unique ([
+    "${config.home.profileDirectory}/bin"
+    "${config.home.homeDirectory}/.nix-profile/bin"
+  ] ++ config.home.sessionPath);
+
+  # Run once per session so nested shells keep an activated project environment.
+  # Bash also needs this in .bashrc when launched without a login .profile.
+  darwinEnvironment = ''
+    if [ -z "''${__NIX_CONFIG_DARWIN_ENV_SOURCED-}" ]; then
+      if [ -x ${brewPrefix}/bin/brew ]; then
+        eval "$(${brewPrefix}/bin/brew shellenv bash)"
+      fi
+      . "${config.home.sessionVariablesPackage}/etc/profile.d/hm-session-vars.sh"
+
+      # Nix owns the default toolchain; retain user tools and Homebrew afterwards.
+      _darwin_remaining=${lib.escapeShellArg (lib.concatStringsSep ":" darwinPaths)}:"$PATH"
+      PATH=
+      while [ -n "$_darwin_remaining" ]; do
+        _darwin_directory=''${_darwin_remaining%%:*}
+        case "$_darwin_remaining" in
+          *:*) _darwin_remaining=''${_darwin_remaining#*:} ;;
+          *) _darwin_remaining= ;;
+        esac
+        case ":$PATH:" in
+          *":$_darwin_directory:"*) ;;
+          *) PATH="''${PATH:+$PATH:}$_darwin_directory" ;;
+        esac
+      done
+      unset _darwin_remaining _darwin_directory
+      export PATH
+      export __NIX_CONFIG_DARWIN_ENV_SOURCED=1
+    fi
+  '';
+in
 {
+  home.sessionPath = lib.optionals isDarwin [
+    "${config.home.homeDirectory}/.local/bin"
+    "${config.home.homeDirectory}/go/bin"
+    "${config.home.homeDirectory}/.orbstack/bin"
+  ];
+
   programs.bash = {
     enable = true;
     enableCompletion = true;
-    bashrcExtra = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+    bashrcExtra = if isDarwin then darwinEnvironment else ''
       export PATH="$PATH:$HOME/bin:$HOME/.local/bin:$HOME/go/bin"
     '';
-    shellAliases = {
-    };
+    profileExtra = lib.optionalString isDarwin darwinEnvironment;
+    inherit shellAliases;
   };
 
   # zsh-autosuggestions is wired manually in initContent below instead of via
@@ -19,8 +71,15 @@
 
   programs.zsh = {
     enable = true;
+    dotDir = lib.mkIf isDarwin config.home.homeDirectory;
     enableCompletion = true;
     syntaxHighlighting.enable = true;
+    envExtra = lib.optionalString isDarwin ''
+      if [[ ! -o login ]]; then
+        ${darwinEnvironment}
+      fi
+    '';
+    profileExtra = lib.optionalString isDarwin darwinEnvironment;
 
     history = {
       size = 100000;
@@ -32,17 +91,16 @@
       extended = true;
     };
 
-    shellAliases = {
-      nhs = lib.mkDefault "nh os switch -- --show-trace";
-      # Cache-only rebuild: --max-jobs 0 forbids local builds, so any cache
-      # miss aborts before mutating the system. Pair with `git checkout
-      # flake.lock` to roll back a `nix flake update` that outran upstream
-      # binary caches.
-      nhsc = lib.mkDefault "nh os switch -- --show-trace --max-jobs 0";
-      ze = lib.mkDefault "zeditor .";
-    };
+    inherit shellAliases;
 
     initContent = lib.mkMerge [
+      (lib.mkIf isDarwin (lib.mkOrder 540 ''
+        typeset -gU PATH path
+        if [[ -d "$HOME/.orbstack/shell/completions/zsh" ]]; then
+          fpath+=("$HOME/.orbstack/shell/completions/zsh")
+        fi
+      ''))
+
       # Native completion menu (zsh/complist): Tab cycles candidates with
       # each highlighted one inserted live into the command line, and Return
       # accepts and executes.
@@ -85,15 +143,16 @@
 
   programs.fish = {
     enable = true;
-    shellAliases = {
-      nhs = lib.mkDefault "nh os switch -- --show-trace";
-      # Cache-only rebuild: --max-jobs 0 forbids local builds, so any cache
-      # miss aborts before mutating the system. Pair with `git checkout
-      # flake.lock` to roll back a `nix flake update` that outran upstream
-      # binary caches.
-      nhsc = lib.mkDefault "nh os switch -- --show-trace --max-jobs 0";
-      ze = lib.mkDefault "zeditor .";
-    };
+    inherit shellAliases;
+    shellInit = lib.optionalString isDarwin ''
+      if not set -q __NIX_CONFIG_DARWIN_ENV_SOURCED
+        if test -x ${brewPrefix}/bin/brew
+          ${brewPrefix}/bin/brew shellenv fish | source
+        end
+        fish_add_path --path --move ${lib.escapeShellArgs darwinPaths}
+        set -gx __NIX_CONFIG_DARWIN_ENV_SOURCED 1
+      end
+    '';
   };
 
   programs.starship = {

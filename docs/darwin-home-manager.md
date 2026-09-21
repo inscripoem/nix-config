@@ -1,27 +1,47 @@
 # Home Manager on air
 
-Home Manager owns the shell, Git, SSH configuration, editors, and shared CLI
-tools on `air`. Existing language runtimes remain configured in the host's
-legacy shell module. The [migration record](../nix-darwin.plan) contains the
-completed rollout and recovery generations.
+Home Manager owns the shell, Git, SSH configuration, editors, shared CLI tools,
+and language toolchain on `air`. The shell uses the same configuration as the
+Linux hosts, with explicit Darwin adaptations. The
+[migration record](../nix-darwin.plan) contains the original rollout and recovery
+generations; it does not record later user-level software removals.
 
 ## Configuration ownership
 
 | Source | Responsibility |
 |---|---|
 | [home/core](../home/core/default.nix) | Shared behavior and CLI tools |
-| [home/darwin](../home/darwin/default.nix) | Native 1Password paths, Git file target, Zsh dot directory, Darwin adaptations |
-| [air.nix](../home/hosts/air.nix) | Git identity, LFS/Xet, SSH Includes, activation guards, background-service choices |
-| [legacy-shell.nix](../home/hosts/air/legacy-shell.nix) | Host-specific PATH, existing runtimes, certificates, OrbStack, plugins, and aliases |
+| [shell.nix](../home/core/shell.nix) | Shell integrations, Darwin rebuild aliases, Zsh dot directory, Homebrew environment, OrbStack command/completion paths |
+| [home/darwin](../home/darwin/default.nix) | Native 1Password paths, Git file target, Darwin adaptations |
+| [toolchain.nix](../home/packs/toolchain.nix) | Node, Bun, pnpm, Yarn, uv, rustup, Go, just, devenv |
+| [air.nix](../home/hosts/air.nix) | Toolchain selection, local utility paths, Git identity, LFS/Xet, SSH Includes, activation guards, background-service choices |
 
-When migrating a tool to Nix, remove its manual initialization from the legacy
-module in the same change. Keep this machine's local paths out of the shared
-Darwin layer.
+There is no host-specific shell initialization module. Host entries may declare
+paths for local utilities, but shell startup and aliases belong in the shared
+shell module. `air` adds `~/.claude/bin` and `~/.tools` for existing utilities.
 
-HM supplies Oh My Zsh and highlighting. Atuin, Starship, and zoxide initialize
-through their shared integrations; nix-index supplies command-not-found.
-The HM user bin directory takes precedence over retained installations, and
-Zsh deduplicates PATH. See [Atuin](atuin-zsh.md) for widget ordering.
+Oh My Zsh and its Git/Heroku/pip plugins are not enabled. Atuin, Starship, zoxide,
+highlighting, and native completion use the shared integrations; nix-index
+supplies command-not-found. The old Brew aliases `bic`, `bif`, `bs`, and `bu`
+are removed. See [Atuin](atuin-zsh.md) for widget ordering.
+
+Darwin shell startup initializes Homebrew, then places the HM profile ahead of
+user tool directories and Homebrew. It retains `~/.local/bin`, `~/go/bin`, and
+`~/.cargo/bin`, so uv tools, `go install`, and `cargo install` remain usable.
+These user-installed tools are not themselves managed by Nix. Initialization
+runs once per inherited session so a nested shell can retain a project's
+activated environment. Zsh also includes OrbStack's installed completions.
+
+PDM, Poetry, pipx, and Python remain Homebrew software. The toolchain pack's
+Python component supplies uv, not a global `python` interpreter. Use `python3`
+for the retained Homebrew interpreter or `uv run` for project environments.
+Rustup comes from Nix and uses the existing user toolchains in `~/.rustup`.
+
+NVM, Rye, MoonBit, Proto, and Bun's global packages were removed before this
+migration. Their initialization is no longer sourced. The retained standalone
+Bun, uv, rustup, and Homebrew Go installations can be cleaned up after the new
+Nix commands have been verified. Go is omitted from the Homebrew declaration;
+`cleanup = "none"` retains the installed copy until explicitly removed.
 
 Darwin disables HM's `mandb` cache because the pinned Fish manuals fail its
 whatis parser. Manual pages remain available; the generated `apropos` index
@@ -79,13 +99,40 @@ Keep a working terminal open until a new login shell has been tested.
    If a check fails, inspect the actual layout before choosing a backup path.
    Record this parent-link backup separately. Do not repeat the move on the
    already migrated `air`, or use `force = true` to bypass HM file conflicts.
-4. Verify native 1Password, OrbStack, Git Xet, and retained runtimes are
+4. Verify native 1Password, OrbStack, Git Xet, and the declared toolchain are
    available. Evaluate and build the Darwin target using the
    [deployment guide](nix-config-orchestration.md#validation-and-deployment).
 5. After the user runs `nhs`, test a fresh shell, Atuin keys, editor aliases,
-   HTTPS, Git signing, and GitHub/private/OrbStack SSH connections.
+   toolchain command paths, HTTPS, Git signing, and GitHub/private/OrbStack SSH
+   connections. Check Bash and Fish as well as the default Zsh. Commands from
+   an old terminal may retain the old PATH and cached command locations.
+
+## Shell and toolchain migration checks
+
+Before switching, record the current system generation and command paths.
+Evaluate all hosts after changing the shared shell; build the complete `air`
+system without activation and inspect its generated shell files.
+
+After switching, `node`, `npm`, `bun`, `pnpm`, `yarn`, `uv`, `rustup`, `cargo`,
+`rustc`, `go`, `just`, and `devenv` should resolve through the HM profile.
+Verify that `pdm`, `poetry`, and `pipx` still resolve through Homebrew, and that
+user tools such as `speedtest-cli` remain available. Test a clean login shell,
+an interactive non-login shell, and a nested shell with an active project
+environment. Removing Oh My Zsh must not break Tab, Up, or Ctrl-R.
+
+The preparatory cleanup rebuilt `speedtest-cli` 2.1.3 using uv-managed Python
+3.13.5 after its old Rye interpreter was removed. Other project environments
+that referenced a removed Rye interpreter need to be recreated with uv.
 
 ## Recovery
+
+For this shell/toolchain change, use the system generation recorded immediately
+before switching and restore the corresponding repository configuration. The
+preparation used generation 6, but verify the live generation rather than
+assuming that number is still current. Retain it until the new shell is accepted.
+A generation rollback does not reinstall the removed NVM/Rye/MoonBit/Proto
+software or their user environments. Reinstall a required runtime separately;
+the original migration record is not a complete rollback of those removals.
 
 A system generation rollback does not restore pre-HM dotfiles. If undoing HM
 adoption, first follow [Lix recovery](darwin-lix.md#rollback) when crossing

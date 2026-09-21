@@ -1,9 +1,17 @@
-{ lib, ... }:
+{ config, lib, ... }:
 
 {
   imports = [
     ../darwin
-    ./air/legacy-shell.nix
+    ../packs/toolchain.nix
+  ];
+
+  packs.toolchain.enable = true;
+
+  # Local utilities remain user-owned; shell initialization lives in home/core.
+  home.sessionPath = [
+    "${config.home.homeDirectory}/.claude/bin"
+    "${config.home.homeDirectory}/.tools"
   ];
 
   programs.git = {

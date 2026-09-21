@@ -13,8 +13,6 @@ in
   # whatis parsing. Keep manual pages without generating that index on Mac.
   programs.man.generateCaches = false;
 
-  programs.zsh.dotDir = config.home.homeDirectory;
-
   # Reuse the native app; do not install another 1Password GUI through Nix.
   programs.git.settings.gpg.ssh.program = "/Applications/1Password.app/Contents/MacOS/op-ssh-sign";
   programs.ssh.settings."*".IdentityAgent = ''"${onePasswordAgent}"'';
