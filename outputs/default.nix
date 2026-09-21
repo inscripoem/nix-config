@@ -50,6 +50,7 @@ let
         modules.capabilities.remote-builder.enable = true;
         modules.capabilities.tailscale.enable = true;
         modules.capabilities.wifi-profiles.enable = true;
+        modules.capabilities.docker.enable = true;
       };
     };
 
