@@ -25,8 +25,8 @@
     ];
 
     # Formulae already supplied by Home Manager are intentionally omitted:
-    # fastfetch, fd, git, go, neovim, starship, unzip, xz, and zoxide. Their
-    # existing Homebrew copies remain installed while cleanup stays disabled.
+    # fastfetch, fd, git, go, neovim, starship, unzip, xz, and zoxide.
+    # Keep copies required by Homebrew dependencies, such as xz.
     brews = [
       "bzip2"
       "c-blosc"

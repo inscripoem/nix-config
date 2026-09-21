@@ -56,7 +56,14 @@ in
   programs.bash = {
     enable = true;
     enableCompletion = true;
-    bashrcExtra = if isDarwin then darwinEnvironment else ''
+    bashrcExtra = if isDarwin then ''
+      ${darwinEnvironment}
+
+      # macOS Bash 3.2 cannot load Home Manager's modern interactive setup.
+      if [ "''${BASH_VERSINFO[0]}" -lt 4 ]; then
+        return
+      fi
+    '' else ''
       export PATH="$PATH:$HOME/bin:$HOME/.local/bin:$HOME/go/bin"
     '';
     profileExtra = lib.optionalString isDarwin darwinEnvironment;

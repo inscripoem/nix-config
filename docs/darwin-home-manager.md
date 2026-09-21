@@ -38,10 +38,22 @@ for the retained Homebrew interpreter or `uv run` for project environments.
 Rustup comes from Nix and uses the existing user toolchains in `~/.rustup`.
 
 NVM, Rye, MoonBit, Proto, and Bun's global packages were removed before this
-migration. Their initialization is no longer sourced. The retained standalone
-Bun, uv, rustup, and Homebrew Go installations can be cleaned up after the new
-Nix commands have been verified. Go is omitted from the Homebrew declaration;
-`cleanup = "none"` retains the installed copy until explicitly removed.
+migration. Their initialization is no longer sourced. After verifying the Nix
+commands, the standalone Bun, uv, and rustup binaries and their command links
+were removed. Their temporary recovery backup was subsequently deleted at the
+user's request. The existing Rust toolchains, uv environments, and Go/Cargo
+user-installed tools remain, except for Cargo's old `exa`, which was uninstalled.
+The Nix `exa` command is a compatibility link to `eza`.
+
+The duplicate Homebrew formulae `go`, `fastfetch`, `fd`, `git`, `neovim`,
+`starship`, `unzip`, and `zoxide` were explicitly uninstalled with automatic
+dependency removal disabled. Keep Homebrew's `git-lfs` for `git-xet`, `ripgrep`
+for `opencode`, and `xz` for Python and other formulae. Nix copies on PATH do not
+satisfy Homebrew's dependency tracking. Activation still uses `cleanup = "none"`.
+
+Zerobrew's `~/.local/bin/zb` and the entire `/opt/zerobrew` tree were removed,
+including the old packages under `prefix/Cellar`, the store, and caches.
+The active shell configuration did not reference it, and no backup was retained.
 
 Darwin disables HM's `mandb` cache because the pinned Fish manuals fail its
 whatis parser. Manual pages remain available; the generated `apropos` index
@@ -120,11 +132,24 @@ user tools such as `speedtest-cli` remain available. Test a clean login shell,
 an interactive non-login shell, and a nested shell with an active project
 environment. Removing Oh My Zsh must not break Tab, Up, or Ctrl-R.
 
+The Nix profile supplies the interactive `bash`; macOS retains its own
+`/bin/bash` 3.2 for scripts that explicitly select it. On Darwin, `.bashrc`
+initializes the environment and returns early for Bash versions older than 4,
+before Home Manager's modern shell options, completions, and prompt hooks.
+The system Bash therefore gets the declared PATH without those interactive
+enhancements. Verify both `/bin/bash` and the Nix Bash after changing this guard;
+do not replace the system binary or automatically re-exec a different shell.
+
 The preparatory cleanup rebuilt `speedtest-cli` 2.1.3 using uv-managed Python
 3.13.5 after its old Rye interpreter was removed. Other project environments
 that referenced a removed Rye interpreter need to be recreated with uv.
 
 ## Recovery
+
+No backup of the removed standalone CLI binaries is retained. Reinstall any
+required standalone tools or Homebrew packages separately; a normal reinstall
+may select a newer version. The retained `/opt/homebrew/etc/gitconfig` and
+`.antigen` files were not removed by this cleanup.
 
 For this shell/toolchain change, use the system generation recorded immediately
 before switching and restore the corresponding repository configuration. The
