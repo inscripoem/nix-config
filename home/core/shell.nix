@@ -7,11 +7,16 @@ let
     "sudo -H darwin-rebuild switch --flake ${lib.escapeShellArg ".#${hostSpec.name}"} --show-trace"
   else
     "nh os switch -- --show-trace";
-  shellAliases = lib.mapAttrs (_: value: lib.mkDefault value) {
+  shellAliases = lib.mapAttrs (_: value: lib.mkDefault value) ({
     nhs = switchCommand;
     nhsc = "${switchCommand} --max-jobs 0";
     ze = if isDarwin then "zed ." else "zeditor .";
-  };
+  } // lib.optionalAttrs isDarwin {
+    bs = "brew search";
+    bic = "brew install --cask";
+    bif = "brew install --formula";
+    bu = "brew update && brew upgrade && brew cleanup";
+  });
   darwinPaths = lib.unique ([
     "${config.home.profileDirectory}/bin"
     "${config.home.homeDirectory}/.nix-profile/bin"

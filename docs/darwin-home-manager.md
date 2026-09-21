@@ -22,8 +22,12 @@ shell module. `air` adds `~/.claude/bin` and `~/.tools` for existing utilities.
 
 Oh My Zsh and its Git/Heroku/pip plugins are not enabled. Atuin, Starship, zoxide,
 highlighting, and native completion use the shared integrations; nix-index
-supplies command-not-found. The old Brew aliases `bic`, `bif`, `bs`, and `bu`
-are removed. See [Atuin](atuin-zsh.md) for widget ordering.
+supplies command-not-found. On Darwin, Zsh, Nix Bash, and Fish share the Brew
+aliases `bs` (`brew search`), `bic` (`brew install --cask`), `bif`
+(`brew install --formula`), and `bu`
+(`brew update && brew upgrade && brew cleanup`). These are explicit user commands;
+Homebrew activation still disables automatic updates, upgrades, and cleanup.
+See [Atuin](atuin-zsh.md) for widget ordering.
 
 Darwin shell startup initializes Homebrew, then places the HM profile ahead of
 user tool directories and Homebrew. It retains `~/.local/bin`, `~/go/bin`, and
@@ -54,6 +58,11 @@ satisfy Homebrew's dependency tracking. Activation still uses `cleanup = "none"`
 Zerobrew's `~/.local/bin/zb` and the entire `/opt/zerobrew` tree were removed,
 including the old packages under `prefix/Cellar`, the store, and caches.
 The active shell configuration did not reference it, and no backup was retained.
+
+After generation 8 activated the Bash compatibility guard, the unused
+`~/.antigen` bundles and caches were removed. The four plugin checkouts had no
+local commits or tracked edits; the only untracked theme files were generated
+copies with an Antigen header. Active shell files did not reference this tree.
 
 Darwin disables HM's `mandb` cache because the pinned Fish manuals fail its
 whatis parser. Manual pages remain available; the generated `apropos` index
@@ -148,8 +157,8 @@ that referenced a removed Rye interpreter need to be recreated with uv.
 
 No backup of the removed standalone CLI binaries is retained. Reinstall any
 required standalone tools or Homebrew packages separately; a normal reinstall
-may select a newer version. The retained `/opt/homebrew/etc/gitconfig` and
-`.antigen` files were not removed by this cleanup.
+may select a newer version. The retained `/opt/homebrew/etc/gitconfig` was not
+removed by this cleanup.
 
 For this shell/toolchain change, use the system generation recorded immediately
 before switching and restore the corresponding repository configuration. The
