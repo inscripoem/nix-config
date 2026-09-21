@@ -45,8 +45,7 @@
     initContent = lib.mkMerge [
       # Native completion menu (zsh/complist): Tab cycles candidates with
       # each highlighted one inserted live into the command line, and Return
-      # accepts and executes. Styled with the parts of the fzf-tab README's
-      # common configuration that also benefit the native menu.
+      # accepts and executes.
       (lib.mkOrder 680 ''
         zmodload zsh/complist
         zstyle ':completion:*' menu select
