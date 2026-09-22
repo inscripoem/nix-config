@@ -74,7 +74,7 @@ in
       echo "Downloading latest Wanxiang LTS grammar model..."
       curl -fLo "$GRAM" \
         "${wanxiangGramUrl}"
-      echo "Done. Open fcitx5 tray menu → Deploy to reload the model."
+      echo "Done. Restart fcitx5 (or re-login) to reload the model."
     '')
   ];
 }

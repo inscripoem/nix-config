@@ -45,7 +45,7 @@ To download again or update it:
 update-wanxiang-gram
 ```
 
-After a successful download, use Deploy in the Fcitx5 tray menu.
+After a successful download, restart fcitx5 to reload the model.
 
 ## Stale build cache
 
@@ -74,6 +74,15 @@ mv ~/.local/share/fcitx5/rime/build "$rime_cache_backup/"
 
 It is a fallback for stale generated files, not a requirement to delete user
 dictionaries on every update.
+
+## Tray deploy caveat
+
+The fcitx5 tray Deploy action tears librime down and rebuilds it inside the
+running process. With Lua-heavy schemas like Wanxiang this can leave the
+engine wedged — no input response and an empty schema menu — until fcitx5 is
+restarted. Apply configuration changes through a switch plus an fcitx5
+restart instead; the startup maintenance performs the same recompilation
+safely before any session exists.
 
 References: [Wanxiang](https://github.com/amzxyz/rime_wanxiang),
 [grammar releases](https://github.com/amzxyz/RIME-LMDG/releases),
