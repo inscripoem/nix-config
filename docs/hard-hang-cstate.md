@@ -16,10 +16,16 @@ failure or rule out RAM, firmware, and other hardware faults.
 | [Host module](../hosts/briefcase/default.nix) | `intel_idle.max_cstate=1` | Restrict deep CPU idle states |
 | [Arc profile](../hosts/briefcase/gpu/intel-arc-a380.nix) | `pcie_port_pm=off` | Disable PCIe port runtime power management |
 | Arc profile | Forced ASPM parameters removed | Avoid the aggressive policy used during power tuning |
+| [Host module](../hosts/briefcase/default.nix) | `RuntimeWatchdogSec=30s`, `intel_oc_wdt` blacklisted | Feed the PCH iTCO watchdog so a whole-machine hang auto-resets |
 
 The CPU restriction was added on 2026-07-15. A freeze recurred on 2026-08-03
 after about seven hours of idle despite the restriction being active. PCIe
-port runtime PM was then disabled and forced ASPM removed. See the
+port runtime PM was then disabled and forced ASPM removed. Another freeze
+recurred on 2026-09-22 around 12:02 after eight days of uptime, with the same
+signature: the journal stops mid-write, no kernel panic, and pstore stays
+empty. None of the existing mitigations had blocked it, so the iTCO runtime
+watchdog was added afterwards as a recovery-only last line of defense — it
+restarts the box but neither observes nor fixes the underlying fault. See the
 [power measurements](intel-arc-a380-power.md) for the small saving abandoned
 by that change.
 

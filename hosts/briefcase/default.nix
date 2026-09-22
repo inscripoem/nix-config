@@ -21,6 +21,17 @@
   # keep the PCIe link alive.
   boot.kernelParams = [ "intel_idle.max_cstate=1" ];
 
+  # The OC watchdog is useless on this board and would otherwise win the
+  # /dev/watchdog registration race; iTCO_wdt is the one systemd should feed.
+  boot.blacklistedKernelModules = [ "intel_oc_wdt" ];
+
+  # Feed the PCH iTCO watchdog (heartbeat=30s) so a whole-machine hang
+  # auto-resets instead of waiting for a manual power cycle. RuntimeWatchdogSec
+  # makes systemd ping it every 15s; keep this below the 30s hardware timeout.
+  # Last line of defense for the silent hard-hangs documented in
+  # docs/hard-hang-cstate.md, which fall below kernel panic visibility.
+  systemd.settings.Manager.RuntimeWatchdogSec = "30s";
+
   networking.hostName = "briefcase";
 
   # Palworld dedicated server — game port (UDP only; RCON/REST API would
