@@ -21,6 +21,20 @@ let
     [ -n "$PATH" ] || PATH=/run/current-system/sw/bin:/usr/bin:/bin
     export PATH
 
+    # Single-instance sweep. This script has no Wayland connection, so it
+    # outlives the niri session that spawned it (logout does not reap its
+    # transient scope); without this, each relogin leaks another monitor and
+    # one theme switch relaunches dms once per monitor — the double status
+    # bar. Bash keeps comm at "bash" for scripts, so match the script path at
+    # the end of the command line and confirm comm, to avoid killing
+    # unrelated processes that merely mention the path (editors, tails).
+    for pid in $(pgrep -f 'dark-theme-sync$'); do
+      [ "$pid" = "$$" ] && continue
+      [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = bash ] || continue
+      pkill -TERM -P "$pid" 2>/dev/null
+      kill "$pid" 2>/dev/null
+    done
+
     sync_prefer_dark() {
       local scheme
       scheme=$(gdbus call --session \
@@ -29,7 +43,8 @@ let
         --method org.freedesktop.portal.Settings.Read \
         "org.freedesktop.appearance" "color-scheme" 2>/dev/null \
         | sed -n 's/.*uint32 \([0-9]*\).*/\1/p')
-      local val=false
+      [ -n "$scheme" ] || return 1   # portal read failed: leave last_val alone
+      local val=false changed=true
       [ "$scheme" = "1" ] && val=true   # 1 = prefer dark
       for f in "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"; do
         [ -f "$f" ] || continue
@@ -39,7 +54,15 @@ let
           printf 'gtk-application-prefer-dark-theme=%s\n' "$val" >> "$f"
         fi
       done
+      # Portal clients poke Settings.Read without changing anything (e.g.
+      # 1Password unlock) and gdbus monitor still emits an event; restarting
+      # dms on those just blanks the bar. Return 0 only when the scheme
+      # actually flipped so the caller restarts then.
+      [ "$val" = "$last_val" ] && changed=false
+      last_val=$val
+      [ "$changed" = true ]
     }
+    last_val=""
 
     # Restart DMS so its Qt process re-reads the icon theme. DMS is normally
     # spawned by niri, but spawn-at-startup only runs once, so we relaunch it
@@ -53,13 +76,13 @@ let
       disown
     }
 
-    sync_prefer_dark
+    sync_prefer_dark   # seeds last_val so the loop skips unchanged events
     gdbus monitor --session \
       --dest org.freedesktop.portal.Desktop \
       --object-path /org/freedesktop/portal/desktop \
       | while IFS= read -r line; do
           case "$line" in
-            *color-scheme*) sync_prefer_dark; restart_dms ;;
+            *color-scheme*) sync_prefer_dark && restart_dms ;;
           esac
         done
   '';
