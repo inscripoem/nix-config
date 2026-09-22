@@ -13,9 +13,14 @@ The model download remains a separate maintenance step, described below.
 ## Configuration
 
 The system module replaces the bundled Wanxiang files with schemas, Lua,
-dictionaries, and `default.yaml` from the `rime-wanxiang` input pinned in
-`flake.lock`. This keeps those files at the same upstream revision while
-retaining other bundled schemas.
+dictionaries, `default.yaml`, `custom_phrase.dict.yaml`, and the `opencc/`
+directory from the `rime-wanxiang` input pinned in `flake.lock`. The opencc
+txt dictionaries are compiled into `.ocd2` binaries during the package build
+(adding `opencc` to `nativeBuildInputs`), replicating what upstream CI does
+before packaging; the emoji and s2t/s2hk/s2tw opencc configs only reference
+the `.ocd2` files. Missing `custom_phrase.dict.yaml` or the compiled opencc
+data makes Deploy fail while typing keeps working. This keeps those files at
+the same upstream revision while retaining other bundled schemas.
 
 HM's `default.custom.yaml` explicitly selects the `wanxiang` schema. The system
 supplies the default configuration directly; avoid adding a competing copy of
@@ -42,19 +47,32 @@ update-wanxiang-gram
 
 After a successful download, use Deploy in the Fcitx5 tray menu.
 
-## Applying patches
+## Stale build cache
 
-Deploy after changing schema or dictionary configuration. If changes remain
-stale, close applications using the input method, move the generated cache to
-an unused backup path, and Deploy again:
+Rime's deployer recompiles a schema only when a source file's mtime is newer
+than the timestamp recorded in the build cache (`~/.local/share/fcitx5/rime/build/`).
+Every file inside the nix store has mtime 0, so after a flake update brings new
+`rime-wanxiang` sources, Deploy never considers them newer and silently keeps
+the old compiled schema. Dictionaries are checksum-based and do get rebuilt,
+but the compiled `*.schema.yaml` (engine and Lua component wiring) goes stale;
+running the new Lua scripts against old wiring fails per keystroke and drops
+every candidate, leaving only the preedit underline with an empty candidate
+window.
+
+`home/desktop/rime.nix` guards against this: an activation script stamps the
+pinned `rime-wanxiang` store path plus a hash of the managed `*.custom.yaml`
+patches into `.wanxiang-src-stamp`, and when the stamp no longer matches, moves
+the build cache into a backup directory so the next Deploy recompiles from
+scratch. Restart fcitx5 after a switch that triggered this.
+
+The manual fallback still works for anything the guard does not cover:
 
 ```sh
 rime_cache_backup=$(mktemp -d "$HOME/rime-build-backup.XXXXXX")
 mv ~/.local/share/fcitx5/rime/build "$rime_cache_backup/"
 ```
 
-This workaround was needed during setup with managed configuration links. It
-is a fallback for stale generated files, not a requirement to delete user
+It is a fallback for stale generated files, not a requirement to delete user
 dictionaries on every update.
 
 References: [Wanxiang](https://github.com/amzxyz/rime_wanxiang),
