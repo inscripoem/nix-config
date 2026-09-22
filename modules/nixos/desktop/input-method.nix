@@ -20,6 +20,7 @@ in
       vinput
       qt6Packages.fcitx5-chinese-addons
       (fcitx5-rime.overrideAttrs (old: {
+        nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ opencc ];
         postInstall = (old.postInstall or "") + ''
           wanxiangSrc=${inputs.rime-wanxiang}
           out=$out/share/rime-data
@@ -28,15 +29,21 @@ in
           # lua and dicts all come from the same upstream commit pinned in
           # flake.lock. Non-wanxiang schemas shipped by fcitx5-rime stay.
           rm -f  $out/default.yaml $out/version.txt $out/custom_phrase.txt
-          rm -f  $out/wanxiang*.yaml
+          rm -f  $out/wanxiang*.yaml $out/custom_phrase.dict.yaml
           rm -rf $out/lua/wanxiang $out/lua/data
+          # Bundled snapshot dirs come read-only from the store.
+          if [ -d $out/opencc ]; then
+            chmod -R u+w $out/opencc
+            rm -rf $out/opencc
+          fi
 
           install -Dm644 $wanxiangSrc/default.yaml $out/default.yaml
           shopt -s nullglob
           for f in $wanxiangSrc/wanxiang*.yaml; do
             install -Dm644 "$f" "$out/$(basename "$f")"
           done
-          for f in $wanxiangSrc/version.txt $wanxiangSrc/custom_phrase.txt; do
+          for f in $wanxiangSrc/version.txt $wanxiangSrc/custom_phrase.txt \
+                   $wanxiangSrc/custom_phrase.dict.yaml; do
             [ -f "$f" ] && install -Dm644 "$f" "$out/$(basename "$f")" || true
           done
           if [ -d $wanxiangSrc/lua ]; then
@@ -49,6 +56,25 @@ in
             for f in $wanxiangSrc/dicts/*; do
               [ -f "$f" ] && install -Dm644 "$f" "$out/dicts/$(basename "$f")" || true
             done
+          fi
+          # Upstream CI (release-build.sh build_opencc_wanxiang) compiles the
+          # opencc txt dictionaries into ocd2 binaries at package time; the
+          # git tree only carries the txt sources, and the schema's emoji /
+          # s2t opencc configs only reference the ocd2 files. Replicate that
+          # step or Deploy and those switches fail. Custom_* stay as text.
+          if [ -d $wanxiangSrc/opencc ]; then
+            mkdir -p $out/opencc
+            cp -r $wanxiangSrc/opencc/. $out/opencc/
+            chmod -R u+w $out/opencc
+            (
+              cd $out/opencc/wanxiang
+              for f in *.txt; do
+                case "$f" in Custom_*) continue ;; esac
+                sed -i '/^#/d' "$f"
+                opencc_dict -i "$f" -o "''${f%.txt}.ocd2" -f text -t ocd2
+                rm -f "$f"
+              done
+            )
           fi
           shopt -u nullglob
         '';
