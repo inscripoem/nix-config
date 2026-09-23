@@ -11,7 +11,7 @@ let
   # theme for Qt-rendered tray icons (fcitx5 etc.).
   # NOTE: name must NOT contain "gtk" — DMS runs `pkill -HUP -f gtk` on every
   # theme switch (intended to reload GTK apps), which would kill this script.
-  darkThemeSync = pkgs.writeShellScript "dark-theme-sync" ''
+  themeSync = pkgs.writeShellScript "theme-sync" ''
     # Re-import the authoritative user PATH from the systemd user manager
     # (PAM + ~/.config/environment.d merged). Hardcoding would starve dms,
     # which resolves relative Exec= command names from .desktop files
@@ -25,15 +25,44 @@ let
     # outlives the niri session that spawned it (logout does not reap its
     # transient scope); without this, each relogin leaks another monitor and
     # one theme switch relaunches dms once per monitor — the double status
-    # bar. Bash keeps comm at "bash" for scripts, so match the script path at
-    # the end of the command line and confirm comm, to avoid killing
-    # unrelated processes that merely mention the path (editors, tails).
-    for pid in $(pgrep -f 'dark-theme-sync$'); do
+    # bar. comm is useless here (bash 5.3 sets it to the first 15 chars of
+    # the script filename for store-path shebangs, plain "bash" for env-bash
+    # launches), so match the script path at the end of the command line and
+    # confirm argv: the interpreter must end in bash and this script must be
+    # the last argument — that still excludes editors or tails that merely
+    # mention the path.
+    # Suffix match on purpose: it also catches instances still running under
+    # the script's old name ("dark-theme-sync"), so the first rebuild+relogin
+    # after a rename sweeps them too.
+    for pid in $(pgrep -f 'theme-sync$'); do
       [ "$pid" = "$$" ] && continue
-      [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = bash ] || continue
+      first=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | head -n1)
+      last=$(tr '\0' '\n' < "/proc/$pid/cmdline" 2>/dev/null | sed '/^$/d' | tail -n1)
+      [ -n "$first" ] || continue
+      [[ $first = *bash && $last = *theme-sync ]] || continue
       pkill -TERM -P "$pid" 2>/dev/null
       kill "$pid" 2>/dev/null
     done
+
+    # Niri-only Qt theme bridge. niri's `environment` block only reaches
+    # processes niri spawns itself; apps launched through the systemd user
+    # manager (Dolphin -> app-org.kde.*.service) never see it and fall back to
+    # the light kdeglobals palette. Mirror our own value into the manager and
+    # dbus activation environments so those apps resolve through the same GTK
+    # settings this script keeps in lockstep with DMS's color-scheme — follows
+    # light exactly as it follows dark, nothing here hardcodes a mode. A
+    # watcher unsets it when niri dies so a KDE fallback session never
+    # inherits it.
+    if [ -n "$QT_QPA_PLATFORMTHEME" ]; then
+      systemctl --user set-environment "QT_QPA_PLATFORMTHEME=$QT_QPA_PLATFORMTHEME"
+      dbus-update-activation-environment --systemd QT_QPA_PLATFORMTHEME 2>/dev/null
+    fi
+    # The script itself is reparented to the systemd user manager (niri wraps
+    # spawn-at-startup in transient scopes), so $PPID cannot detect session
+    # death — poll for the compositor process instead.
+    ( while pgrep -x niri >/dev/null 2>&1; do sleep 5; done
+      systemctl --user unset-environment QT_QPA_PLATFORMTHEME 2>/dev/null
+      dbus-update-activation-environment --systemd --unset QT_QPA_PLATFORMTHEME 2>/dev/null ) &
 
     sync_prefer_dark() {
       local scheme
@@ -352,7 +381,7 @@ in
         { command = [ "dms" "run" ]; }
         # Keep GTK's legacy dark-theme key in sync with DMS theme mode so
         # Electron tray icons (notion) pick the right icon.
-        { command = [ "${darkThemeSync}" ]; }
+        { command = [ "${themeSync}" ]; }
       ];
 
       xwayland-satellite = {
