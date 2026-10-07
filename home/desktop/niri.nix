@@ -395,15 +395,17 @@ in
         "XDG_CURRENT_DESKTOP" = "niri";
         "XDG_SESSION_TYPE" = "wayland";
         "XDG_SESSION_DESKTOP" = "niri";
-        # Qt theming: the xdgdesktopportal theme asks the portal (i.e. DMS)
-        # for the color-scheme directly, so kded6 rewriting settings.ini to
-        # the light kdeglobals palette (see kded6rc below) cannot flip Qt
-        # apps light; ":gtk3" stays as the fallback theme so icon and font
-        # resolution still come from GTK settings (fcitx5/DMS tray icons
-        # follow gtk-icon-theme-name). theme-sync mirrors this into the
-        # systemd user manager environment so apps launched through Dolphin's
+        # Qt theming: plain "gtk3", NOT "xdgdesktopportal:gtk3". The portal
+        # variant resolves the icon theme through the portal (breeze /
+        # breeze-dark, maintained by DMS), and those themes carry neither
+        # input-keyboard-symbolic nor any fcitx icons — DMS's tray then fails
+        # to load fcitx5's icon (quickshell shows its magenta checkerboard
+        # placeholder; fcitx-rime renders inverted). Dark-mode flips from
+        # kded6 are blocked at the source by the gtkconfig autoload=false in
+        # kded6rc below. theme-sync mirrors this into the systemd user
+        # manager environment so apps launched through Dolphin's
         # app-services inherit it too.
-        "QT_QPA_PLATFORMTHEME" = "xdgdesktopportal:gtk3";
+        "QT_QPA_PLATFORMTHEME" = "gtk3";
       };
 
     };
