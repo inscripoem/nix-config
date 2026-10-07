@@ -395,9 +395,15 @@ in
         "XDG_CURRENT_DESKTOP" = "niri";
         "XDG_SESSION_TYPE" = "wayland";
         "XDG_SESSION_DESKTOP" = "niri";
-        # Make Qt apps (DMS shell, fcitx5) resolve icons via GTK settings, so
-        # their tray icons follow the DMS light/dark icon theme switch.
-        "QT_QPA_PLATFORMTHEME" = "gtk3";
+        # Qt theming: the xdgdesktopportal theme asks the portal (i.e. DMS)
+        # for the color-scheme directly, so kded6 rewriting settings.ini to
+        # the light kdeglobals palette (see kded6rc below) cannot flip Qt
+        # apps light; ":gtk3" stays as the fallback theme so icon and font
+        # resolution still come from GTK settings (fcitx5/DMS tray icons
+        # follow gtk-icon-theme-name). theme-sync mirrors this into the
+        # systemd user manager environment so apps launched through Dolphin's
+        # app-services inherit it too.
+        "QT_QPA_PLATFORMTHEME" = "xdgdesktopportal:gtk3";
       };
 
     };
@@ -408,5 +414,22 @@ in
     enable = true;
     target = "niri/config.kdl";
     source = configWithDmsIncludes;
+  };
+
+  # kded6's gtkconfig module syncs the (light) kdeglobals palette into
+  # ~/.config/gtk-{3,4}.0/settings.ini — including
+  # gtk-application-prefer-dark-theme=false — every time a KDE app activates
+  # kded6 (e.g. opening a file from Dolphin), clobbering the value theme-sync
+  # maintains from DMS's color-scheme. DMS owns that key in this session, so
+  # stop the module from loading at all. The KDE fallback session keeps its
+  # plasma-manager theming; only its KDE→GTK auto-sync is lost. force because
+  # KDE apps may rewrite kded6rc at runtime; this setting must survive
+  # switches.
+  xdg.configFile."kded6rc" = {
+    force = true;
+    text = ''
+      [Module-gtkconfig]
+      autoload=false
+    '';
   };
 }
