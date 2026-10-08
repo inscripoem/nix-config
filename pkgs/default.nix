@@ -15,10 +15,10 @@ final: prev: {
   # the mirror archive adopted by nixpkgs#565201;
   # the hash was computed from a direct official-CDN download and matches
   # the mirror's checksum file. (The by-name package.nix wrapper is not
-  # arg-overridable, hence the direct call.) To bump: change version +
-  # hash, URL from https://dldir1v6.qq.com/weixin/Universal/Linux/,
-  # hashed with `nix store prefetch-file --json <url>`. Drop this override
-  # entirely once nixpkgs#560225 (wechat 4.1.13.x) lands in unstable.
+  # arg-overridable, hence the direct call.) To bump: `just update wechat`
+  # rewrites version, mirror URL and hash from the mirror's latest release.
+  # Drop this override entirely once nixpkgs#560225 (wechat 4.1.13.x)
+  # lands in unstable.
   wechat =
     let
       wechatFhs = prev.callPackage (prev.path + "/pkgs/by-name/we/wechat/linux.nix") {
