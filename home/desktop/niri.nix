@@ -56,6 +56,11 @@ let
     if [ -n "$QT_QPA_PLATFORMTHEME" ]; then
       systemctl --user set-environment "QT_QPA_PLATFORMTHEME=$QT_QPA_PLATFORMTHEME"
       dbus-update-activation-environment --systemd QT_QPA_PLATFORMTHEME 2>/dev/null
+      # Sandbox apps (e.g. the Baidu Netdisk flatpak) ask the portal to spawn
+      # host apps, and those children inherit the portal daemon's own
+      # environment. The portal usually starts before we do, so restart it
+      # once here to make sure it carries the mirrored variable.
+      systemctl --user try-restart xdg-desktop-portal.service 2>/dev/null
     fi
     # The script itself is reparented to the systemd user manager (niri wraps
     # spawn-at-startup in transient scopes), so $PPID cannot detect session
