@@ -8,6 +8,7 @@
       { name = "flathub"; location = "https://flathub.org/repo/flathub.flatpakrepo"; }
     ];
     packages = [
+      "com.baidu.NetDisk"
       "com.usebottles.bottles"
     ];
     update.onActivation = true;
