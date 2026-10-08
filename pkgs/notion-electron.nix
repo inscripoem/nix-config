@@ -5,11 +5,11 @@
 }:
 let
   pname = "notion-electron";
-  version = "2.4.0";
+  version = "2.4.1";
 
   src = fetchurl {
     url = "https://github.com/anechunaev/notion-electron/releases/download/v${version}/Notion_Electron-${version}-x86_64.AppImage";
-    hash = "sha256-jpEQb4k7nWGefzspAPppxisJMlmBNUxRwSfHsylaQKY=";
+    hash = "sha256-312X9AeidFc2qr1iD20vMefmDQyu6I7HCm7SZM+Wo7E=";
   };
 
   appimageContents = appimageTools.extract { inherit pname version src; };
