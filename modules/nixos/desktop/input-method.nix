@@ -81,12 +81,10 @@ in
       }))
       catppuccin-fcitx5
     ];
-    # Activate catppuccin-mocha-mauve theme with matching font size.
-    # Fcitx5 ignores theme.conf Font → must set in globalSection explicitly.
-    fcitx5.settings.addons.classicui.globalSection = {
-      Theme = "catppuccin-mocha-mauve";
-      Font = ''"Sans 13"'';
-    };
+    # Classicui theming (Theme/Font) deliberately lives at the USER level
+    # in home/desktop/fcitx5.nix: WeChat's client-side candidate panel only
+    # reads ~/.config/fcitx5, so the user file is the single source of
+    # truth. This module only ships the theme data via the addon above.
   };
 
   environment.systemPackages = [ vinput ];
