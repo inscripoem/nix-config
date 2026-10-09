@@ -1,4 +1,4 @@
-{ config, lib, pkgs, llm-agents, hermes-agent, ... }:
+{ config, lib, pkgs, llm-agents, hermes-agent, passwordStore, ... }:
 let
   cfg = config.packs.ai;
   agentPkgs = llm-agents.packages.${pkgs.stdenv.hostPlatform.system};
@@ -69,6 +69,15 @@ in {
       default = false;
       description = "hermes-agent CLI (Nous Research), opt-in per host";
     };
+
+    # Opt-in extra: Alibaba's new-form agentic desktop app — the GUI
+    # counterpart to the CLI agents above, distinct from the qoder-cn-ide
+    # editor that lives in desktop.editors-gui.
+    "qoder-cn".enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "qoder-cn agentic desktop app (Alibaba), opt-in per host";
+    };
   };
 
   config = lib.mkMerge [
@@ -131,6 +140,14 @@ in {
       # target set on the gateway unit below gives them a working escape
       # hatch instead.
       home.packages = [ hermesPkg ];
+    })
+
+    (lib.mkIf cfg."qoder-cn".enable {
+      home.packages = [
+        (pkgs.qoder-cn.override {
+          commandLineArgs = "--password-store=${passwordStore}";
+        })
+      ];
     })
 
     # Declarative replacement for the gateway unit that `hermes gateway

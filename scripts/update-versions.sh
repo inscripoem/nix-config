@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Update trae-cn, cc-switch, siyuan, ww-manager, notion-electron and wechat
-# to their latest upstream versions.
+# Update trae-cn, qoder-cn, qoder-cn-ide, cc-switch, siyuan, ww-manager,
+# notion-electron and wechat to their latest upstream versions.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--trae-version=<X.Y.Z>]
 #
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {trae-cn,cc-switch,siyuan,ww-manager,notion-electron,wechat}.
+#                          {trae-cn,qoder-cn,qoder-cn-ide,cc-switch,siyuan,ww-manager,notion-electron,wechat}.
 #                          `notion` is accepted as an alias for notion-electron.
-#                          Defaults to all six.
+#                          Defaults to all eight.
 #   --trae-version=<ver>   Skip the trae-cn `latest` API and pin the given
 #                          version directly. Only meaningful when trae-cn is
 #                          in the selected set.
@@ -113,6 +113,26 @@ github_latest_version() {
   echo "$version"
 }
 
+# Read the Version field of a remote .deb without downloading it: a 64 KiB
+# range request covers the ar header plus the control.tar member; unpack
+# ./control and strip the epoch prefix.
+deb_version_of() {
+  local url="$1" tmp csize
+  tmp=$(mktemp)
+  if ! curl -sf --max-time 30 -r 0-65535 "$url" > "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  # ar layout: 8B magic; debian-binary header (60B) + 4B data; the control
+  # member header starts at offset 72, its size field at offset 120 (10B).
+  csize=$(dd if="$tmp" bs=1 skip=120 count=10 2>/dev/null | tr -d ' ')
+  dd if="$tmp" bs=1 skip=132 count="$csize" 2>/dev/null \
+    | xz -dc 2>/dev/null \
+    | tar -xO ./control 2>/dev/null \
+    | awk '/^Version:/ { sub(/^Version:[[:space:]]*/, ""); sub(/^[0-9]+:/, ""); print; exit }'
+  rm -f "$tmp"
+}
+
 # ── trae-cn ──────────────────────────────────────────────────────────
 
 if should_update "trae-cn"; then
@@ -166,6 +186,103 @@ if should_update "trae-cn"; then
       changed=true
     else
       echo "    [dry-run] would update to $trae_version"
+    fi
+  fi
+fi
+
+# ── qoder-cn-ide ─────────────────────────────────────────────────────
+# Version source is the official changelog repo's tags. Verified 2026-10-09:
+# versioned OSS paths are independent stable objects (distinct crc per
+# version), but the changelog lags the CDN — floating `lastest` already
+# served 1.32.2 while the newest tag was 1.32.0, so updates land late.
+# Bucket versioning is on, so a silent same-version re-upload would still
+# only surface as a build-time hash mismatch, never as a wrong artifact.
+
+if should_update "qoder-cn-ide"; then
+  echo ""
+  echo "==> Checking qoder-cn-ide ..."
+  qoder_nix="$REPO_ROOT/pkgs/qoder.nix"
+  qoder_current=$(grep 'version = ' "$qoder_nix" | head -1 | grep -oP '[\d.]+')
+  qoder_version=$(github_latest_version "QoderAI/changelog-zh_CN")
+  qoder_url="https://qoder-ide-cn.oss-cn-hangzhou.aliyuncs.com/qoder/release/${qoder_version}/qoder-cn-ide_amd64.deb"
+
+  echo "    current : $qoder_current"
+  echo "    target  : $qoder_version"
+
+  # Version gate: refuse to downgrade so a lagging changelog tag cannot
+  # roll back a manual bump.
+  skip_qoder=false
+  if [[ "$qoder_version" != "$qoder_current" ]]; then
+    older=$(printf '%s\n%s\n' "$qoder_version" "$qoder_current" | sort -V | head -1)
+    if [[ "$older" == "$qoder_version" ]]; then
+      echo "    skip: changelog tag ($qoder_version) is older than local ($qoder_current)."
+      skip_qoder=true
+    fi
+  fi
+
+  if [[ "$skip_qoder" == true ]]; then
+    :
+  elif [[ "$qoder_version" == "$qoder_current" ]]; then
+    echo "    up to date."
+  else
+    echo "    updating ..."
+    if [[ "$DRY_RUN" == false ]]; then
+      qoder_hash=$(prefetch_hash "$qoder_url")
+      update_nix_field "$qoder_nix" "version" "$qoder_version"
+      update_nix_field "$qoder_nix" "hash" "$qoder_hash"
+      echo "    done: $qoder_current → $qoder_version"
+      changed=true
+    else
+      echo "    [dry-run] would update to $qoder_version"
+    fi
+  fi
+fi
+
+# ── qoder-cn ─────────────────────────────────────────────────────────
+# New-form Qoder desktop app (distinct from qoder-cn-ide). The CDN only
+# exposes a floating `latest` object alongside per-version paths, so the
+# version is read from the latest deb's control member via a range request.
+
+if should_update "qoder-cn"; then
+  echo ""
+  echo "==> Checking qoder-cn ..."
+  qapp_nix="$REPO_ROOT/pkgs/qoder-cn.nix"
+  qapp_current=$(grep 'version = ' "$qapp_nix" | head -1 | grep -oP '[\d.]+')
+  qapp_version=$(deb_version_of "https://qoder-app.oss-cn-beijing.aliyuncs.com/qoder-app/releases/latest/Qoder-CN-linux-amd64.deb")
+  if [[ -z "$qapp_version" ]]; then
+    echo "    ERROR: could not read version from the latest deb's control member." >&2
+    exit 1
+  fi
+  qapp_url="https://qoder-app.oss-cn-beijing.aliyuncs.com/qoder-app/releases/${qapp_version}/Qoder-CN-linux-amd64.deb"
+
+  echo "    current : $qapp_current"
+  echo "    target  : $qapp_version"
+
+  # Version gate: refuse to downgrade so a stale floating object cannot
+  # roll back a manual bump.
+  skip_qapp=false
+  if [[ "$qapp_version" != "$qapp_current" ]]; then
+    older=$(printf '%s\n%s\n' "$qapp_version" "$qapp_current" | sort -V | head -1)
+    if [[ "$older" == "$qapp_version" ]]; then
+      echo "    skip: latest deb version ($qapp_version) is older than local ($qapp_current)."
+      skip_qapp=true
+    fi
+  fi
+
+  if [[ "$skip_qapp" == true ]]; then
+    :
+  elif [[ "$qapp_version" == "$qapp_current" ]]; then
+    echo "    up to date."
+  else
+    echo "    updating ..."
+    if [[ "$DRY_RUN" == false ]]; then
+      qapp_hash=$(prefetch_hash "$qapp_url")
+      update_nix_field "$qapp_nix" "version" "$qapp_version"
+      update_nix_field "$qapp_nix" "hash" "$qapp_hash"
+      echo "    done: $qapp_current → $qapp_version"
+      changed=true
+    else
+      echo "    [dry-run] would update to $qapp_version"
     fi
   fi
 fi
