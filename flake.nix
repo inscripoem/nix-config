@@ -108,6 +108,24 @@
     # rust toolchain overlay; also injected into aagl (see above).
     rust-overlay.url = "github:oxalica/rust-overlay";
 
+    # linuxqq-wayland-fix - LD_PRELOAD fixes for native-Wayland QQ:
+    # in-app screenshot (wlr-screencopy), screen share (PipeWire +
+    # portal ScreenCast) and clipboard (Wayland data-control). Tested
+    # upstream on niri. Wired up in modules/nixos/desktop/qq-wayland-fix.nix.
+    # Intentionally NOT following our nixpkgs: its own pin is irrelevant
+    # (the module callPackages from our pkgs), and keeping it lets
+    # update-versions.sh read the rev the fix currently tests against.
+    # Pinned to v0.2.19 (commit); bump via scripts/update-versions.sh --only=qq.
+    # NOTE: pin the commit, not the tag ref — v0.2.19 is an annotated tag,
+    # and its tag object sha is invisible to raw.githubusercontent.com.
+    linuxqq-wayland-fix.url = "github:SHORiN-KiWATA/linuxqq-wayland-fix/01bdc033f9b893847e7c3c4a7a8f9ce1e1143947";
+
+    # qq pinned to the nixpkgs rev that linuxqq-wayland-fix tests against
+    # (the nixpkgs rev in its own flake.lock), so the injected fixes never
+    # run against an unadapted QQ build. Bump together with the fix via
+    # scripts/update-versions.sh --only=qq — not by hand.
+    nixpkgs-qq.url = "github:NixOS/nixpkgs/c59305bab2065cfecc4944690d9eedbb56f3a9fa";
+
     # nixos-wsl - run NixOS as a WSL2 distribution. The `wsl` class
     # imports its default module; the `wsl` host additionally exposes
     # `config.system.build.tarballBuilder` for producing a `.wsl` image

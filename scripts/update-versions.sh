@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Update trae-cn, qoder-cn, qoder-cn-ide, cc-switch, siyuan, ww-manager,
-# notion-electron and wechat to their latest upstream versions.
+# Update trae-cn, qoder-cn, qoder-cn-ide, cc-switch, siyuan, ww-manager
+# and notion-electron to their latest upstream versions, update wechat,
+# and align the qq version pin with the linuxqq-wayland-fix input.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--trae-version=<X.Y.Z>]
 #
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {trae-cn,qoder-cn,qoder-cn-ide,cc-switch,siyuan,ww-manager,notion-electron,wechat}.
+#                          {trae-cn,qoder-cn,qoder-cn-ide,cc-switch,siyuan,ww-manager,notion-electron,wechat,qq}.
 #                          `notion` is accepted as an alias for notion-electron.
-#                          Defaults to all eight.
+#                          Defaults to all nine.
 #   --trae-version=<ver>   Skip the trae-cn `latest` API and pin the given
 #                          version directly. Only meaningful when trae-cn is
 #                          in the selected set.
 #
-# Requirements: curl, jq, nix-prefetch-url, sed
+# Requirements: curl, jq, nix (flakes), nix-prefetch-url, sed
 
 set -euo pipefail
 
@@ -35,7 +36,7 @@ for arg in "$@"; do
       TRAE_VERSION_OVERRIDE="${arg#--trae-version=}"
       ;;
     -h|--help)
-      sed -n '2,16p' "$0"
+      sed -n '2,18p' "$0"
       exit 0
       ;;
     *)
@@ -616,6 +617,86 @@ if should_update "wechat"; then
     else
       echo "    [dry-run] would update to $wechat_version"
     fi
+  fi
+fi
+
+# ── qq (pinned nixpkgs input) ────────────────────────────────────────
+# qq is pinned (overlay in modules/nixos/desktop/qq-wayland-fix.nix) to
+# the nixpkgs rev that linuxqq-wayland-fix tests against, read from the
+# fix's own flake.lock. This entry aligns the pin with the fix version
+# already recorded in flake.lock; the linuxqq-wayland-fix input itself
+# is never touched here (it rides the regular flake update).
+
+if should_update "qq"; then
+  echo ""
+  echo "==> Checking qq (nixpkgs-qq pin) ..."
+  flake_nix="$REPO_ROOT/flake.nix"
+  flake_lock="$REPO_ROOT/flake.lock"
+
+  # qq version shipped by an nixpkgs rev (x86_64-linux entry of sources.nix).
+  qq_version_at() {
+    curl -sf --max-time 30 "https://raw.githubusercontent.com/NixOS/nixpkgs/$1/pkgs/by-name/qq/qq/sources.nix" |
+      awk '/x86_64-linux = \{/ { f = 1; next } f && /version = / { sub(/.*version = "/, ""); sub(/".*/, ""); print; exit }' || true
+  }
+
+  current_rev=$(grep -oP 'nixpkgs-qq\.url = "github:NixOS/nixpkgs/\K[0-9a-f]{40}' "$flake_nix" || true)
+  if [[ -z "$current_rev" ]]; then
+    echo "    ERROR: could not read the nixpkgs-qq rev from flake.nix." >&2
+    exit 1
+  fi
+
+  fix_rev=$(jq -r '.nodes["linuxqq-wayland-fix"].locked.rev // empty' "$flake_lock")
+  if [[ -z "$fix_rev" ]]; then
+    echo "    ERROR: linuxqq-wayland-fix is missing from flake.lock." >&2
+    echo "          Run: nix flake lock   (adds missing lock entries)" >&2
+    exit 1
+  fi
+
+  target_rev=$(curl -sf --max-time 30 "https://raw.githubusercontent.com/SHORiN-KiWATA/linuxqq-wayland-fix/${fix_rev}/flake.lock" |
+    jq -r '.nodes.nixpkgs.locked.rev // empty' || true)
+  if [[ -z "$target_rev" ]]; then
+    echo "    ERROR: could not read the nixpkgs rev from linuxqq-wayland-fix's" >&2
+    echo "          flake.lock (fix rev ${fix_rev:0:7}). Upstream layout changed?" >&2
+    exit 1
+  fi
+
+  qq_current=$(qq_version_at "$current_rev")
+  qq_target=$(qq_version_at "$target_rev")
+  if [[ -z "$qq_current" || -z "$qq_target" ]]; then
+    echo "    ERROR: could not read qq versions from nixpkgs sources.nix" >&2
+    echo "          (pin ${current_rev:0:7}, target ${target_rev:0:7})." >&2
+    exit 1
+  fi
+
+  echo "    current : $qq_current @ ${current_rev:0:7}"
+  echo "    target  : $qq_target @ ${target_rev:0:7}"
+
+  # Version gate: follow the fix's qq version, and refuse to downgrade so
+  # a lagging upstream pin cannot roll back a manual bump.
+  skip_qq=false
+  if [[ "$qq_target" == "$qq_current" ]]; then
+    echo "    up to date."
+  else
+    older=$(printf '%s\n%s\n' "$qq_target" "$qq_current" | sort -V | head -1)
+    if [[ "$older" == "$qq_target" ]]; then
+      echo "    skip: fix currently pins qq $qq_target, older than local $qq_current."
+      skip_qq=true
+    fi
+  fi
+
+  if [[ "$skip_qq" == true ]]; then
+    :
+  elif [[ "$qq_target" != "$qq_current" && "$DRY_RUN" == false ]]; then
+    echo "    repinning ..."
+    sed -i "s|nixpkgs-qq.url = \"github:NixOS/nixpkgs/${current_rev}\"|nixpkgs-qq.url = \"github:NixOS/nixpkgs/${target_rev}\"|" "$flake_nix"
+    # Positional input form: `flake lock --update-input` is deprecated.
+    # The pin URL targets a fixed rev, so "update" re-resolves to exactly
+    # that rev — no risk of picking up a newer nixpkgs.
+    nix --extra-experimental-features 'nix-command flakes' flake update --flake "$REPO_ROOT" nixpkgs-qq
+    echo "    done: qq $qq_current → $qq_target (pin ${current_rev:0:7} → ${target_rev:0:7})"
+    changed=true
+  elif [[ "$qq_target" != "$qq_current" ]]; then
+    echo "    [dry-run] would repin to ${target_rev:0:7} (qq $qq_target)"
   fi
 fi
 

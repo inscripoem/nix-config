@@ -12,6 +12,7 @@
     ./ssh-x11.nix
     ./input-method.nix
     ./apps.nix
+    ./qq-wayland-fix.nix
     ./flatpak.nix
     ./sudo-askpass.nix
   ];
