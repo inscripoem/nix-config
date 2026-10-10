@@ -165,6 +165,15 @@ in {
           commandLineArgs = "--password-store=${passwordStore}";
         })
       ];
+      # XDG autostart (same pattern as 1password/desktop-env): reference the
+      # shipped desktop entry whose Exec already points at this generation's
+      # wrapper, so HM re-points it on every switch and it never goes stale.
+      # Do NOT use the app's own "auto launch" toggle: setLoginItemSettings
+      # bakes the current store path into ~/.config/autostart, which breaks
+      # after a GC, or falls back to the raw Electron binary (no sandbox
+      # flags, no bwrap/socat on PATH).
+      xdg.configFile."autostart/workbuddy.desktop".source =
+        "${pkgs.workbuddy}/share/applications/workbuddy.desktop";
     })
 
     # Declarative replacement for the gateway unit that `hermes gateway
