@@ -51,6 +51,7 @@ let
         modules.capabilities.tailscale.enable = true;
         modules.capabilities.wifi-profiles.enable = true;
         modules.capabilities.docker.enable = true;
+        modules.capabilities.lan-mouse.enable = true;
       };
     };
 

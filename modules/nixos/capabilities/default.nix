@@ -12,5 +12,6 @@
     ./deploy-tools.nix
     ./docker.nix
     ./wifi-profiles.nix
+    ./lan-mouse.nix
   ];
 }
