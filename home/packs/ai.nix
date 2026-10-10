@@ -8,6 +8,15 @@ let
   # runtime toolchain (rg/git/ssh/ffmpeg/tirith/clipboard + node+npm), so no
   # PATH override is needed here.
   hermesPkg = hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default;
+
+  # The overridden derivation must be the ONLY workbuddy in the module: the
+  # menu entry (home.packages) and the autostart desktop file both reference
+  # it, so the generation closure keeps a single copy and autostart launches
+  # the same wrapper with --password-store. Referencing the base pkgs.workbuddy
+  # anywhere would pull a second, flag-less copy into the closure.
+  workbuddyPkg = pkgs.workbuddy.override {
+    commandLineArgs = "--password-store=${passwordStore}";
+  };
 in {
   options.packs.ai = {
     enable = lib.mkEnableOption "AI CLI toolchain (aichat + llm-agents.*)";
@@ -160,11 +169,7 @@ in {
     })
 
     (lib.mkIf cfg.workbuddy.enable {
-      home.packages = [
-        (pkgs.workbuddy.override {
-          commandLineArgs = "--password-store=${passwordStore}";
-        })
-      ];
+      home.packages = [ workbuddyPkg ];
       # XDG autostart (same pattern as 1password/desktop-env): reference the
       # shipped desktop entry whose Exec already points at this generation's
       # wrapper, so HM re-points it on every switch and it never goes stale.
@@ -173,7 +178,7 @@ in {
       # after a GC, or falls back to the raw Electron binary (no sandbox
       # flags, no bwrap/socat on PATH).
       xdg.configFile."autostart/workbuddy.desktop".source =
-        "${pkgs.workbuddy}/share/applications/workbuddy.desktop";
+        "${workbuddyPkg}/share/applications/workbuddy.desktop";
     })
 
     # Declarative replacement for the gateway unit that `hermes gateway
