@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Update trae-cn, qoder-cn, qoder-cn-ide, cc-switch, siyuan, ww-manager
-# and notion-electron to their latest upstream versions, update wechat,
-# and align the qq version pin with the linuxqq-wayland-fix input.
+# Update trae-cn, qoder-cn, qoder-cn-ide, workbuddy, cc-switch, siyuan,
+# ww-manager and notion-electron to their latest upstream versions, update
+# wechat, and align the qq version pin with the linuxqq-wayland-fix input.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--trae-version=<X.Y.Z>]
 #
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {trae-cn,qoder-cn,qoder-cn-ide,cc-switch,siyuan,ww-manager,notion-electron,wechat,qq}.
+#                          {trae-cn,qoder-cn,qoder-cn-ide,workbuddy,cc-switch,siyuan,ww-manager,notion-electron,wechat,qq}.
 #                          `notion` is accepted as an alias for notion-electron.
-#                          Defaults to all nine.
+#                          Defaults to all ten.
 #   --trae-version=<ver>   Skip the trae-cn `latest` API and pin the given
 #                          version directly. Only meaningful when trae-cn is
 #                          in the selected set.
@@ -284,6 +284,63 @@ if should_update "qoder-cn"; then
       changed=true
     else
       echo "    [dry-run] would update to $qapp_version"
+    fi
+  fi
+fi
+
+# ── workbuddy ────────────────────────────────────────────────────────
+# Tencent CodeBuddy team's agentic desktop workspace. The official update
+# API returns JSON {version,url,sha256hash}; the deb filename embeds
+# "-<rev>", which pkgs/workbuddy.nix keeps in a separate `rev` field.
+# Observed 2026-10-10: the API's sha256hash did NOT match the served
+# artifact (stale after a same-version re-upload), so the hash is always
+# prefetched from the artifact instead of trusting the API field.
+
+if should_update "workbuddy"; then
+  echo ""
+  echo "==> Checking workbuddy ..."
+  wb_nix="$REPO_ROOT/pkgs/workbuddy.nix"
+  wb_current=$(grep 'version = ' "$wb_nix" | head -1 | grep -oP '[\d.]+')
+  wb_json=$(curl -sf --max-time 15 "https://copilot.tencent.com/v2/update?platform=workbuddy-linux-x64-deb") || true
+  wb_version=$(echo "${wb_json:-}" | jq -r '.version // empty' 2>/dev/null)
+  wb_url=$(echo "${wb_json:-}" | jq -r '.url // empty' 2>/dev/null)
+  if [[ -z "$wb_version" || -z "$wb_url" ]]; then
+    echo "    ERROR: could not read .version/.url from the workbuddy update API." >&2
+    exit 1
+  fi
+  wb_rev=$(basename "$wb_url" .deb)
+  wb_rev=${wb_rev#WorkBuddy-linux-x64-deb-${wb_version}-}
+
+  echo "    current : $wb_current"
+  echo "    target  : $wb_version (rev $wb_rev)"
+
+  # Version gate: refuse to downgrade so a stale API response cannot roll
+  # back a manual bump.
+  skip_wb=false
+  if [[ "$wb_version" != "$wb_current" ]]; then
+    older=$(printf '%s\n%s\n' "$wb_version" "$wb_current" | sort -V | head -1)
+    if [[ "$older" == "$wb_version" ]]; then
+      echo "    skip: API version ($wb_version) is older than local ($wb_current)."
+      skip_wb=true
+    fi
+  fi
+
+  if [[ "$skip_wb" == true ]]; then
+    :
+  elif [[ "$wb_version" == "$wb_current" ]]; then
+    echo "    up to date."
+  else
+    echo "    updating ..."
+    if [[ "$DRY_RUN" == false ]]; then
+      echo "    prefetching (~430 MB deb) ..."
+      wb_hash=$(prefetch_hash "$wb_url")
+      update_nix_field "$wb_nix" "version" "$wb_version"
+      update_nix_field "$wb_nix" "rev" "$wb_rev"
+      update_nix_field "$wb_nix" "hash" "$wb_hash"
+      echo "    done: $wb_current → $wb_version"
+      changed=true
+    else
+      echo "    [dry-run] would update to $wb_version"
     fi
   fi
 fi

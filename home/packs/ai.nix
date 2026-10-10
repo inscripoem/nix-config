@@ -78,6 +78,15 @@ in {
       default = false;
       description = "qoder-cn agentic desktop app (Alibaba), opt-in per host";
     };
+
+    # Opt-in extra: Tencent CodeBuddy team's agentic desktop workspace.
+    # Single Linux build (no CN/international split on Linux); the same
+    # package serves both account regions.
+    workbuddy.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "workbuddy agentic desktop app (Tencent), opt-in per host";
+    };
   };
 
   config = lib.mkMerge [
@@ -145,6 +154,14 @@ in {
     (lib.mkIf cfg."qoder-cn".enable {
       home.packages = [
         (pkgs.qoder-cn.override {
+          commandLineArgs = "--password-store=${passwordStore}";
+        })
+      ];
+    })
+
+    (lib.mkIf cfg.workbuddy.enable {
+      home.packages = [
+        (pkgs.workbuddy.override {
           commandLineArgs = "--password-store=${passwordStore}";
         })
       ];

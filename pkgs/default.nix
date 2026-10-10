@@ -4,6 +4,7 @@ final: prev: {
   "trae-cn" = final.callPackage ./trae-cn.nix { };
   "qoder-cn" = final.callPackage ./qoder-cn.nix { };
   "qoder-cn-ide" = final.callPackage ./qoder.nix { };
+  workbuddy = final.callPackage ./workbuddy.nix { };
   "cc-switch" = final.callPackage ./cc-switch.nix { };
   notion-electron = final.callPackage ./notion-electron.nix { };
   glances = final.callPackage ./glances.nix { originalGlances = prev.glances; };
