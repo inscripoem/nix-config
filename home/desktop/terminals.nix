@@ -1,9 +1,4 @@
-{ pkgs, ... }:
-let
-  zellijLauncher = pkgs.writeShellScript "zellij-launcher" ''
-    exec "$SHELL" -l -c 'exec zellij --session "$(basename "$PWD")-$(date +%H%M%S)"'
-  '';
-in
+{ ... }:
 {
   programs.alacritty = {
     enable = true;
@@ -15,7 +10,6 @@ in
       };
       scrolling.multiplier = 5;
       selection.save_to_clipboard = true;
-      terminal.shell.program = "${zellijLauncher}";
     };
   };
 
@@ -23,24 +17,154 @@ in
     enable = true;
     extraConfig = ''
       local wezterm = require('wezterm');
+      local act = wezterm.action;
       local config = wezterm.config_builder();
 
       config.font = wezterm.font("Maple Mono NF CN");
       config.color_scheme = "catppuccin-macchiato";
-      config.hide_tab_bar_if_only_one_tab = true;
       config.window_close_confirmation = "NeverPrompt";
-      config.default_prog = { "${zellijLauncher}" };
+      config.scrollback_lines = 10000;
+
+      -- zellij-style chrome: tab bar always on top, mode/hint bar on the bottom
+      config.hide_tab_bar_if_only_one_tab = false;
+      config.status_update_interval = 1000;
+
+      -- zellij MoveFocusOrTab semantics: with a single pane in the tab,
+      -- Alt+Left/Right switch tabs; otherwise they move pane focus.
+      local function move_focus_or_tab(window, pane, direction)
+        local tab = pane:tab();
+        if tab and #tab:panes() == 1 then
+          if direction == 'Left' then
+            window:perform_action(act.ActivateTabRelative(-1), pane);
+          else
+            window:perform_action(act.ActivateTabRelative(1), pane);
+          end
+        else
+          window:perform_action(act.ActivatePaneDirection(direction), pane);
+        end
+      end
+
+      -- Direct chords mirror the zellij 0.45 "unlocked" mode defaults
+      -- (`zellij setup --dump-config`). Ctrl+s overrides terminal flow
+      -- control on purpose, exactly like zellij does.
+      config.keys = {
+        { key = 'h', mods = 'ALT', action = wezterm.action_callback(function(window, pane) move_focus_or_tab(window, pane, 'Left') end) },
+        { key = 'LeftArrow', mods = 'ALT', action = wezterm.action_callback(function(window, pane) move_focus_or_tab(window, pane, 'Left') end) },
+        { key = 'l', mods = 'ALT', action = wezterm.action_callback(function(window, pane) move_focus_or_tab(window, pane, 'Right') end) },
+        { key = 'RightArrow', mods = 'ALT', action = wezterm.action_callback(function(window, pane) move_focus_or_tab(window, pane, 'Right') end) },
+        { key = 'j', mods = 'ALT', action = act.ActivatePaneDirection 'Down' },
+        { key = 'DownArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Down' },
+        { key = 'k', mods = 'ALT', action = act.ActivatePaneDirection 'Up' },
+        { key = 'UpArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Up' },
+        { key = 'n', mods = 'ALT', action = act.SplitHorizontal { domain = 'CurrentPaneDomain' } },
+        { key = 'i', mods = 'ALT', action = act.MoveTabRelative(-1) },
+        { key = 'o', mods = 'ALT', action = act.MoveTabRelative(1) },
+
+        { key = 'p', mods = 'CTRL', action = act.ActivateKeyTable { name = 'pane_mode', one_shot = false } },
+        { key = 't', mods = 'CTRL', action = act.ActivateKeyTable { name = 'tab_mode', one_shot = false } },
+        { key = 'n', mods = 'CTRL', action = act.ActivateKeyTable { name = 'resize_mode', one_shot = false } },
+        { key = 's', mods = 'CTRL', action = act.ActivateKeyTable { name = 'scroll_mode', one_shot = false } },
+      };
+
+      -- Modes ported from zellij defaults: action keys pop back to normal
+      -- mode, navigation keys stay inside the mode, Escape re-enters normal.
+      config.key_tables = {
+        pane_mode = {
+          { key = 'n', action = act.Multiple { act.SplitHorizontal { domain = 'CurrentPaneDomain' }, act.PopKeyTable } },
+          { key = 'd', action = act.Multiple { act.SplitVertical { domain = 'CurrentPaneDomain' }, act.PopKeyTable } },
+          { key = 'r', action = act.Multiple { act.SplitHorizontal { domain = 'CurrentPaneDomain' }, act.PopKeyTable } },
+          { key = 'x', action = act.Multiple { act.CloseCurrentPane { confirm = false }, act.PopKeyTable } },
+          { key = 'f', action = act.Multiple { act.TogglePaneZoomState, act.PopKeyTable } },
+          { key = 'h', action = act.ActivatePaneDirection 'Left' },
+          { key = 'LeftArrow', action = act.ActivatePaneDirection 'Left' },
+          { key = 'l', action = act.ActivatePaneDirection 'Right' },
+          { key = 'RightArrow', action = act.ActivatePaneDirection 'Right' },
+          { key = 'j', action = act.ActivatePaneDirection 'Down' },
+          { key = 'DownArrow', action = act.ActivatePaneDirection 'Down' },
+          { key = 'k', action = act.ActivatePaneDirection 'Up' },
+          { key = 'UpArrow', action = act.ActivatePaneDirection 'Up' },
+          { key = 'Escape', action = act.PopKeyTable },
+          { key = 'p', mods = 'CTRL', action = act.PopKeyTable },
+        },
+        tab_mode = {
+          { key = 'n', action = act.Multiple { act.SpawnTab 'CurrentPaneDomain', act.PopKeyTable } },
+          { key = 'x', action = act.Multiple { act.CloseCurrentTab { confirm = false }, act.PopKeyTable } },
+          { key = 'r', action = act.Multiple {
+              act.PromptInputLine {
+                description = 'Enter tab name',
+                action = wezterm.action_callback(function(window, pane, line)
+                  if line and #line > 0 then window:active_tab():set_title(line) end
+                end),
+              },
+              act.PopKeyTable,
+            } },
+          { key = 'h', action = act.ActivateTabRelative(-1) },
+          { key = 'LeftArrow', action = act.ActivateTabRelative(-1) },
+          { key = 'l', action = act.ActivateTabRelative(1) },
+          { key = 'RightArrow', action = act.ActivateTabRelative(1) },
+          { key = 'Escape', action = act.PopKeyTable },
+          { key = 't', mods = 'CTRL', action = act.PopKeyTable },
+        },
+        resize_mode = {
+          -- wezterm unstable-2026-08-31 rejects negative AdjustPaneSize
+          -- amounts at config validation, so only grow is bound here;
+          -- shrink keys can return when the build accepts them.
+          { key = 'h', action = act.AdjustPaneSize { 'Left', 1 } },
+          { key = 'LeftArrow', action = act.AdjustPaneSize { 'Left', 1 } },
+          { key = 'l', action = act.AdjustPaneSize { 'Right', 1 } },
+          { key = 'RightArrow', action = act.AdjustPaneSize { 'Right', 1 } },
+          { key = 'j', action = act.AdjustPaneSize { 'Down', 1 } },
+          { key = 'DownArrow', action = act.AdjustPaneSize { 'Down', 1 } },
+          { key = 'k', action = act.AdjustPaneSize { 'Up', 1 } },
+          { key = 'UpArrow', action = act.AdjustPaneSize { 'Up', 1 } },
+          { key = 'Escape', action = act.PopKeyTable },
+          { key = 'n', mods = 'CTRL', action = act.PopKeyTable },
+        },
+        scroll_mode = {
+          { key = 'j', action = act.ScrollByLine(1) },
+          { key = 'DownArrow', action = act.ScrollByLine(1) },
+          { key = 'k', action = act.ScrollByLine(-1) },
+          { key = 'UpArrow', action = act.ScrollByLine(-1) },
+          { key = 'd', action = act.ScrollByPage(0.5) },
+          { key = 'u', action = act.ScrollByPage(-0.5) },
+          { key = 'PageDown', action = act.ScrollByPage(1) },
+          { key = 'PageUp', action = act.ScrollByPage(-1) },
+          { key = 'Escape', action = act.PopKeyTable },
+          { key = 's', mods = 'CTRL', action = act.PopKeyTable },
+        },
+      };
+
+      -- zellij-style bottom bar: mode label and per-mode key hints on the
+      -- left, current working directory on the right.
+      local mode_hints = {
+        pane_mode = ' [n]new [d]down [r]right [x]close [f]zoom [hjkl]nav ESC=exit',
+        tab_mode = ' [n]new [x]close [r]rename [hl]prev/next ESC=exit',
+        resize_mode = ' [hjkl]grow ESC=exit',
+        scroll_mode = ' [jk]line [ud]half-page ESC=exit',
+      };
+
+      wezterm.on('update-right-status', function(window, pane)
+        local mode = window:active_key_table();
+        local cells = {};
+        if mode then
+          table.insert(cells, { Foreground = { Color = '#c6a0f6' } });
+          table.insert(cells, { Attribute = { Intensity = 'Bold' } });
+          table.insert(cells, { Text = ' ' .. mode .. ' ' });
+          table.insert(cells, { Foreground = { Color = '#9399b2' } });
+          table.insert(cells, { Attribute = { Intensity = 'Normal' } });
+          table.insert(cells, { Text = mode_hints[mode] or "" });
+        else
+          table.insert(cells, { Foreground = { Color = '#6e738d' } });
+          table.insert(cells, { Text = ' normal ' });
+        end
+        window:set_left_status(wezterm.format(cells));
+        local cwd_uri = pane.current_working_dir;
+        local cwd = cwd_uri and cwd_uri.file_path or nil;
+        window:set_right_status(cwd and (' ' .. cwd .. ' ') or "");
+      end);
 
       return config
     '';
-  };
-
-  programs.kitty = {
-    enable = true;
-    font.name = "Maple Mono NF CN";
-    font.size = 12;
-    themeFile = "Catppuccin-Macchiato";
-    settings.term = "xterm-256color";
   };
 
   programs.zellij = {
@@ -50,6 +174,18 @@ in
       theme = "catppuccin-macchiato";
       show_startup_tips = false;
       on_force_close = "quit";
+      # Manual screen-like slot: bare `zellij` re-enters the single named
+      # session (attach-or-create) instead of spawning randomly-named ones.
+      session_name = "main";
+      attach_to_session = true;
     };
+  };
+
+  programs.kitty = {
+    enable = true;
+    font.name = "Maple Mono NF CN";
+    font.size = 12;
+    themeFile = "Catppuccin-Macchiato";
+    settings.term = "xterm-256color";
   };
 }
