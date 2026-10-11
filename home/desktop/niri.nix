@@ -9,6 +9,15 @@ let
   # theme only loads settings.ini at startup, and the tray IconImage caches by
   # URL), so we also restart DMS on theme switch to pick up the new icon
   # theme for Qt-rendered tray icons (fcitx5 etc.).
+  # DMS also never APPLIES the per-mode icon theme at startup: it writes
+  # gtk-icon-theme-name only during an explicit mode switch, and that async
+  # detached write races this script's own sed on the same file (plus
+  # restart_dms kills DMS ~1s after the flip), so a lost write strands the
+  # previous session's theme in settings.ini — after which every fresh boot
+  # renders light-mode tray icons (breeze's dark fcitx-rime glyph) in a dark
+  # session. Mirror the icon theme here from DMS's own settings.json so boot
+  # state is deterministic; on a flip both writers now target the same value,
+  # defusing the clobber.
   # NOTE: name must NOT contain "gtk" — DMS runs `pkill -HUP -f gtk` on every
   # theme switch (intended to reload GTK apps), which would kill this script.
   themeSync = pkgs.writeShellScript "theme-sync" ''
@@ -69,6 +78,25 @@ let
       systemctl --user unset-environment QT_QPA_PLATFORMTHEME 2>/dev/null
       dbus-update-activation-environment --systemd --unset QT_QPA_PLATFORMTHEME 2>/dev/null ) &
 
+    # Resolve the icon theme exactly like DMS's SettingsData.resolveIconTheme:
+    # the per-mode light slot only when iconThemePerMode is on and the mode is
+    # light, otherwise the dark slot. "System Default" (or a missing key)
+    # means DMS manages nothing — leave settings.ini alone in that case.
+    # $1 = "true" when the resolved mode is prefer-dark.
+    desired_icon_theme() {
+      local sj="$HOME/.config/DankMaterialShell/settings.json"
+      [ -f "$sj" ] || return 0
+      local per_mode dark light icon
+      per_mode=$(sed -nE 's/.*"iconThemePerMode": *(true|false).*/\1/p' "$sj" | head -n1)
+      dark=$(sed -nE 's/.*"iconThemeDark": *"([^"]*)".*/\1/p' "$sj" | head -n1)
+      light=$(sed -nE 's/.*"iconThemeLight": *"([^"]*)".*/\1/p' "$sj" | head -n1)
+      if [ "$per_mode" = true ] && [ "$1" = false ]; then icon=$light; else icon=$dark; fi
+      case "$icon" in
+        ""|"System Default") return 0 ;;
+      esac
+      printf '%s' "$icon"
+    }
+
     sync_prefer_dark() {
       local scheme
       scheme=$(gdbus call --session \
@@ -78,8 +106,11 @@ let
         "org.freedesktop.appearance" "color-scheme" 2>/dev/null \
         | sed -n 's/.*uint32 \([0-9]*\).*/\1/p')
       [ -n "$scheme" ] || return 1   # portal read failed: leave last_val alone
+      icon_changed=false
       local val=false changed=true
       [ "$scheme" = "1" ] && val=true   # 1 = prefer dark
+      local icon
+      icon=$(desired_icon_theme "$val")
       for f in "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"; do
         [ -f "$f" ] || continue
         if grep -q '^gtk-application-prefer-dark-theme=' "$f"; then
@@ -87,16 +118,29 @@ let
         else
           printf 'gtk-application-prefer-dark-theme=%s\n' "$val" >> "$f"
         fi
+        [ -n "$icon" ] || continue
+        if grep -q '^gtk-icon-theme-name=' "$f"; then
+          if [ "$(sed -n 's/^gtk-icon-theme-name=//p' "$f" | head -n1)" != "$icon" ]; then
+            sed -i "s|^gtk-icon-theme-name=.*|gtk-icon-theme-name=$icon|" "$f"
+            icon_changed=true
+          fi
+        elif grep -q '^\[Settings\]' "$f"; then
+          sed -i '/^\[Settings\]/a gtk-icon-theme-name='"$icon" "$f"
+          icon_changed=true
+        fi
       done
       # Portal clients poke Settings.Read without changing anything (e.g.
       # 1Password unlock) and gdbus monitor still emits an event; restarting
       # dms on those just blanks the bar. Return 0 only when the scheme
-      # actually flipped so the caller restarts then.
+      # actually flipped so the caller restarts then. (icon_changed is
+      # detected on disk instead: a boot-time stale key must restart DMS even
+      # though the scheme did not flip.)
       [ "$val" = "$last_val" ] && changed=false
       last_val=$val
       [ "$changed" = true ]
     }
     last_val=""
+    icon_changed=false
 
     # Restart DMS so its Qt process re-reads the icon theme. DMS is normally
     # spawned by niri, but spawn-at-startup only runs once, so we relaunch it
@@ -110,7 +154,12 @@ let
       disown
     }
 
-    sync_prefer_dark   # seeds last_val so the loop skips unchanged events
+    # Boot seed: sync both keys once. DMS read the icon theme while starting,
+    # so if that key was stale (a write lost to the flip race in a previous
+    # session) restart DMS once to re-resolve tray icons through the corrected
+    # theme. Scheme flips below keep the last_val semantics. The if-form keeps
+    # sync_prefer_dark's nonzero returns out of any set -e discussion.
+    if sync_prefer_dark && [ "$icon_changed" = true ]; then restart_dms; fi
     gdbus monitor --session \
       --dest org.freedesktop.portal.Desktop \
       --object-path /org/freedesktop/portal/desktop \
