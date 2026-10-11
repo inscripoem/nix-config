@@ -129,8 +129,20 @@ let
       # Expose commandLineArgs override surface (mirrors vivaldi/vscode API).
       # The agent CLI sandbox looks up `bwrap` and `socat` via `which`, so both
       # go on PATH (ripgrep is vendored in the deb).
+      #
+      # The sandbox replaces PATH wholesale with its own (vendored safe-bin +
+      # managed node/python), so host tools like find/sort/git are invisible
+      # inside it — even though bwrap ro-binds the whole root. CODEBUDDY_ENV_FILE
+      # is the official hook (codebuddy-code v2.43.0) whose content is sourced
+      # into the sandbox command *after* WORKBUDDY_EXTRA_PATHS, so APPENDING
+      # host dirs here keeps safe-bin's rm/rmdir/unlink shims ahead of GNU
+      # coreutils. Deliberately no /run/wrappers/bin (sudo et al).
+      cat > $out/share/workbuddy/nix-env.sh <<'EOF'
+export PATH="$PATH:/run/current-system/sw/bin:/etc/profiles/per-user/''${HOME##*/}/bin"
+EOF
       wrapProgram $out/bin/workbuddy \
         --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.bubblewrap pkgs.socat ]} \
+        --set CODEBUDDY_ENV_FILE $out/share/workbuddy/nix-env.sh \
         --add-flags ${pkgs.lib.escapeShellArg commandLineArgs}
 
       runHook postInstall
