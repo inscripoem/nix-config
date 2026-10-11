@@ -179,6 +179,20 @@ in {
       # flags, no bwrap/socat on PATH).
       xdg.configFile."autostart/workbuddy.desktop".source =
         "${workbuddyPkg}/share/applications/workbuddy.desktop";
+
+      # The agent sandbox replaces PATH wholesale (vendored safe-bin + managed
+      # node/python) and its Rust sandbox-center exposes no env hook: the
+      # CLI-side CODEBUDDY_ENV_FILE / WORKBUDDY_EXTRA_PATHS hooks are never
+      # consumed on this path (verified 10-11 via sandbox logs and strings on
+      # the sandbox-center binary). Non-interactive zsh always sources
+      # ~/.zshenv though, so appending the host dirs there is the only layer
+      # that reaches inside the bwrap sandbox (which ro-binds / anyway).
+      # Appending keeps safe-bin's rm/rmdir/unlink shims ahead of GNU
+      # coreutils; /run/wrappers/bin is excluded on purpose (same rule as the
+      # hermes-gateway unit below).
+      programs.zsh.envExtra = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+        export PATH="$PATH:/etc/profiles/per-user/${config.home.username}/bin:/run/current-system/sw/bin"
+      '';
     })
 
     # Declarative replacement for the gateway unit that `hermes gateway
