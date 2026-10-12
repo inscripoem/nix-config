@@ -3,8 +3,8 @@
 Home Manager owns the shell, Git, SSH configuration, editors, shared CLI tools,
 and language toolchain on `air`. The shell uses the same configuration as the
 Linux hosts, with explicit Darwin adaptations. The
-[migration record](../nix-darwin.plan) contains the original rollout and recovery
-generations; it does not record later user-level software removals.
+[original recovery generations](nix-config-orchestration.md#original-migration-recovery)
+cover initial adoption; later user-level software removals are described below.
 
 ## Configuration ownership
 
@@ -165,13 +165,16 @@ before switching and restore the corresponding repository configuration. The
 preparation used generation 6, but verify the live generation rather than
 assuming that number is still current. Retain it until the new shell is accepted.
 A generation rollback does not reinstall the removed NVM/Rye/MoonBit/Proto
-software or their user environments. Reinstall a required runtime separately;
-the original migration record is not a complete rollback of those removals.
+software or their user environments. Reinstall a required runtime separately.
 
 A system generation rollback does not restore pre-HM dotfiles. If undoing HM
 adoption, first follow [Lix recovery](darwin-lix.md#rollback) when crossing
 back to an installer-managed generation. Then verify the intended generation
-against the [migration record](../nix-darwin.plan).
+against the [original recovery generations](nix-config-orchestration.md#original-migration-recovery).
+
+The initial HM migration verified all 24 enabled file targets at that time.
+Original files were retained as per-file `.backup` copies, with the Neovim
+parent link saved separately. The private SSH fragment needs its own backup.
 
 Use the saved inventory to recover each target:
 
@@ -186,8 +189,7 @@ Keep unrelated files, histories, private keys, and `.SpaceVim` intact. If the
 inventory is missing, inspect links and backups individually; the current HM
 target list cannot reconstruct which files existed before migration.
 
-The old Antigen installation is not a reliable recovery dependency: the
-migration record says it was removed. Inspect restored shell files for
+The old Antigen installation was removed. Inspect restored shell files for
 `.antigen/bundles` references and restore the required dependency or adapt those
 files before using them as a working shell. Do not assume a generation rollback
 reinstalls external tools.

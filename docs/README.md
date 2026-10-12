@@ -7,7 +7,7 @@ selection, module layout, and deployment commands.
 |---|---|
 | macOS user environment | [Home Manager on air](darwin-home-manager.md) |
 | macOS package manager | [Lix ownership and recovery](darwin-lix.md) |
-| macOS migration history | [Migration record](../nix-darwin.plan) |
+| macOS recovery generations | [Original migration recovery](nix-config-orchestration.md#original-migration-recovery) |
 | Wyse installation and recovery | [Wyse 3040](wyse3040-install.md) |
 | Encrypted credentials | [SOPS and age](secrets.md) |
 | SSH authentication and Git signing | [1Password integration](ssh-agent.md) |
@@ -22,4 +22,5 @@ selection, module layout, and deployment commands.
 Write documentation in English. Keep current behavior, configuration rationale,
 and useful operating steps; use links to source files instead of copying full
 configurations. Record an observation's hardware or version limits, and keep
-historical migration details in the migration record.
+recovery information in the relevant operating guides. Detailed historical
+rollout logs remain in Git history.

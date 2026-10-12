@@ -49,8 +49,8 @@
       "anomalyco/tap/opencode"
     ];
 
-    # Exclude stale receipts whose app bundles are absent; see nix-darwin.plan.
-    # cleanup = "none" also leaves those Homebrew records untouched.
+    # Exclude apps confirmed absent during migration; see docs/nix-config-orchestration.md.
+    # cleanup = "none" leaves undeclared Homebrew installations untouched.
     casks = [
       "1password"
       "appcleaner"

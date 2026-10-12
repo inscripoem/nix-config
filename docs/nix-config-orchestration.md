@@ -76,7 +76,36 @@ On `air`:
 - The Lix installer still owns the APFS store mount.
 
 See [Home Manager](darwin-home-manager.md) and [Lix](darwin-lix.md) for operating
-constraints, and the [migration record](../nix-darwin.plan) for recovery history.
+constraints and recovery procedures.
+
+### Original migration recovery
+
+The initial nix-darwin migration completed on 2026-09-15. These generations
+are historical: verify their targets still exist before using them. Detailed
+rollout logs remain in Git history.
+
+| Goal | Recorded target | Additional recovery |
+|---|---|---|
+| Undo HM adoption | Generation 1, bootstrap commit `15da910` | Restore user files individually; inspect external shell dependencies |
+| Undo Homebrew adoption | Generation 3, HM commit `77515ed` | Brew installations are not rolled back by Nix |
+| Undo Lix ownership | Generation 5, Homebrew commit `9b9a49e` | Restore installer configuration using the [Lix guide](darwin-lix.md#rollback) |
+
+When rolling back from generation 6 or later across the Lix ownership boundary,
+recover the installer configuration before proceeding to an older HM generation.
+See [Lix recovery data](darwin-lix.md#original-recovery-data) for recorded system
+paths, configuration backups, and checksums, and [HM recovery](darwin-home-manager.md#recovery)
+for user files. The original sudo PAM file was saved as
+`/etc/pam.d/sudo_local.before-nix-darwin`.
+
+Generation 4 declared 44 casks; generation 5 corrected the list to 38. The
+correction removed stale receipts for `cursor`, `easydict`, `intellij-idea`,
+`lunar`, `slack`, and `visual-studio-code` after confirming their app bundles
+were absent. Formula versions were unchanged. Generation 4 may reinstall
+those six applications; use generation 3 to undo Homebrew adoption.
+
+The receipt archive was
+`/private/tmp/nix-config-brew-receipts.8zcSXK/cask-records.tar`. It contains no
+application data and may have been removed by temporary-directory cleanup.
 
 ## Adding configuration
 

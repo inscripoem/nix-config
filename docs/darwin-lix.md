@@ -6,8 +6,9 @@ its daemon, build users, `nix.conf`, and the flake registry. Home Manager keeps
 
 The migration used Lix 2.95.2 on both sides, with matching `nixbld` GID 350 and
 32 build users at UIDs 351–382. Activation and reboot checks completed on
-2026-09-15. Recovery generations and backups are recorded in
-[the migration record](../nix-darwin.plan).
+2026-09-15. See [recovery data](#original-recovery-data) for the original system
+paths and backups, and [recovery generations](nix-config-orchestration.md#original-migration-recovery)
+for the earlier adoption stages.
 
 ## Ownership boundaries
 
@@ -86,13 +87,49 @@ After changing Lix ownership, check:
 - After reboot, `/nix` mounts and the daemon starts. The APFS mount job is a
   one-shot job, so `not running` after a successful mount is normal.
 
+## Original recovery data
+
+These values describe the original `air` migration. Verify the recorded store
+paths, generations, and backup files still exist before using them.
+
+Recorded generation 5 system, before Lix ownership transferred:
+
+```
+/nix/store/4mqnh0i16vskjb7pzr4yk6jgy1acrgaf-darwin-system-26.11.4cff07d
+```
+
+Recorded generation 6 system, after activation and reboot verification:
+
+```
+/nix/store/3w1v4ajlf0h08jg0k0fw7d28743bqbfl-darwin-system-26.11.4cff07d
+```
+
+- Lix migration backup: `/var/root/nix-config-phase4-backup-20260915`, mode 0700,
+  containing `nix.conf`, `nix.custom.conf`, `org.nixos.nix-daemon.plist`, and
+  `systems.lix.nix-installer.nix-hook.plist`.
+- Automatic Nix configuration backups: `/etc/nix/nix.conf.before-nix-darwin`
+  and `/etc/nix/nix.custom.conf.before-nix-darwin`.
+- Original global profile target:
+  `/nix/store/ckw9rg3mwhrm7h2n271xx7kwh28qd0ww-user-environment`, with Lix at
+  `/nix/store/4dw2mganmnsxy31wyjll1vrn3gp5x345-lix-2.95.2`.
+
+Original file SHA256 values:
+
+| File | SHA256 |
+|---|---|
+| `nix.conf` | `daa9d824601c088f52de3da176e14328ba41e7be3eb450fdf8b93c86f236f722` |
+| `nix.custom.conf` | `a6dee4985bf207d3bec6a3cee28aefb33e60f5d0a91d8c20bbd71b9dadb2e601` |
+| Daemon plist | `be3b0a84ca2777bcc22d59504f97141b57d1ecbb8905835deebd3d63c1b37d2f` |
+| Installer hook plist | `edb996ab3e03050d794f3227e1a514a048b2c268f9ba7c8ad070751c15af69ff` |
+| APFS mount plist | `cff647b9deda72edf203e2864da85293e46d583f7a17286d1c7b5a5acdac3edf` |
+
 ## Rollback
 
 Generation rollback does not restore the installer's configuration files.
 The pinned nix-darwin removes stale managed links but does not restore their
 `.before-nix-darwin` backups. Keep the original global profile installed.
 
-1. Verify generation 5 matches the pre-Lix system in the migration record.
+1. Verify generation 5 matches the pre-Lix system in the [recovery data](#original-recovery-data).
    Use its built rebuild command:
 
    ```sh
