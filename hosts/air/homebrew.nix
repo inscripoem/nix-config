@@ -22,6 +22,10 @@
         name = "anomalyco/tap";
         trusted = true;
       }
+      {
+        name = "stablyai/orca";
+        trusted = true;
+      }
     ];
 
     # Formulae already supplied by Home Manager are intentionally omitted:
@@ -77,6 +81,7 @@
       "orbstack"
       "pearcleaner"
       "raycast"
+      "stablyai/orca/orca"
       "stats"
       "steam"
       "steamcmd"
