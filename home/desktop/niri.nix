@@ -18,6 +18,12 @@ let
   # session. Mirror the icon theme here from DMS's own settings.json so boot
   # state is deterministic; on a flip both writers now target the same value,
   # defusing the clobber.
+  # Third writer on these keys: any KDE app can load kded6's gtkconfig module
+  # on demand (autoload=false in kded6rc only blocks kded6's own autostart),
+  # and that load mirrors the light plasma-manager kdeglobals into
+  # settings.ini without touching the portal, so the monitor loop gets no
+  # event; a poll sentinel below repairs such drift, with the portal value
+  # as the single source of truth.
   # NOTE: name must NOT contain "gtk" — DMS runs `pkill -HUP -f gtk` on every
   # theme switch (intended to reload GTK apps), which would kill this script.
   themeSync = pkgs.writeShellScript "theme-sync" ''
@@ -98,7 +104,7 @@ let
     }
 
     sync_prefer_dark() {
-      local scheme
+      local scheme cur
       scheme=$(gdbus call --session \
         --dest org.freedesktop.portal.Desktop \
         --object-path /org/freedesktop/portal/desktop \
@@ -113,10 +119,16 @@ let
       icon=$(desired_icon_theme "$val")
       for f in "$HOME/.config/gtk-3.0/settings.ini" "$HOME/.config/gtk-4.0/settings.ini"; do
         [ -f "$f" ] || continue
-        if grep -q '^gtk-application-prefer-dark-theme=' "$f"; then
-          sed -i "s|^gtk-application-prefer-dark-theme=.*|gtk-application-prefer-dark-theme=$val|" "$f"
-        else
-          printf 'gtk-application-prefer-dark-theme=%s\n' "$val" >> "$f"
+        # Drift-gated write: the sentinel calls this every few seconds, and an
+        # unconditional sed would churn mtime and re-arm the lost-write race
+        # against DMS's own detached settings.ini writes.
+        cur=$(sed -n 's/^gtk-application-prefer-dark-theme=//p' "$f" | head -n1)
+        if [ "$cur" != "$val" ]; then
+          if grep -q '^gtk-application-prefer-dark-theme=' "$f"; then
+            sed -i "s|^gtk-application-prefer-dark-theme=.*|gtk-application-prefer-dark-theme=$val|" "$f"
+          else
+            printf 'gtk-application-prefer-dark-theme=%s\n' "$val" >> "$f"
+          fi
         fi
         [ -n "$icon" ] || continue
         if grep -q '^gtk-icon-theme-name=' "$f"; then
@@ -145,10 +157,15 @@ let
     # Restart DMS so its Qt process re-reads the icon theme. DMS is normally
     # spawned by niri, but spawn-at-startup only runs once, so we relaunch it
     # ourselves as a daemon (niri's DMS config includes make it session-safe).
-    # NOTE: use `pkill -x` (exact process-name match) — any `-f` pattern would
-    # also match this script's own shell command line and kill itself.
+    # NOTE: match the backend by its unique cmdline, NOT by process name. Nix
+    # wraps every dms invocation as ".dms-wrapped", so `pkill -x .dms-wrapped`
+    # also catches the in-flight `dms matugen queue` theme worker that DMS
+    # spawns on every mode switch — SIGTERM(15) mid-generation, and the shell
+    # toasts "Theme worker failed (15)" (quickshell reports the signal number
+    # as the exit code). "-f ...dms run$" cannot match this script (its own
+    # cmdline is just the script path) nor the worker (ends in queue args).
     restart_dms() {
-      pkill -x .dms-wrapped 2>/dev/null
+      pkill -f 'bin/dms run$' 2>/dev/null
       sleep 1
       setsid dms run >/dev/null 2>&1 &
       disown
@@ -160,6 +177,23 @@ let
     # theme. Scheme flips below keep the last_val semantics. The if-form keeps
     # sync_prefer_dark's nonzero returns out of any set -e discussion.
     if sync_prefer_dark && [ "$icon_changed" = true ]; then restart_dms; fi
+
+    # Drift sentinel. kded6's gtkconfig module can be loaded on demand by any
+    # KDE app (autoload=false only blocks kded6's own startup load), and each
+    # load mirrors plasma-manager's light kdeglobals into settings.ini —
+    # including prefer-dark=false and the icon key — without touching the
+    # portal, so the monitor loop gets no event to retaliate with. Repair via
+    # sync_prefer_dark: its drift-gated writes keep a clean tick free of disk
+    # traffic, and no DMS restart here — DMS resolved its icon theme at
+    # startup and a restored ini does not change it; Qt windows already open
+    # keep the polluted palette until relaunched (the gtk3 platform theme
+    # reads the key at startup only).
+    (
+      while sleep 2; do
+        sync_prefer_dark
+      done
+    ) &
+
     gdbus monitor --session \
       --dest org.freedesktop.portal.Desktop \
       --object-path /org/freedesktop/portal/desktop \
