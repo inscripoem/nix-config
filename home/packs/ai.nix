@@ -130,6 +130,15 @@ in {
       default = false;
       description = "orca-ide agentic desktop app (Stably AI), opt-in per host";
     };
+
+    # Opt-in extra: Google's official Colab CLI — provisions Colab CPU/GPU/TPU
+    # runtimes and drives them from the terminal (or from CLI agents). All
+    # compute runs remotely; this only ships the Python client.
+    colab.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Google Colab CLI, opt-in per host";
+    };
   };
 
   config = lib.mkMerge [
@@ -234,6 +243,10 @@ in {
 
     (lib.mkIf cfg.orca.enable {
       home.packages = [ pkgs.orca-ide ];
+    })
+
+    (lib.mkIf cfg.colab.enable {
+      home.packages = [ pkgs.colab-cli ];
     })
 
     # Declarative replacement for the gateway unit that `hermes gateway
