@@ -6,6 +6,7 @@
   packs.ai.hermes-agent.enable = true;
   packs.ai."qoder-cn".enable = true;
   packs.ai.workbuddy.enable = true;
+  packs.ai.orca.enable = true;
   packs.creative.enable = true;
   packs.gaming.enable = true;
   packs.office.enable = true;

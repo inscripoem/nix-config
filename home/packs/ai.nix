@@ -17,6 +17,30 @@ let
   workbuddyPkg = pkgs.workbuddy.override {
     commandLineArgs = "--password-store=${passwordStore}";
   };
+
+  # The desktop app keeps its binary but the terminal `zcode` name moves to
+  # pkgs.zcode-cli (official open-source CLI, built from source): the
+  # desktop-bundled glm/zcode.cjs cannot run its TUI upstream — the
+  # distribution does not ship @zcode/tui. The GUI launcher becomes
+  # `zcode-desktop`, keeping the original wrapper's xdg/ozone/IME flags,
+  # and the shipped zcode.desktop Exec is repointed at it because it
+  # hardcodes `zcode`. Paths assume the Linux deb layout; only Linux hosts
+  # enable packs.ai.zcode (air does not). Update tracks are decoupled:
+  # desktop via the llm-agents input, CLI via update-versions.sh.
+  zcodePkg = pkgs.symlinkJoin {
+    # Stable name (no version): generation diff tools pair by package name
+    # and would render a version bump as remove+add instead of a change.
+    # The version stays queryable via the forwarded upstream passthru.
+    name = "zcode-desktop-joined";
+    paths = [ agentPkgs.zcode ];
+    postBuild = ''
+      mv $out/bin/zcode $out/bin/zcode-desktop
+      rm $out/share/applications/zcode.desktop
+      sed 's|^Exec=zcode|Exec=zcode-desktop|' \
+        ${agentPkgs.zcode}/share/applications/zcode.desktop \
+        > $out/share/applications/zcode.desktop
+    '';
+  };
 in {
   options.packs.ai = {
     enable = lib.mkEnableOption "AI CLI toolchain (aichat + llm-agents.*)";
@@ -96,6 +120,16 @@ in {
       default = false;
       description = "workbuddy agentic desktop app (Tencent), opt-in per host";
     };
+
+    # Opt-in extra: Orca (onorca.dev), Stably AI's open-source Agent
+    # Development Environment — orchestrates parallel CLI agents, each in
+    # its own git worktree. Same "bring your own agent" model as the CLIs
+    # above, so it belongs in this pack rather than desktop.editors-gui.
+    orca.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "orca-ide agentic desktop app (Stably AI), opt-in per host";
+    };
   };
 
   config = lib.mkMerge [
@@ -134,7 +168,10 @@ in {
     })
 
     (lib.mkIf cfg.zcode.enable {
-      home.packages = [ agentPkgs.zcode ];
+      home.packages = [
+        zcodePkg
+        pkgs.zcode-cli
+      ];
 
       # ZCode is an Electron app that calls setAsDefaultProtocolClient() on
       # every launch, rewriting a user-level desktop file into
@@ -193,6 +230,10 @@ in {
       programs.zsh.envExtra = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
         export PATH="$PATH:/etc/profiles/per-user/${config.home.username}/bin:/run/current-system/sw/bin"
       '';
+    })
+
+    (lib.mkIf cfg.orca.enable {
+      home.packages = [ pkgs.orca-ide ];
     })
 
     # Declarative replacement for the gateway unit that `hermes gateway
