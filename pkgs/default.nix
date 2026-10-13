@@ -7,6 +7,8 @@ final: prev: {
   workbuddy = final.callPackage ./workbuddy.nix { };
   "cc-switch" = final.callPackage ./cc-switch.nix { };
   notion-electron = final.callPackage ./notion-electron.nix { };
+  orca-ide = final.callPackage ./orca-ide.nix { };
+  zcode-cli = final.callPackage ./zcode-cli.nix { };
   glances = final.callPackage ./glances.nix { originalGlances = prev.glances; };
   rebarstate = final.callPackage ./rebarstate.nix { };
 
