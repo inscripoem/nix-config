@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
 # Update trae-cn, qoder-cn, qoder-cn-ide, workbuddy, cc-switch, siyuan,
-# ww-manager and notion-electron to their latest upstream versions, update
-# wechat, and align the qq version pin with the linuxqq-wayland-fix input.
+# ww-manager, notion-electron, orca-ide and zcode-cli to their latest
+# upstream versions, update wechat, and align the qq version pin with the
+# linuxqq-wayland-fix input.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--trae-version=<X.Y.Z>]
 #
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {trae-cn,qoder-cn,qoder-cn-ide,workbuddy,cc-switch,siyuan,ww-manager,notion-electron,wechat,qq}.
+#                          {trae-cn,qoder-cn,qoder-cn-ide,workbuddy,cc-switch,siyuan,ww-manager,notion-electron,orca-ide,zcode-cli,wechat,qq}.
 #                          `notion` is accepted as an alias for notion-electron.
-#                          Defaults to all ten.
+#                          Defaults to all twelve.
 #   --trae-version=<ver>   Skip the trae-cn `latest` API and pin the given
 #                          version directly. Only meaningful when trae-cn is
 #                          in the selected set.
 #
-# Requirements: curl, jq, nix (flakes), nix-prefetch-url, sed
+# Requirements: curl, jq, git, nix (flakes), nix-prefetch-url, sed
 
 set -euo pipefail
 
@@ -631,6 +632,100 @@ if should_update "notion-electron"; then
       changed=true
     else
       echo "    [dry-run] would update to $ne_version"
+    fi
+  fi
+fi
+
+# ── orca-ide ─────────────────────────────────────────────────────────
+
+if should_update "orca-ide"; then
+  echo ""
+  echo "==> Checking orca-ide ..."
+  or_version=$(github_latest_version "stablyai/orca")
+
+  or_nix="$REPO_ROOT/pkgs/orca-ide.nix"
+  or_current=$(grep 'version = ' "$or_nix" | head -1 | grep -oP '[\d.]+')
+
+  echo "    current : $or_current"
+  echo "    latest  : $or_version"
+
+  if [[ "$or_version" == "$or_current" ]]; then
+    echo "    up to date."
+  else
+    echo "    updating ..."
+    if [[ "$DRY_RUN" == false ]]; then
+      # The x86_64 AppImage asset carries no version in its filename.
+      or_url="https://github.com/stablyai/orca/releases/download/v${or_version}/orca-linux.AppImage"
+
+      echo "    prefetching ..."
+      or_hash=$(prefetch_hash "$or_url")
+
+      update_nix_field "$or_nix" "version" "$or_version"
+      update_nix_field "$or_nix" "hash" "$or_hash"
+
+      echo "    done: $or_current → $or_version"
+      changed=true
+    else
+      echo "    [dry-run] would update to $or_version"
+    fi
+  fi
+fi
+
+# ── zcode-cli ────────────────────────────────────────────────────────
+
+if should_update "zcode-cli"; then
+  echo ""
+  echo "==> Checking zcode-cli ..."
+  # GitHub releases lag the git tags here (latest release 3.14.3 vs tag
+  # v3.15.1), so resolve the highest tag instead of the releases API.
+  zc_version=$(
+    git ls-remote --tags --refs https://github.com/zai-org/ZCode 'v*' \
+      | awk -F/ '{print $3}' | sed 's/^v//' | sort -V | tail -1)
+  if [[ -z "$zc_version" ]]; then
+    echo "    ERROR: git ls-remote found no tags for zai-org/ZCode." >&2
+    exit 1
+  fi
+
+  zc_nix="$REPO_ROOT/pkgs/zcode-cli.nix"
+  zc_current=$(grep 'version = ' "$zc_nix" | head -1 | grep -oP '[\d.]+')
+
+  echo "    current : $zc_current"
+  echo "    latest  : $zc_version"
+
+  if [[ "$zc_version" == "$zc_current" ]]; then
+    echo "    up to date."
+  else
+    echo "    updating ..."
+    if [[ "$DRY_RUN" == false ]]; then
+      zc_url="https://github.com/zai-org/ZCode/archive/refs/tags/v${zc_version}.tar.gz"
+
+      echo "    prefetching source ..."
+      zc_hash=$(prefetch_hash "$zc_url")
+
+      update_nix_field "$zc_nix" "version" "$zc_version"
+      # Two hash lines exist (src + pnpmDeps); anchor each on its preceding
+      # line instead of update_nix_field, which would hit both.
+      sed -i "/archive\/refs\/tags/{n;s|hash = \".*\"|hash = \"${zc_hash}\"|;}" "$zc_nix"
+
+      echo "    resolving pnpm store hash (downloads the whole lockfile store) ..."
+      # The pnpmDeps hash cannot be prefetched: point it at a sentinel and
+      # read the got-hash from the failed FOD build.
+      sed -i '/fetcherVersion = 4;/{n;s|hash = ".*"|hash = lib.fakeHash|;}' "$zc_nix"
+      zc_deps_hash=$(
+        nix build --no-link --impure --expr \
+          "(((builtins.getFlake \"$REPO_ROOT\").inputs.nixpkgs.legacyPackages.x86_64-linux).extend (import $REPO_ROOT/pkgs/default.nix)).zcode-cli.pnpmDeps" 2>&1 \
+          | grep -oP 'got:\s+\Ksha256-[^=]+=' | head -1)
+      if [[ -z "$zc_deps_hash" ]]; then
+        echo "    ERROR: could not resolve pnpmDeps hash; pkgs/zcode-cli.nix left at version $zc_version with a fakeHash sentinel." >&2
+        exit 1
+      fi
+      sed -i "/fetcherVersion = 4;/{n;s|hash = lib.fakeHash|hash = \"${zc_deps_hash}\"|;}" "$zc_nix"
+
+      echo "    done: $zc_current → $zc_version (src ${zc_hash:0:14}..., deps ${zc_deps_hash:0:14}...)"
+      echo "    NOTE: run nix build on the package once to verify the full build."
+      changed=true
+    else
+      echo "    [dry-run] would update to $zc_version"
     fi
   fi
 fi
