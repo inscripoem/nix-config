@@ -11,6 +11,7 @@
   packs.creative.enable = true;
   packs.gaming.enable = true;
   packs.office.enable = true;
+  packs.onedrive.enable = true;
   packs.toolchain.enable = true;
 
   # Uninstall trae-cn on briefcase only; vm keeps trae-cn.
