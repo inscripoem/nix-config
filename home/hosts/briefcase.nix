@@ -16,4 +16,5 @@
 
   # Uninstall trae-cn on briefcase only; vm keeps trae-cn.
   desktop.editors-gui.traeCn.enable = false;
+  desktop.emacs.enable = true;
 }

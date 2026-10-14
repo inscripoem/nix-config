@@ -13,6 +13,7 @@
     ./terminals.nix
     ./desktop-env.nix
     ./editors-gui.nix
+    ./emacs.nix
     ./browsers.nix
     ./media.nix
     ./productivity.nix
