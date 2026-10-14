@@ -1,0 +1,50 @@
+diff --git a/src/addon/dbus/vinput_dbus.cpp b/src/addon/dbus/vinput_dbus.cpp
+index 7276dd8..afdce57 100644
+--- a/src/addon/dbus/vinput_dbus.cpp
++++ b/src/addon/dbus/vinput_dbus.cpp
+@@ -913,7 +913,21 @@ void VinputEngine::onRecognitionResult(fcitx::dbus::Message& msg) {
+     }
+   }
+ 
++  // Emit the final text as client-side preedit before committing so the
++  // commit rides an active IME composition. Clients that gate IME handling on
++  // composition state (e.g. Chromium terminals with a composition tracker)
++  // drop commit_string events that arrive without any preceding preedit.
++  fcitx::Text clientPreedit;
++  clientPreedit.append(payload.commitText);
++  ic->inputPanel().setClientPreedit(clientPreedit);
++  ic->updatePreedit();
++
+   ic->commitString(payload.commitText);
++
++  // Clear the client-side preedit so the stale final text cannot linger in
++  // the input panel until the next dictation overwrites it.
++  ic->inputPanel().setClientPreedit(fcitx::Text());
++  ic->updatePreedit();
+ }
+ 
+ void VinputEngine::onRecognitionPartial(fcitx::dbus::Message& msg) {
+diff --git a/src/addon/menu/vinput_menu.cpp b/src/addon/menu/vinput_menu.cpp
+index 4094106..eff4f79 100644
+--- a/src/addon/menu/vinput_menu.cpp
++++ b/src/addon/menu/vinput_menu.cpp
+@@ -1078,5 +1078,19 @@ void VinputEngine::selectResultCandidate(std::size_t index, fcitx::InputContext*
+     result_is_command_ = false;
+   }
+ 
++  // Emit the final text as client-side preedit before committing so the
++  // commit rides an active IME composition. Clients that gate IME handling on
++  // composition state (e.g. Chromium terminals with a composition tracker)
++  // drop commit_string events that arrive without any preceding preedit.
++  fcitx::Text clientPreedit;
++  clientPreedit.append(chosen.text);
++  ic->inputPanel().setClientPreedit(clientPreedit);
++  ic->updatePreedit();
++
+   ic->commitString(chosen.text);
++
++  // Clear the client-side preedit so the stale final text cannot linger in
++  // the input panel until the next dictation overwrites it.
++  ic->inputPanel().setClientPreedit(fcitx::Text());
++  ic->updatePreedit();
+ }

@@ -7,7 +7,16 @@ let
   # Voice input addon (push-to-talk / hotkey trigger, coexists with Rime —
   # it registers as an fcitx5 Module, not an input method). The package
   # carries the addon library, vinput / vinput-gui CLIs and the daemon.
-  vinput = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  #
+  # TEMPORARY local verification patch: emit the final text as client-side
+  # preedit right before commitString, so the commit rides an active IME
+  # composition. Chromium terminals that gate IME handling on composition
+  # state (orca's xterm.js terminal) drop bare commit_string events with no
+  # preceding preedit. Drop this override once upstream picks a fix.
+  vinputBase = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  vinput = vinputBase.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ../../../pkgs/fcitx5-vinput-client-preedit.patch ];
+  });
 in
 
 {
