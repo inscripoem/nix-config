@@ -10,11 +10,11 @@
 # releases are the only update path.
 let
   pname = "orca-ide";
-  version = "1.4.224";
+  version = "1.4.226";
 
   src = fetchurl {
     url = "https://github.com/stablyai/orca/releases/download/v${version}/orca-linux.AppImage";
-    hash = "sha256-sf6RAtmH012X622cJ0qT2elRqtvoZPwiUaMVAj9gx0Y=";
+    hash = "sha256-UqbZP4rO3lUAr/1uu5faba3qtre5xfVlEr/mbplC3Xo=";
   };
 
   appimageContents = appimageTools.extract { inherit pname version src; };

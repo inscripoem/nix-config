@@ -8,8 +8,8 @@ let
   #   https://copilot.tencent.com/v2/update?platform=workbuddy-linux-x64-deb
   # The deb filename embeds "-<rev>"; `rev` is kept separate so
   # update-versions.sh can rewrite both fields independently.
-  version = "5.5.6.38337834";
-  rev = "5f969292";
+  version = "5.6.2.40046327";
+  rev = "c7b525f3";
 
   workbuddy = pkgs.stdenv.mkDerivation {
     pname = "workbuddy";
@@ -17,7 +17,7 @@ let
 
     src = pkgs.fetchurl {
       url = "https://download.codebuddy.cn/workbuddy/saas/linux-x64-deb/WorkBuddy-linux-x64-deb-${version}-${rev}.deb";
-      hash = "sha256-K4aBSp8fp7YjKNrU2Z7kPWrmIGFV9VPXeyb4Gytzclw=";
+      hash = "sha256-EhSa2MDNdI/VBi2PYseCfWiNgJVCetqZsa6ecBmJdSM=";
     };
 
     nativeBuildInputs = with pkgs; [

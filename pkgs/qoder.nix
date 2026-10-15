@@ -1,7 +1,7 @@
 { pkgs, commandLineArgs ? "" }:
 
 let
-  version = "1.32.0";
+  version = "1.33.0";
 
   qoder-cn-ide = pkgs.stdenv.mkDerivation {
     pname = "qoder-cn-ide";
@@ -9,7 +9,7 @@ let
 
     src = pkgs.fetchurl {
       url = "https://qoder-ide-cn.oss-cn-hangzhou.aliyuncs.com/qoder/release/${version}/qoder-cn-ide_amd64.deb";
-      hash = "sha256-3w/6RdXkG4x5NigFSsyRTU2W/MZLbbwzwjeKQF9xjEQ=";
+      hash = "sha256-WynZqiL1IiGdB0Z9oi+HzVhTjF+g/MDWmUx1S3JVD8o=";
     };
 
     nativeBuildInputs = with pkgs; [

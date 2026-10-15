@@ -29,10 +29,10 @@ final: prev: {
     let
       wechatFhs = prev.callPackage (prev.path + "/pkgs/by-name/we/wechat/linux.nix") {
         pname = "wechat";
-        version = "4.1.13.23";
+        version = "4.1.13.26";
         src = final.fetchurl {
-          url = "https://github.com/Rodert/wechat-linux-versions/releases/download/v4.1.13.23/WeChatLinux_x86_64.AppImage";
-          hash = "sha256-T1StKQLs1vb9xWgLc1R/gNVCO/RwsBI3pXmi5bPK7us=";
+          url = "https://github.com/Rodert/wechat-linux-versions/releases/download/v4.1.13.26/WeChatLinux_x86_64.AppImage";
+          hash = "sha256-RSYYC8qYASh5FZmvEi/0eVACpXFaUQ9qZUgOK+aHQkQ=";
         };
         meta = prev.wechat.meta;
       };

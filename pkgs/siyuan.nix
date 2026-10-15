@@ -1,25 +1,25 @@
 { pkgs }:
 
 let
-  version = "3.8.6";
+  version = "3.8.7";
 
   srcTag = pkgs.fetchFromGitHub {
     owner = "siyuan-note";
     repo = "siyuan";
     rev = "v${version}";
-    hash = "sha256-rHNhrEXf9OW+t4RVz6HZFTXpEDqpIiD25JYUdV8PEM0=";
+    hash = "sha256-VCDtBPUXuuJGltbTlUwdoz+7Cyg+Yj4RKP6IaVmkZpw=";
   };
 
   srcDeb =
     if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then
       pkgs.fetchurl {
         url = "https://github.com/siyuan-note/siyuan/releases/download/v${version}/siyuan-${version}-linux.deb";
-        hash = "sha256-srTVrs5fJAZxqdCSe1b9xAgUvZ5YX35Kbl4zGvwGtE8=";
+        hash = "sha256-BA7xEDGr3YFjHxW2sEid9bsxnvP9YhAnBnybh9/SE00=";
       }
     else if pkgs.stdenv.hostPlatform.system == "aarch64-linux" then
       pkgs.fetchurl {
         url = "https://github.com/siyuan-note/siyuan/releases/download/v${version}/siyuan-${version}-linux-arm64.deb";
-        hash = "sha256-RKfj7aKeFvx+m65FLTK23tnbQNAkUEuxOa5jF8doBUQ=";
+        hash = "sha256-VUMRskZNfK8BAyS97zyVWNSGl/hRPFvc7iLvw+7SgOQ=";
       }
     else
       throw "siyuan: unsupported system ${pkgs.stdenv.hostPlatform.system}";
@@ -29,7 +29,7 @@ let
     inherit version;
     src = srcTag;
     sourceRoot = "${srcTag.name}/kernel";
-    vendorHash = "sha256-IadrrcZ2RaYJuyBCKwTwkHGMRTXAzlV9q1wowVaSXfo=";
+    vendorHash = "sha256-8qb7tQ91iWs3Gbrux8Wy4OKIg706mWfgiLXMhIz2OkQ=";
 
     ldflags = [
       "-s"
