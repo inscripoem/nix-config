@@ -103,15 +103,6 @@ in {
       description = "hermes-agent CLI (Nous Research), opt-in per host";
     };
 
-    # Opt-in extra: Alibaba's new-form agentic desktop app — the GUI
-    # counterpart to the CLI agents above, distinct from the qoder-cn-ide
-    # editor that lives in desktop.editors-gui.
-    "qoder-cn".enable = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = "qoder-cn agentic desktop app (Alibaba), opt-in per host";
-    };
-
     # Opt-in extra: Tencent CodeBuddy team's agentic desktop workspace.
     # Single Linux build (no CN/international split on Linux); the same
     # package serves both account regions.
@@ -147,7 +138,7 @@ in {
     # Sandbox runtime shared by the pack's agents: codex 0.162+ runs its Linux
     # sandbox through bubblewrap (exec'd from PATH; upstream removed the
     # Landlock fallback), and bare CLIs get it from the ambient profile PATH —
-    # qoder/workbuddy instead prefix their own wrapped copies.
+    # workbuddy instead prefixes its own wrapped copy.
     (lib.mkIf cfg.enable {
       home.packages = [ pkgs.bubblewrap ];
     })
@@ -214,14 +205,6 @@ in {
       # target set on the gateway unit below gives them a working escape
       # hatch instead.
       home.packages = [ hermesPkg ];
-    })
-
-    (lib.mkIf cfg."qoder-cn".enable {
-      home.packages = [
-        (pkgs.qoder-cn.override {
-          commandLineArgs = "--password-store=${passwordStore}";
-        })
-      ];
     })
 
     (lib.mkIf cfg.workbuddy.enable {

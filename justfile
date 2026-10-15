@@ -2,7 +2,7 @@
 default:
     @{{quote(just_executable())}} --list
 
-# Update custom package versions (optional package, trae-cn version, --dry-run).
+# Update custom package versions (optional package, --dry-run).
 update *args:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -15,12 +15,9 @@ update *args:
         esac
     done
     pkg="${filtered[0]:-}"
-    version="${filtered[1]:-}"
 
     if [[ -z "$pkg" ]]; then
         ./scripts/update-versions.sh $dry
-    elif [[ "$pkg" == "trae-cn" && -n "$version" ]]; then
-        ./scripts/update-versions.sh --only=trae-cn --trae-version="$version" $dry
     else
         ./scripts/update-versions.sh --only="$pkg" $dry
     fi

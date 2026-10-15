@@ -4,8 +4,8 @@
   # decide whether to initialize a keyring backend — unknown DEs (e.g. "niri")
   # get skipped entirely, regardless of whether org.freedesktop.secrets is
   # available on DBus. Passing --password-store=<backend> bypasses that
-  # detection and calls libsecret directly. Consumed by browsers.nix,
-  # editors-gui.nix, and pkgs/trae-cn.nix override sites.
+  # detection and calls libsecret directly. Consumed by browsers.nix and
+  # editors-gui.nix.
   # System-level keyring infrastructure: modules/nixos/desktop/keyring.nix
   _module.args.passwordStore = "gnome-libsecret";
 
