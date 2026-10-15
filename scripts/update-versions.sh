@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Update trae-cn, qoder-cn, qoder-cn-ide, workbuddy, cc-switch, siyuan,
-# ww-manager, notion-electron, orca-ide, zcode-cli and colab-cli to their
+# ww-manager, notion-electron, zcode-cli and colab-cli to their
 # latest upstream versions, update wechat, and align the qq version pin with
 # the linuxqq-wayland-fix input.
 # Usage:
@@ -9,9 +9,9 @@
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {trae-cn,qoder-cn,qoder-cn-ide,workbuddy,cc-switch,siyuan,ww-manager,notion-electron,orca-ide,zcode-cli,colab-cli,wechat,qq}.
+#                          {trae-cn,qoder-cn,qoder-cn-ide,workbuddy,cc-switch,siyuan,ww-manager,notion-electron,zcode-cli,colab-cli,wechat,qq}.
 #                          `notion` is accepted as an alias for notion-electron.
-#                          Defaults to all thirteen.
+#                          Defaults to all twelve.
 #   --trae-version=<ver>   Skip the trae-cn `latest` API and pin the given
 #                          version directly. Only meaningful when trae-cn is
 #                          in the selected set.
@@ -643,41 +643,6 @@ if should_update "notion-electron"; then
       changed=true
     else
       echo "    [dry-run] would update to $ne_version"
-    fi
-  fi
-fi
-
-# ── orca-ide ─────────────────────────────────────────────────────────
-
-if should_update "orca-ide"; then
-  echo ""
-  echo "==> Checking orca-ide ..."
-  or_version=$(github_latest_version "stablyai/orca")
-
-  or_nix="$REPO_ROOT/pkgs/orca-ide.nix"
-  or_current=$(grep 'version = ' "$or_nix" | head -1 | grep -oP '[\d.]+')
-
-  echo "    current : $or_current"
-  echo "    latest  : $or_version"
-
-  if [[ "$or_version" == "$or_current" ]]; then
-    echo "    up to date."
-  else
-    echo "    updating ..."
-    if [[ "$DRY_RUN" == false ]]; then
-      # The x86_64 AppImage asset carries no version in its filename.
-      or_url="https://github.com/stablyai/orca/releases/download/v${or_version}/orca-linux.AppImage"
-
-      echo "    prefetching ..."
-      or_hash=$(prefetch_hash "$or_url")
-
-      update_nix_field "$or_nix" "version" "$or_version"
-      update_nix_field "$or_nix" "hash" "$or_hash"
-
-      echo "    done: $or_current → $or_version"
-      changed=true
-    else
-      echo "    [dry-run] would update to $or_version"
     fi
   fi
 fi

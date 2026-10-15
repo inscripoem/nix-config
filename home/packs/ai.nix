@@ -125,10 +125,12 @@ in {
     # Development Environment — orchestrates parallel CLI agents, each in
     # its own git worktree. Same "bring your own agent" model as the CLIs
     # above, so it belongs in this pack rather than desktop.editors-gui.
+    # Taken from the llm-agents input (deb-based build); version bumps ride
+    # flake updates instead of update-versions.sh.
     orca.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = "orca-ide agentic desktop app (Stably AI), opt-in per host";
+      description = "orca agentic desktop app (Stably AI), opt-in per host";
     };
 
     # Opt-in extra: Google's official Colab CLI — provisions Colab CPU/GPU/TPU
@@ -250,7 +252,7 @@ in {
     })
 
     (lib.mkIf cfg.orca.enable {
-      home.packages = [ pkgs.orca-ide ];
+      home.packages = [ agentPkgs.orca ];
     })
 
     (lib.mkIf cfg.colab.enable {
