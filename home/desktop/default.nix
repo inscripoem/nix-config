@@ -24,5 +24,6 @@
     ./rime.nix
     ./fcitx5.nix
     ./niri.nix
+    ./artcraft.nix
   ];
 }

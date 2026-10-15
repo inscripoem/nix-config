@@ -50,22 +50,14 @@ in {
     };
   };
 
-  config = lib.mkMerge [
-    {
-      home.packages =
-        lib.optional cfg.ardour.enable pkgs.ardour
-        ++ lib.optional cfg.audacity.enable pkgs.audacity
-        ++ lib.optional cfg.blender.enable pkgs.blender
-        ++ lib.optional cfg.gimp.enable pkgs.gimp
-        ++ lib.optional cfg.godot.enable pkgs.godot_4
-        ++ lib.optional cfg.zrythm.enable pkgs.zrythm;
-    }
-    # photocraft comes from the artcraft flake's HM module, not nixpkgs.
-    (lib.mkIf cfg.photocraft.enable {
-      programs.artcraft = {
-        enable = true;
-        apps = [ "photocraft" ];
-      };
-    })
-  ];
+  # The programs.artcraft wiring for this opt-in lives in home/desktop/:
+  # only desktop hosts import the artcraft HM module that declares it, and
+  # the module system checks option paths even under mkIf.
+  config.home.packages =
+    lib.optional cfg.ardour.enable pkgs.ardour
+    ++ lib.optional cfg.audacity.enable pkgs.audacity
+    ++ lib.optional cfg.blender.enable pkgs.blender
+    ++ lib.optional cfg.gimp.enable pkgs.gimp
+    ++ lib.optional cfg.godot.enable pkgs.godot_4
+    ++ lib.optional cfg.zrythm.enable pkgs.zrythm;
 }
