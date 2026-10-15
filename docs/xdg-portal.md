@@ -19,7 +19,7 @@ backend. GTK does not implement RemoteDesktop, so changing a default to GTK
 could not solve the missing interface.
 
 That failure was observed on the previous Wayland setup. The current default
-session on `briefcase` is Plasma X11; niri and COSMIC remain available.
+session on `briefcase` is Plasma X11; niri remains available.
 Interface availability depends on the running desktop and backend support.
 
 ### Discovery and routing
@@ -45,7 +45,6 @@ layer ensures the required definitions are collected in one profile.
 | Session | Default | Interface overrides |
 |---|---|---|
 | KDE | `kde` | None in this module |
-| COSMIC | `cosmic` | None in this module |
 | niri | `gnome`, then `gtk` | Access/Notification → GTK; Secret → GNOME Keyring |
 
 The module explicitly adds the GNOME backend for niri. Desktop modules provide

@@ -26,9 +26,6 @@
   # gnome-keyring never unlock without a PAM password, which breaks WiFi
   # auto-connect and Vivaldi's cookie store). See docs/remote-desktop.md.
 
-  # Enable COSMIC desktop environment (parallel install with KDE Plasma).
-  services.desktopManager.cosmic.enable = true;
-
   # Enable niri - scrollable-tiling Wayland compositor.
   # Use niri-unstable from the niri-flake overlay to get newer actions like
   # maximize-window-to-edges that are not yet in the stable release.

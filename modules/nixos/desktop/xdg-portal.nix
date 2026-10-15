@@ -7,7 +7,6 @@
   # Wayland: "No such interface org.freedesktop.portal.RemoteDesktop").
   # Force every interface on a KDE session to the kde backend; KWin provides
   # RemoteDesktop via libei.
-  # COSMIC session will use xdg-desktop-portal-cosmic automatically.
   #
   # niri is a standalone compositor flake and does not register any portal
   # backend itself. Route its session to gnome (with gtk as fallback) and
@@ -18,7 +17,6 @@
     enable = true;
     extraPortals = [ pkgs.xdg-desktop-portal-gnome ];
     config.kde.default = [ "kde" ];
-    config.cosmic.default = [ "cosmic" ];
     # niri session: mirror upstream niri-portals.conf. gnome is the
     # default, but Access/Notification delegate to gnome-shell (absent
     # here) so must fall back to gtk. Secret goes to gnome-keyring.

@@ -41,7 +41,7 @@ alone does not prove hardware acceleration is in use.
 ## Display backend changes
 
 The default SDDM/Plasma session remains X11 for
-[pre-login Sunshine capture](remote-desktop.md). niri and COSMIC are also
+[pre-login Sunshine capture](remote-desktop.md). niri is also
 installed. Moving the default session to Wayland requires testing capture,
 input, audio, login handoff, logout, and reboot. A Wayland greeter needs its
 own capture design; do not assume enabling `capSysAdmin` alone supplies one.
