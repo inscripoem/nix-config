@@ -142,6 +142,14 @@ in {
   };
 
   config = lib.mkMerge [
+    # Sandbox runtime shared by the pack's agents: codex 0.162+ runs its Linux
+    # sandbox through bubblewrap (exec'd from PATH; upstream removed the
+    # Landlock fallback), and bare CLIs get it from the ambient profile PATH —
+    # qoder/workbuddy instead prefix their own wrapped copies.
+    (lib.mkIf cfg.enable {
+      home.packages = [ pkgs.bubblewrap ];
+    })
+
     (lib.mkIf cfg.aichat.enable {
       programs.aichat.enable = true;
     })
