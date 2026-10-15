@@ -24,6 +24,26 @@
         "type": "github"
       }
     },
+    "artcraft": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791997417,
+        "narHash": "sha256-Ld9ZsA/b4s2a4KntIdOx/visQx8//HIHmRe+SYC4yjo=",
+        "owner": "Devitek",
+        "repo": "artcraft-nixos",
+        "rev": "094a2cccb2c766714d6d782cac347b09de12020a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Devitek",
+        "repo": "artcraft-nixos",
+        "type": "github"
+      }
+    },
     "bun2nix": {
       "inputs": {
         "flake-parts": [
@@ -809,6 +829,7 @@
     "root": {
       "inputs": {
         "aagl": "aagl",
+        "artcraft": "artcraft",
         "colmena": "colmena",
         "deploy-rs": "deploy-rs",
         "disko": "disko",

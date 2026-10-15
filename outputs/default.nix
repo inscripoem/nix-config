@@ -1,11 +1,13 @@
-{ self, nixpkgs, plasma-manager, disko, zen-browser, niri, ... }@inputs:
+{ self, nixpkgs, plasma-manager, disko, zen-browser, artcraft, niri, ... }@inputs:
 let
   vars = import ../vars;
 
-  # Desktop-oriented HM shared modules (plasma-manager, zen-browser).
+  # Desktop-oriented HM shared modules (plasma-manager, zen-browser,
+  # artcraft apps).
   desktopHmModules = [
     plasma-manager.homeModules.plasma-manager
     zen-browser.homeModules.beta
+    artcraft.homeManagerModules.default
   ];
 
   # niri-flake still requires libdisplay-info 0.2, which was removed from

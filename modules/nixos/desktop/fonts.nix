@@ -1,5 +1,13 @@
 { pkgs, ... }:
 {
+  # ArtCraft apps' text tools look for fonts only in /usr/share/fonts and
+  # do not use fontconfig; expose the system font dir there.
+  fonts.fontDir.enable = true;
+  systemd.tmpfiles.rules = [
+    "d /usr/share 0755 root root -"
+    "L+ /usr/share/fonts - - - - /run/current-system/sw/share/X11/fonts"
+  ];
+
   fonts.packages = with pkgs; [
     harmonyos-sans
     noto-fonts-cjk-sans

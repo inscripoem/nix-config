@@ -56,6 +56,16 @@
       inputs.home-manager.follows = "home-manager";
     };
 
+    # artcraft - storytold Craft App Suite (photocraft, vectorcraft, ...).
+    # Community packaging (Devitek) of the prebuilt release tarballs; its
+    # repo auto-tracks upstream releases hourly, so a flake update picks up
+    # whatever is newest. Follows our nixpkgs: the packages are
+    # autoPatchelf wrappers, not builds keyed to a foreign pin.
+    artcraft = {
+      url = "github:Devitek/artcraft-nixos";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # niri - scrollable-tiling Wayland compositor
     niri = {
       url = "github:sodiboo/niri-flake";

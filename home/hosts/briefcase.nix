@@ -9,6 +9,8 @@
   packs.ai.orca.enable = true;
   packs.ai.colab.enable = true;
   packs.creative.enable = true;
+  # Opt-in extra from packs.creative (defaults to false) — this host only.
+  packs.creative.photocraft.enable = true;
   packs.gaming.enable = true;
   packs.office.enable = true;
   packs.onedrive.enable = true;
