@@ -52,9 +52,9 @@ let
   '';
 in
 {
-  home.sessionPath = lib.optionals isDarwin [
+  home.sessionPath = [
     "${config.home.homeDirectory}/.local/bin"
-    "${config.home.homeDirectory}/go/bin"
+  ] ++ lib.optionals isDarwin [
     "${config.home.homeDirectory}/.orbstack/bin"
   ];
 
@@ -69,7 +69,7 @@ in
         return
       fi
     '' else ''
-      export PATH="$PATH:$HOME/bin:$HOME/.local/bin:$HOME/go/bin"
+      export PATH="$PATH:$HOME/bin"
     '';
     profileExtra = lib.optionalString isDarwin darwinEnvironment;
     inherit shellAliases;

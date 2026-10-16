@@ -54,8 +54,14 @@ in {
 
     # cargo install puts binaries in ~/.cargo/bin; rustup expects it on PATH
     # ahead of the profile so its shims resolve to the active toolchain.
-    home.sessionPath = lib.mkIf cfg.rust.enable [
-      "${config.home.homeDirectory}/.cargo/bin"
+    # go install puts binaries in ~/go/bin.
+    home.sessionPath = lib.mkMerge [
+      (lib.mkIf cfg.rust.enable [
+        "${config.home.homeDirectory}/.cargo/bin"
+      ])
+      (lib.mkIf cfg.go.enable [
+        "${config.home.homeDirectory}/go/bin"
+      ])
     ];
   };
 }
