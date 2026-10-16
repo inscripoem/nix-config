@@ -69,8 +69,11 @@
       vault = "加密密钥"
     '';
 
+    # Upstream renamed the shipped entry from 1password.desktop to
+    # com.onepassword.OnePassword.desktop (nixpkgs 26.11); the autostart
+    # copy keeps the short name so this stays the only diff point.
     "autostart/1password.desktop".source = pkgs.substitute {
-      src = "${pkgs._1password-gui}/share/applications/1password.desktop";
+      src = "${pkgs._1password-gui}/share/applications/com.onepassword.OnePassword.desktop";
       substitutions = [
         "--replace-fail"
         "Exec=1password"
