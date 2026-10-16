@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Update workbuddy, cc-switch, siyuan, ww-manager, notion-electron,
-# zcode-cli and colab-cli to their latest upstream versions, update
+# Update workbuddy, cc-switch, siyuan, ww-manager, notion-electron
+# and zcode-cli to their latest upstream versions, update
 # wechat, and align the qq version pin with the linuxqq-wayland-fix input.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>]
@@ -8,9 +8,9 @@
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {workbuddy,cc-switch,siyuan,ww-manager,notion-electron,zcode-cli,colab-cli,wechat,qq}.
+#                          {workbuddy,cc-switch,siyuan,ww-manager,notion-electron,zcode-cli,wechat,qq}.
 #                          `notion` is accepted as an alias for notion-electron.
-#                          Defaults to all nine.
+#                          Defaults to all eight.
 #
 # Requirements: curl, jq, git, nix (flakes), nix-prefetch-url, sed
 
@@ -515,59 +515,6 @@ if should_update "zcode-cli"; then
       changed=true
     else
       echo "    [dry-run] would update to $zc_version"
-    fi
-  fi
-fi
-
-# ── colab-cli ────────────────────────────────────────────────────────
-
-if should_update "colab-cli"; then
-  echo ""
-  echo "==> Checking colab-cli ..."
-  # PyPI is the release channel (the git repo runs ahead of it). The CLI pins
-  # jupyter-kernel-client with ==, so the helper's version is read from the
-  # new release's metadata; jupyter-mimetypes floats free and tracks latest.
-  cb_version=$(pypi_latest_version "google-colab-cli")
-  cb_kernel=$(
-    curl -sf --max-time 10 "https://pypi.org/pypi/google-colab-cli/${cb_version}/json" \
-      | jq -r '.info.requires_dist[] | select(startswith("jupyter-kernel-client==")) | sub("jupyter-kernel-client=="; "")')
-  if [[ -z "$cb_kernel" ]]; then
-    echo "    ERROR: no jupyter-kernel-client pin in colab-cli ${cb_version} metadata." >&2
-    exit 1
-  fi
-  cb_mimetypes=$(pypi_latest_version "jupyter-mimetypes")
-
-  cb_nix="$REPO_ROOT/pkgs/colab-cli.nix"
-  cb_cli_current=$(grep 'colabCliVersion = ' "$cb_nix" | grep -oP '[\d.]+')
-  cb_kc_current=$(grep 'jkcVersion = ' "$cb_nix" | grep -oP '[\d.]+')
-  cb_mt_current=$(grep 'jmtVersion = ' "$cb_nix" | grep -oP '[\d.]+')
-
-  echo "    current : $cb_cli_current (jupyter-kernel-client $cb_kc_current, jupyter-mimetypes $cb_mt_current)"
-  echo "    latest  : $cb_version (jupyter-kernel-client $cb_kernel, jupyter-mimetypes $cb_mimetypes)"
-
-  if [[ "$cb_version" == "$cb_cli_current" && "$cb_kernel" == "$cb_kc_current" && "$cb_mimetypes" == "$cb_mt_current" ]]; then
-    echo "    up to date."
-  else
-    echo "    updating ..."
-    if [[ "$DRY_RUN" == false ]]; then
-      echo "    prefetching ..."
-      # PyPI's legacy /packages/<tags>/<letter>/<project>/<file> paths still
-      # serve every release, so the wheel URL is constructible per version.
-      cb_cli_hash=$(prefetch_hash "https://files.pythonhosted.org/packages/py3/g/google_colab_cli/google_colab_cli-${cb_version}-py3-none-any.whl")
-      cb_kc_hash=$(prefetch_hash "https://files.pythonhosted.org/packages/py3/j/jupyter_kernel_client/jupyter_kernel_client-${cb_kernel}-py3-none-any.whl")
-      cb_mt_hash=$(prefetch_hash "https://files.pythonhosted.org/packages/py3/j/jupyter_mimetypes/jupyter_mimetypes-${cb_mimetypes}-py3-none-any.whl")
-
-      update_nix_field "$cb_nix" "colabCliVersion" "$cb_version"
-      update_nix_field "$cb_nix" "colabCliHash" "$cb_cli_hash"
-      update_nix_field "$cb_nix" "jkcVersion" "$cb_kernel"
-      update_nix_field "$cb_nix" "jkcHash" "$cb_kc_hash"
-      update_nix_field "$cb_nix" "jmtVersion" "$cb_mimetypes"
-      update_nix_field "$cb_nix" "jmtHash" "$cb_mt_hash"
-
-      echo "    done: $cb_cli_current → $cb_version"
-      changed=true
-    else
-      echo "    [dry-run] would update to $cb_version"
     fi
   fi
 fi
