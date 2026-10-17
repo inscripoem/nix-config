@@ -32,6 +32,27 @@
   # docs/hard-hang-cstate.md, which fall below kernel panic visibility.
   systemd.settings.Manager.RuntimeWatchdogSec = "30s";
 
+  # zram as primary swap with the 8G disk swapfile (disk-config.nix) as
+  # backstop — same strategy as capabilities/sdcard.nix on wyse3040. The
+  # default priority (5) sits above disk swap, so zram fills first.
+  # page-cluster=0: read-ahead clustering only pays off on seek-y disk swap;
+  # on a RAM-backed device it just wastes memory.
+  zramSwap = {
+    enable = true;
+    algorithm = "zstd";
+    memoryPercent = 50;
+  };
+  boot.kernel.sysctl."vm.page-cluster" = 0;
+
+  # Early OOM guard: when available memory AND free swap both fall below 10%,
+  # SIGTERM the largest process (SIGKILL at 5%). Converts the memory-exhaustion
+  # failure mode from watchdog-panic reboot (2026-10-16 full-core nix build)
+  # into killing the culprit; kills land in journalctl -u earlyoom.
+  # systemd-oomd ships enabled but monitors no slices by default; disable it
+  # so earlyoom is the single OOM authority.
+  services.earlyoom.enable = true;
+  systemd.oomd.enable = false;
+
   networking.hostName = "briefcase";
 
   # Palworld dedicated server — game port (UDP only; RCON/REST API would
