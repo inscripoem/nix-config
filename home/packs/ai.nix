@@ -1,4 +1,4 @@
-{ config, lib, pkgs, llm-agents, hermes-agent, passwordStore, ... }:
+{ config, lib, pkgs, llm-agents, hermes-agent, deepseek-harness, passwordStore, ... }:
 let
   cfg = config.packs.ai;
   agentPkgs = llm-agents.packages.${pkgs.stdenv.hostPlatform.system};
@@ -8,6 +8,21 @@ let
   # runtime toolchain (rg/git/ssh/ffmpeg/tirith/clipboard + node+npm), so no
   # PATH override is needed here.
   hermesPkg = hermes-agent.packages.${pkgs.stdenv.hostPlatform.system}.default;
+
+  # dsh-desktop-official: DeepSeek Harness desktop app, source-built for
+  # Linux by the community deepseek-harness flake (dataelement's own
+  # releases ship macOS/Windows only). It bundles the official runtime and
+  # Web UI, so version bumps ride flake updates of that input.
+  dshPkg = deepseek-harness.packages.${pkgs.stdenv.hostPlatform.system}.dsh-desktop-official;
+
+  # dsh-tui preset: the official dsh CLI with the community dsh-TUI bundle
+  # preloaded and the nix-tui profile as default — orca's recognized TUI
+  # agent kind "dsh" needs this interactive interface. Its bin is `dsh`
+  # (pname is dsh-tui but the wrapper always installs bin/dsh), while orca
+  # spawns `dsh-tui` by default; that literal launcher only exists as the
+  # npm @deepseek-harness-tui/dsh-tui package with no nix packaging, so
+  # orca's per-agent command override must point at `dsh` instead.
+  dshTuiPkg = deepseek-harness.legacyPackages.${pkgs.stdenv.hostPlatform.system}.presets.tui;
 
   # The overridden derivation must be the ONLY workbuddy in the module: the
   # menu entry (home.packages) and the autostart desktop file both reference
@@ -123,6 +138,15 @@ in {
       default = false;
       description = "orca agentic desktop app (Stably AI), opt-in per host";
     };
+
+    # Opt-in extra: DeepSeek Harness (dsh) desktop app — Electron shell over
+    # the official Harness Web UI (tray, notifications, phone pairing, PPT
+    # mode). Same "bring your own agent" family as orca/workbuddy above.
+    dsh.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "dsh (DeepSeek Harness) desktop app, opt-in per host";
+    };
   };
 
   config = lib.mkMerge [
@@ -227,6 +251,13 @@ in {
 
     (lib.mkIf cfg.orca.enable {
       home.packages = [ agentPkgs.orca ];
+    })
+
+    (lib.mkIf cfg.dsh.enable {
+      home.packages = [
+        dshPkg
+        dshTuiPkg
+      ];
     })
 
     # Declarative replacement for the gateway unit that `hermes gateway

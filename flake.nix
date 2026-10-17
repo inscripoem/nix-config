@@ -50,6 +50,13 @@
     # a local sherpa-onnx rebuild on every unrelated bump.
     fcitx5-vinput.url = "github:xifan2333/fcitx5-vinput";
 
+    # deepseek-harness - DeepSeek Harness (dsh) community packaging: CLI,
+    # dsh-desktop-official Electron app (dataelement's own releases ship
+    # macOS/Windows only), NixOS/HM modules. NOT following our nixpkgs:
+    # upstream pins nixpkgs-unstable and publishes prebuilt results to
+    # deepseek-harness-nix.cachix.org keyed on that pin.
+    deepseek-harness.url = "github:moraxyc/deepseek-harness.nix";
+
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
       inputs.nixpkgs.follows = "nixpkgs";
