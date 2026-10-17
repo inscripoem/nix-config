@@ -56,6 +56,25 @@ let
         > $out/share/applications/zcode.desktop
     '';
   };
+  # OpenCode 2 via llm-agents' opencode2 (official npm @opencode/cli-*
+  # builds, vendored with the runtime rpath already fixed). Upstream
+  # installs the binary as `opencode2` only so both major lines can
+  # coexist on one machine; this pack swaps wholesale, so the bin is
+  # renamed back to `opencode`. Stable name (no version): generation
+  # diff tools pair by package name and would otherwise render a version
+  # bump as remove+add; the actual version stays queryable via
+  # `opencode --version` and the upstream passthru. oh-my-opencode-slim
+  # bridges onto this host from the same package it used on v1; its
+  # version is pinned in ~/.config/opencode/opencode.json because v2
+  # re-resolves unpinned npm plugins on every startup (silent rolling
+  # upgrades).
+  opencodePkg = pkgs.symlinkJoin {
+    name = "opencode-joined";
+    paths = [ agentPkgs.opencode2 ];
+    postBuild = ''
+      mv $out/bin/opencode2 $out/bin/opencode
+    '';
+  };
 in {
   options.packs.ai = {
     enable = lib.mkEnableOption "AI CLI toolchain (aichat + llm-agents.*)";
@@ -163,13 +182,7 @@ in {
     })
 
     (lib.mkIf cfg.opencode.enable {
-      home.packages = [ agentPkgs.opencode ];
-      # Required by oh-my-opencode-slim's Orchestrator to dispatch specialists
-      # as background tasks. opencode reads it at startup; its own installer
-      # tries to patch ~/.zshrc, which is a read-only nix-store symlink on
-      # NixOS, so we declare it here so every shell and any GUI launcher
-      # (KDE menu, krunner, IDE) sees the same value.
-      home.sessionVariables.OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS = "true";
+      home.packages = [ opencodePkg ];
     })
 
     (lib.mkIf cfg.antigravity-cli.enable {
