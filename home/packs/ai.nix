@@ -43,10 +43,12 @@ let
   # enable packs.ai.zcode (air does not). Update tracks are decoupled:
   # desktop via the llm-agents input, CLI via update-versions.sh.
   zcodePkg = pkgs.symlinkJoin {
-    # Stable name (no version): generation diff tools pair by package name
-    # and would render a version bump as remove+add instead of a change.
-    # The version stays queryable via the forwarded upstream passthru.
-    name = "zcode-desktop-joined";
+    # Version from the upstream package keeps the generation diff readable:
+    # llm-agents updates render as a plain old -> new version line. (The
+    # old "stable name" rule predates nh's dix diff, whose name splitter
+    # handles custom pname-version names correctly.)
+    pname = "zcode-desktop-joined";
+    version = agentPkgs.zcode.version;
     paths = [ agentPkgs.zcode ];
     postBuild = ''
       mv $out/bin/zcode $out/bin/zcode-desktop
@@ -60,16 +62,17 @@ let
   # builds, vendored with the runtime rpath already fixed). Upstream
   # installs the binary as `opencode2` only so both major lines can
   # coexist on one machine; this pack swaps wholesale, so the bin is
-  # renamed back to `opencode`. Stable name (no version): generation
-  # diff tools pair by package name and would otherwise render a version
-  # bump as remove+add; the actual version stays queryable via
-  # `opencode --version` and the upstream passthru. oh-my-opencode-slim
+  # renamed back to `opencode`. The joined name carries the upstream
+  # version so generation diffs render llm-agents updates as a plain
+  # version change (dix pairs custom pname-version names correctly).
+  # oh-my-opencode-slim
   # bridges onto this host from the same package it used on v1; its
   # version is pinned in ~/.config/opencode/opencode.json because v2
   # re-resolves unpinned npm plugins on every startup (silent rolling
   # upgrades).
   opencodePkg = pkgs.symlinkJoin {
-    name = "opencode-joined";
+    pname = "opencode-joined";
+    version = agentPkgs.opencode2.version;
     paths = [ agentPkgs.opencode2 ];
     postBuild = ''
       mv $out/bin/opencode2 $out/bin/opencode

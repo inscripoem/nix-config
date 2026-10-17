@@ -47,7 +47,8 @@
       base = pkgs.linuxqq-wayland-fix;
     in
     pkgs.symlinkJoin {
-      name = "linuxqq-wayland-fix-wrapped";
+      pname = "linuxqq-wayland-fix-wrapped";
+      version = base.version;
       paths = [ base ];
       nativeBuildInputs = [ pkgs.makeWrapper ];
       postBuild = ''
