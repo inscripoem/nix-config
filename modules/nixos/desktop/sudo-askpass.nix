@@ -1,9 +1,11 @@
 { pkgs, ... }:
 
 {
-  # GTK3 graphical password dialog for sudo, works on both X11 and Wayland.
-  # Allows non-interactive callers (including OpenCode toolcalls) to prompt for
-  # the sudo password via a GUI popup instead of failing on a missing TTY.
+  # Wheel runs sudo without a password: remote agents (ZCode/OpenCode) drive
+  # sudo non-interactively, and the GTK askpass dialog on the physical display
+  # would stall them. The askpass helper below stays as a fallback in case
+  # this rule is ever reverted.
+  security.sudo.wheelNeedsPassword = false;
   environment.systemPackages = [ pkgs.openssh-askpass ];
 
   environment.etc."sudo.conf".text = ''
