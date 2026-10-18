@@ -33,6 +33,15 @@
     enable = true;
     package = pkgs.niri-unstable;
   };
+  # niri-flake hardcodes a polkit-kde-agent user service into every niri
+  # session. polkitd allows exactly one registered agent per session, so the
+  # always-running KDE agent beats the one DMS (quickshell) registers on shell
+  # startup, and pkexec prompts render Kirigami-styled (light window, dark
+  # buttons) instead of following DMS's theme. Disable it: DMS's built-in
+  # PolkitAgent is the sole agent under niri; Plasma sessions are unaffected —
+  # the plasma6 module ships the same agent via its OnlyShowIn=KDE autostart
+  # entry, which niri sessions skip.
+  systemd.user.services.niri-flake-polkit.enable = false;
   # niri session doesn't pull GNOME; install nautilus so
   # xdg-desktop-portal-gnome (≥ v47) can back its FileChooser.
   # See https://github.com/YaLTeR/niri/wiki/Important-Software#portals.
