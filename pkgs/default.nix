@@ -7,6 +7,7 @@ final: prev: {
   zcode-cli = final.callPackage ./zcode-cli.nix { };
   glances = final.callPackage ./glances.nix { originalGlances = prev.glances; };
   rebarstate = final.callPackage ./rebarstate.nix { };
+  dsh-tui-launcher = final.callPackage ./dsh-tui-launcher.nix { };
 
   # nixpkgs fetches wechat's x86_64 AppImage from web.archive.org (Tencent
   # does not keep history versions); that fetch failed through this

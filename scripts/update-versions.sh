@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Update workbuddy, cc-switch, siyuan, ww-manager, notion-electron
-# and zcode-cli to their latest upstream versions, update
+# Update workbuddy, cc-switch, siyuan, ww-manager, notion-electron,
+# zcode-cli and dsh-tui-launcher to their latest upstream versions, update
 # wechat, and align the qq version pin with the linuxqq-wayland-fix input.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>]
@@ -8,9 +8,9 @@
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {workbuddy,cc-switch,siyuan,ww-manager,notion-electron,zcode-cli,wechat,qq}.
+#                          {workbuddy,cc-switch,siyuan,ww-manager,notion-electron,zcode-cli,dsh-tui-launcher,wechat,qq}.
 #                          `notion` is accepted as an alias for notion-electron.
-#                          Defaults to all eight.
+#                          Defaults to all nine.
 #
 # Requirements: curl, jq, git, nix (flakes), nix-prefetch-url, sed
 
@@ -515,6 +515,47 @@ if should_update "zcode-cli"; then
       changed=true
     else
       echo "    [dry-run] would update to $zc_version"
+    fi
+  fi
+fi
+
+# ── dsh-tui-launcher ─────────────────────────────────────────────────
+
+if should_update "dsh-tui-launcher"; then
+  echo ""
+  echo "==> Checking dsh-tui-launcher ..."
+  # The npm dist-tag `latest` is the line the launcher's own bootstrap
+  # pins (`dsh plugin add <pkg>@<version>`), so it is the update source.
+  dt_json=$(curl -sf --max-time 10 "https://registry.npmjs.org/@deepseek-harness-tui/dsh-tui") || true
+  dt_version=$(echo "${dt_json:-}" | jq -r '."dist-tags".latest // empty' 2>/dev/null)
+  if [[ -z "$dt_version" ]]; then
+    echo "    ERROR: could not read dist-tags.latest from the npm registry." >&2
+    exit 1
+  fi
+
+  dt_nix="$REPO_ROOT/pkgs/dsh-tui-launcher.nix"
+  dt_current=$(grep 'version = ' "$dt_nix" | head -1 | grep -oP '[\d.]+')
+
+  echo "    current : $dt_current"
+  echo "    latest  : $dt_version"
+
+  if [[ "$dt_version" == "$dt_current" ]]; then
+    echo "    up to date."
+  else
+    echo "    updating ..."
+    if [[ "$DRY_RUN" == false ]]; then
+      dt_url="https://registry.npmjs.org/@deepseek-harness-tui/dsh-tui/-/dsh-tui-${dt_version}.tgz"
+
+      echo "    prefetching launcher tarball ..."
+      dt_hash=$(prefetch_hash "$dt_url")
+
+      update_nix_field "$dt_nix" "version" "$dt_version"
+      update_nix_field "$dt_nix" "hash" "$dt_hash"
+
+      echo "    done: $dt_current → $dt_version"
+      changed=true
+    else
+      echo "    [dry-run] would update to $dt_version"
     fi
   fi
 fi
