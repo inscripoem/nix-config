@@ -15,14 +15,24 @@ let
   # Web UI, so version bumps ride flake updates of that input.
   dshPkg = deepseek-harness.packages.${pkgs.stdenv.hostPlatform.system}.dsh-desktop-official;
 
-  # dsh-tui preset: the official dsh CLI with the community dsh-TUI bundle
-  # preloaded and the nix-tui profile as default — orca's recognized TUI
-  # agent kind "dsh" needs this interactive interface. Its bin is `dsh`
-  # (pname is dsh-tui but the wrapper always installs bin/dsh), while orca
-  # spawns `dsh-tui` by default; that literal launcher only exists as the
-  # npm @deepseek-harness-tui/dsh-tui package with no nix packaging, so
-  # orca's per-agent command override must point at `dsh` instead.
-  dshTuiPkg = deepseek-harness.legacyPackages.${pkgs.stdenv.hostPlatform.system}.presets.tui;
+  # Bare official dsh CLI (kernel) from the same deepseek-harness flake,
+  # version-matched with the desktop app's bundled runtime. Plain official
+  # semantics: `dsh <name>` boots profile <name> under $DSH_HOME/profiles
+  # (dsh web / dsh headless / dsh tui / dsh plugin, no default-profile
+  # injection). It is also what the dsh-tui launcher bootstraps through
+  # (`dsh plugin --profile dsh-tui add ...`) and what orca's dsh agent
+  # requires on PATH (detectRequiredCommands).
+  dshCliPkg = deepseek-harness.packages.${pkgs.stdenv.hostPlatform.system}.dsh;
+
+  # Official @deepseek-harness-tui/dsh-tui launcher — orca's recognized
+  # interactive interface for agent kind "dsh" (detectCmd `dsh-tui`,
+  # launchCmd `dsh-tui .`, so no per-agent command override). The nix
+  # package carries only the zero-dependency thin shell; the full TUI is
+  # bootstrapped into ~/.dsh/profiles/dsh-tui on first run through the
+  # kernel above and then updates itself in place via the TUI's own
+  # /update — this pin gates fresh bootstraps only. Update track:
+  # update-versions.sh.
+  dshTuiLauncherPkg = pkgs.dsh-tui-launcher;
 
   # The overridden derivation must be the ONLY workbuddy in the module: the
   # menu entry (home.packages) and the autostart desktop file both reference
@@ -270,9 +280,14 @@ in {
     })
 
     (lib.mkIf cfg.dsh.enable {
+      # dsh-desktop (Electron shell), the bare kernel CLI, and the official
+      # dsh-tui launcher: one TUI copy, in the launcher's self-managed
+      # profile — the deepseek-harness presets.tui (nix-managed nix-tui
+      # profile) was dropped for it.
       home.packages = [
         dshPkg
-        dshTuiPkg
+        dshCliPkg
+        dshTuiLauncherPkg
       ];
     })
 
