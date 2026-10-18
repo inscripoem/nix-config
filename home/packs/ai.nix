@@ -30,10 +30,12 @@ let
   # package carries only the zero-dependency thin shell; the full TUI is
   # bootstrapped into ~/.dsh/profiles/dsh-tui on first run through the
   # kernel above and then updates itself in place via the TUI's own
-  # /update — this pin gates fresh bootstraps only. The pinned version
-  # pairs with the kernel above (the flake ships them in lockstep); npm
-  # may run ahead of it — bump consciously. Update track:
-  # update-versions.sh.
+  # /update — this pin gates fresh bootstraps only. The pin must be a
+  # version whose declared @deepseek-ai/* requirements accept the kernel
+  # above: the flake's own bundle pairing does not extend to npm (e.g.
+  # 0.15.0 targets kernel 0.2.0-rc.2 and dsh plugin add rejects it on
+  # 0.2.1-rc.2). Update track: update-versions.sh, which resolves the
+  # kernel from flake.lock and picks the newest release accepting it.
   dshTuiLauncherPkg = pkgs.dsh-tui-launcher;
 
   # The overridden derivation must be the ONLY workbuddy in the module: the

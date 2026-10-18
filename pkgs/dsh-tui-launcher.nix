@@ -19,11 +19,11 @@
 }:
 let
   pname = "dsh-tui-launcher";
-  version = "0.15.0";
+  version = "0.16.1";
 
   src = fetchurl {
     url = "https://registry.npmjs.org/@deepseek-harness-tui/dsh-tui/-/dsh-tui-${version}.tgz";
-    hash = "sha256-VR/TOlBBcXKAf7O13LJL8JzFr3OJCpxUUHwED6ZdeAQ=";
+    hash = "sha256-IUSzF9DCWuTSaI8e8sc7wsleEhCFrFl30AQH3NKxM24=";
   };
 in
 stdenv.mkDerivation {

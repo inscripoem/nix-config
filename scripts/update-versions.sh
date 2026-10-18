@@ -524,38 +524,98 @@ fi
 if should_update "dsh-tui-launcher"; then
   echo ""
   echo "==> Checking dsh-tui-launcher ..."
-  # The npm dist-tag `latest` is the line the launcher's own bootstrap
-  # pins (`dsh plugin add <pkg>@<version>`), so it is the update source.
-  dt_json=$(curl -sf --max-time 10 "https://registry.npmjs.org/@deepseek-harness-tui/dsh-tui") || true
-  dt_version=$(echo "${dt_json:-}" | jq -r '."dist-tags".latest // empty' 2>/dev/null)
-  if [[ -z "$dt_version" ]]; then
-    echo "    ERROR: could not read dist-tags.latest from the npm registry." >&2
+  # The launcher pin pairs with the KERNEL through the plugin's declared
+  # @deepseek-ai/* peerDependencies: `dsh plugin add` hard-gates on them,
+  # and the flake's own bundle pairing does not extend to npm (0.15.0
+  # targets kernel 0.2.0-rc.2 and is rejected by 0.2.1-rc.2). So resolve
+  # the kernel version from the flake.lock rev, then pick the NEWEST
+  # stable launcher release whose requirements accept it — blind "latest"
+  # would break first bootstraps. Constraint match is exact-term over the
+  # "||" branches (the registry enumerates allowed workspace versions
+  # explicitly); a caret branch merely spanning the kernel counts as
+  # no-match, which errs toward the older, safe pin.
+  dt_lock_rev=$(jq -r '.nodes["deepseek-harness"].locked.rev // empty' "$REPO_ROOT/flake.lock")
+  if [[ -z "$dt_lock_rev" ]]; then
+    echo "    ERROR: deepseek-harness missing from flake.lock (run: nix flake lock)." >&2
+    exit 1
+  fi
+  dt_kernel=$(nix --extra-experimental-features 'nix-command flakes' eval \
+    --raw "github:moraxyc/deepseek-harness.nix/${dt_lock_rev}#packages.x86_64-linux.dsh.version" 2>/dev/null) || true
+  if [[ -z "$dt_kernel" ]]; then
+    echo "    ERROR: could not resolve the kernel version from the locked deepseek-harness rev ${dt_lock_rev:0:7}." >&2
+    exit 1
+  fi
+
+  # The full packument is off-limits here: npm serves it with unescaped
+  # control characters in the readme, which jq refuses to parse (and the
+  # cache makes that intermittent). Version list comes from `npm view`,
+  # and each candidate's contract from its clean per-version document.
+  dt_versions=$(npm view @deepseek-harness-tui/dsh-tui versions --json 2>/dev/null \
+    | jq -r 'if type == "array" then .[] else . end' 2>/dev/null)
+  if [[ -z "$dt_versions" ]]; then
+    echo "    ERROR: could not list dsh-tui versions from the npm registry." >&2
     exit 1
   fi
 
   dt_nix="$REPO_ROOT/pkgs/dsh-tui-launcher.nix"
   dt_current=$(grep 'version = ' "$dt_nix" | head -1 | grep -oP '[\d.]+')
 
-  echo "    current : $dt_current"
-  echo "    latest  : $dt_version"
+  # Newest-first stable releases; accept the first whose @deepseek-ai/*
+  # peerDependencies all take the pinned kernel. The scan is bounded so a
+  # long incompatible tail cannot turn into an unbounded request series.
+  dt_target=""
+  dt_scanned=0
+  for dt_v in $(echo "$dt_versions" | grep -v -- '-' | sort -rV); do
+    dt_scanned=$((dt_scanned + 1))
+    [[ $dt_scanned -gt 20 ]] && break
+    if curl -sf --max-time 10 "https://registry.npmjs.org/@deepseek-harness-tui/dsh-tui/$dt_v" \
+      | jq -e --arg kernel "$dt_kernel" '
+          [.peerDependencies // {} | to_entries[]
+            | select(.key | startswith("@deepseek-ai/dsh-"))
+            | .value] as $reqs
+          | ($reqs | length) > 0
+          and ([$reqs[]
+            | select((split(" || ") | index($kernel)) != null)] | length)
+            == ($reqs | length)' >/dev/null 2>&1; then
+      dt_target=$dt_v
+      break
+    fi
+  done
 
-  if [[ "$dt_version" == "$dt_current" ]]; then
+  if [[ -z "$dt_target" ]]; then
+    dt_latest=$(npm view @deepseek-harness-tui/dsh-tui dist-tags.latest 2>/dev/null || echo unknown)
+    echo "    ERROR: no dsh-tui release accepts the pinned kernel $dt_kernel (npm latest: $dt_latest)." >&2
+    echo "          Update the deepseek-harness flake input to a kernel the newer" >&2
+    echo "          launchers accept, then re-run this updater." >&2
+    exit 1
+  fi
+
+  echo "    kernel  : $dt_kernel (from flake.lock)"
+  echo "    current : $dt_current"
+  echo "    target  : $dt_target (newest release accepting this kernel)"
+
+  if [[ "$dt_target" == "$dt_current" ]]; then
     echo "    up to date."
   else
-    echo "    updating ..."
-    if [[ "$DRY_RUN" == false ]]; then
-      dt_url="https://registry.npmjs.org/@deepseek-harness-tui/dsh-tui/-/dsh-tui-${dt_version}.tgz"
-
-      echo "    prefetching launcher tarball ..."
-      dt_hash=$(prefetch_hash "$dt_url")
-
-      update_nix_field "$dt_nix" "version" "$dt_version"
-      update_nix_field "$dt_nix" "hash" "$dt_hash"
-
-      echo "    done: $dt_current → $dt_version"
-      changed=true
+    older=$(printf '%s\n%s\n' "$dt_target" "$dt_current" | sort -V | head -1)
+    if [[ "$older" == "$dt_target" ]]; then
+      echo "    skip: newest compatible ($dt_target) is older than local ($dt_current)."
     else
-      echo "    [dry-run] would update to $dt_version"
+      echo "    updating ..."
+      if [[ "$DRY_RUN" == false ]]; then
+        dt_url="https://registry.npmjs.org/@deepseek-harness-tui/dsh-tui/-/dsh-tui-${dt_target}.tgz"
+
+        echo "    prefetching launcher tarball ..."
+        dt_hash=$(prefetch_hash "$dt_url")
+
+        update_nix_field "$dt_nix" "version" "$dt_target"
+        update_nix_field "$dt_nix" "hash" "$dt_hash"
+
+        echo "    done: $dt_current → $dt_target"
+        changed=true
+      else
+        echo "    [dry-run] would update to $dt_target"
+      fi
     fi
   fi
 fi
