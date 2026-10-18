@@ -51,4 +51,12 @@ in
 
   # Required by the Screen Recorder DMS plugin
   environment.systemPackages = [ pkgs.gpu-screen-recorder ];
+
+  # DMS Spotlight's file provider stays hidden until the dsearch (DankSearch)
+  # daemon is reachable. graphical-session.target keeps it out of headless
+  # sessions; the index scope is declared in home/desktop/desktop-env.nix.
+  programs.dsearch = {
+    enable = true;
+    systemd.target = "graphical-session.target";
+  };
 }
