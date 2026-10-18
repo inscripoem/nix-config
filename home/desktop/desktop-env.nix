@@ -25,6 +25,23 @@ let
     "LocalDev"
     "nix-config"
   ];
+
+  # dsearch 1.6.0 does not apply its built-in exclude list to user-declared
+  # index_paths (node_modules ends up fully indexed; verified via
+  # `dsearch index check`), so code-dir noise is excluded explicitly here.
+  dsearchExcludes = [
+    "node_modules"
+    "target"
+    "vendor"
+    "__pycache__"
+    "venv"
+    ".venv"
+    "dist"
+    "build"
+    "result"
+    "deps"
+    "_build"
+  ];
 in
 {
   targets.genericLinux.nixGL.vulkan.enable = true;
@@ -68,6 +85,8 @@ in
       [[index_paths]]
       path = "${config.home.homeDirectory}/${root}"
       max_depth = 10
+      exclude_dirs = [${lib.concatStringsSep ", " (map (e: ''"${e}"'') dsearchExcludes)}]
+      merge_default_exclude_dirs = true
 
     '') dsearchRoots;
 }
