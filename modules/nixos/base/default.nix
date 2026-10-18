@@ -12,5 +12,6 @@
     ./state.nix
     ./ssh.nix
     ./nix-ld.nix
+    ./ca-certs.nix
   ];
 }
