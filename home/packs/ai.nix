@@ -30,7 +30,9 @@ let
   # package carries only the zero-dependency thin shell; the full TUI is
   # bootstrapped into ~/.dsh/profiles/dsh-tui on first run through the
   # kernel above and then updates itself in place via the TUI's own
-  # /update — this pin gates fresh bootstraps only. Update track:
+  # /update — this pin gates fresh bootstraps only. The pinned version
+  # pairs with the kernel above (the flake ships them in lockstep); npm
+  # may run ahead of it — bump consciously. Update track:
   # update-versions.sh.
   dshTuiLauncherPkg = pkgs.dsh-tui-launcher;
 
@@ -281,9 +283,17 @@ in {
 
     (lib.mkIf cfg.dsh.enable {
       # dsh-desktop (Electron shell), the bare kernel CLI, and the official
-      # dsh-tui launcher: one TUI copy, in the launcher's self-managed
-      # profile — the deepseek-harness presets.tui (nix-managed nix-tui
-      # profile) was dropped for it.
+      # dsh-tui launcher — one TUI copy, self-managed in the launcher's
+      # profile. Decision record (2026-10-18): presets.tui (the nix-managed
+      # nix-tui profile) was dropped because orca's dsh contract is shaped
+      # around the official launcher (detectCmd `dsh-tui`, launchCmd
+      # `dsh-tui .`, npm-package realpath), which presets could only serve
+      # through a manual per-agent override — and keeping both meant two
+      # TUI copies on diverging update tracks. Accepted cost: the TUI is
+      # no longer store-frozen — no generation rollback for it, and updates
+      # ride its explicit /update from npm; the nix pin gates fresh
+      # bootstraps only. presets.tui is one line away if the frozen route
+      # is ever wanted back; the two coexist conflict-free.
       home.packages = [
         dshPkg
         dshCliPkg
