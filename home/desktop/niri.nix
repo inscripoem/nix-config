@@ -207,6 +207,10 @@ let
 
   # Append DMS optional includes so Settings pages detect "initialized"
   # and any GUI-changed values in ~/.config/niri/dms/*.kdl take effect.
+  # These files are owned by the DMS GUI and NOT managed by this flake:
+  # rebuilds neither track nor clobber them, and because the includes land
+  # last, they override binds and settings declared above. Consult the
+  # live ~/.config/niri/dms/*.kdl files to see what currently takes effect.
   configWithDmsIncludes = pkgs.runCommand "niri-config-validated" {
     nativeBuildInputs = [ cfg.package ];
     passAsFile = [ "configBody" ];
