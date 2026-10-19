@@ -69,8 +69,24 @@ in
     Hidden=true
   '';
 
-  xdg.configFile."autostart/org.deskflow.deskflow.desktop".source =
-    "${pkgs.deskflow}/share/applications/org.deskflow.deskflow.desktop";
+  # Deskflow needs a portal backend implementing RemoteDesktop/InputCapture.
+  # KDE/KWin provides both; niri has neither, so the client dies at
+  # CreateSession and the server has nothing to capture with. Autostart it
+  # on KDE sessions only; start it by hand anywhere else.
+  xdg.configFile."autostart/org.deskflow.deskflow.desktop".text = ''
+    [Desktop Entry]
+    Type=Application
+    Version=1.0
+    Name=Deskflow
+    Name[zh_CN]=Deskflow
+    Comment=Mouse and keyboard sharing utility
+    Comment[zh_CN]=键鼠共享工具
+    Exec=deskflow
+    Icon=org.deskflow.deskflow
+    Terminal=false
+    Categories=Utility;
+    OnlyShowIn=KDE;
+  '';
 
   # dsearch (DankSearch) index scope for DMS Spotlight's file provider.
   # Docs: https://danklinux.com/docs/danksearch/configuration
