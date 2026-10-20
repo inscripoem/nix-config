@@ -13,5 +13,6 @@
     ./docker.nix
     ./wifi-profiles.nix
     ./lan-mouse.nix
+    ./bluetooth.nix
   ];
 }

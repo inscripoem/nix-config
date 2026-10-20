@@ -1,4 +1,4 @@
-{ ... }:
+{ pkgs, ... }:
 
 {
   imports = [
@@ -63,6 +63,21 @@
   # Without this the PCIe Wi-Fi half of the card fails to probe even though
   # USB-side Bluetooth keeps working with in-tree btusb.
   hardware.enableRedistributableFirmware = true;
+
+  # SayoDevice CM6K foot pedal (8089:000c): user-space consumers open
+  # its nodes directly — Python evdev workers read the event nodes
+  # (no logind TakeDevice path like the compositor), and the vendor web
+  # configurator (WebUSB/WebHID) opens the usb/hidraw nodes. uaccess
+  # grants the active seat user only; the serial pins the grant to this
+  # one unit. Numbered <70 so the tag is set before 73-seat-late.rules,
+  # which invokes the uaccess builtin.
+  services.udev.packages = [
+    (pkgs.writeTextDir "lib/udev/rules.d/70-cm6k-pedal.rules" ''
+      SUBSYSTEM=="input", KERNEL=="event*", ATTRS{idVendor}=="8089", ATTRS{idProduct}=="000c", ATTRS{serial}=="03CDABF106D3BD9170FFFFFFFF0300", TAG+="uaccess"
+      SUBSYSTEM=="hidraw", ATTRS{idVendor}=="8089", ATTRS{idProduct}=="000c", ATTRS{serial}=="03CDABF106D3BD9170FFFFFFFF0300", TAG+="uaccess"
+      SUBSYSTEM=="usb", ATTRS{idVendor}=="8089", ATTRS{idProduct}=="000c", ATTRS{serial}=="03CDABF106D3BD9170FFFFFFFF0300", TAG+="uaccess"
+    '')
+  ];
 
   # Enable Tailscale client-side routing tweaks (rp_filter = loose).
   # Required for using a peer as exit node or accepting subnet routes

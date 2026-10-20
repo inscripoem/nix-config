@@ -54,6 +54,7 @@ let
         modules.capabilities.wifi-profiles.enable = true;
         modules.capabilities.docker.enable = true;
         modules.capabilities.lan-mouse.enable = true;
+        modules.capabilities.bluetooth.enable = true;
       };
     };
 
