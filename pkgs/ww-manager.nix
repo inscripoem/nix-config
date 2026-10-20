@@ -2,11 +2,11 @@
 
 python3Packages.buildPythonPackage (finalAttrs: {
   pname = "ww-manager";
-  version = "2.2.5";
+  version = "2.3.1";
 
   src = fetchurl {
     url = "https://pypi.io/packages/source/w/ww-manager/ww_manager-${finalAttrs.version}.tar.gz";
-    hash = "sha256-Umg4zQEHUMQc6X8ZusXlzBZcDiMP/dKJlpzQbp2e/Cs=";
+    hash = "sha256-QT7Z+50wng6HOFG4wb2dNCcIR3oHw4qttBAYCSO7ZgE=";
   };
 
   pyproject = true;
