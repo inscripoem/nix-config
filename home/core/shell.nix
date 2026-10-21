@@ -155,6 +155,10 @@ in
 
   programs.fish = {
     enable = true;
+    # HM's man-page completion generation costs one derivation per package
+    # per lock bump (~80 per host); carapace and nix-index already cover
+    # fish completions.
+    generateCompletions = false;
     inherit shellAliases;
     shellInit = lib.optionalString isDarwin ''
       if not set -q __NIX_CONFIG_DARWIN_ENV_SOURCED
@@ -166,6 +170,11 @@ in
       end
     '';
   };
+
+  # fish.generateCompletions used to mkDefault this on; keep the apropos
+  # index despite the switch. darwin still overrides it to false — pinned
+  # fish manuals fail whatis parsing there (home/darwin/default.nix).
+  programs.man.generateCaches = lib.mkDefault true;
 
   programs.starship = {
     enable = true;
