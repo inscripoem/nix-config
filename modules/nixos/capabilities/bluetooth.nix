@@ -14,6 +14,10 @@ in {
     hardware.bluetooth = {
       enable = true;
       powerOnBoot = true;
+      # Exposes experimental D-Bus APIs. Needed for BLE bearer selection
+      # (BLE-only peripherals via Bleak) without touching other devices'
+      # transport. Stable profiles (A2DP, GATT) behave identically.
+      settings.General.Experimental = true;
     };
   };
 }
