@@ -9,6 +9,26 @@ final: prev: {
   rebarstate = final.callPackage ./rebarstate.nix { };
   dsh-tui-launcher = final.callPackage ./dsh-tui-launcher.nix { };
 
+  # atuin 18.23.0's e2e tests are pty/timing-sensitive and hang in the
+  # darwin build sandbox, which is why hydra publishes no darwin binary:
+  # - e2e_capture's filtered_commands_leave_no_captured_output times out.
+  # - every e2e_pty test of the bash+preexec fixture ("setup_2_tests_shells_
+  #   bash_preexec_toml") hangs on "waiting for shell session ID" while the
+  #   blesh/fish/zsh fixtures pass. --skip matches substrings, so one entry
+  #   drops the whole fixture. Extend nixpkgs' own sandbox-incompatible
+  #   checkFlags skip list, darwin-only so Linux hosts keep their hydra hits.
+  atuin =
+    if prev.stdenv.hostPlatform.isDarwin then
+      prev.atuin.overrideAttrs (old: {
+        checkFlags = (old.checkFlags or [ ]) ++ [
+          "--skip=filtered_commands_leave_no_captured_output"
+          "--skip=setup_2_tests_shells_bash_preexec_toml"
+        ];
+      })
+    else
+      prev.atuin;
+
+
   # nixpkgs fetches wechat's x86_64 AppImage from web.archive.org (Tencent
   # does not keep history versions); that fetch failed through this
   # network's proxy at pin time (TLS resets, possibly a dirty exit node),
