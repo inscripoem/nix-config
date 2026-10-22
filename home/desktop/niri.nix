@@ -36,6 +36,16 @@ let
     [ -n "$PATH" ] || PATH=/run/current-system/sw/bin:/usr/bin:/bin
     export PATH
 
+    # gdbus must not depend on PATH: no system or user profile on this
+    # machine carries it, and when the user profile that once did was
+    # cleaned up, every gdbus call/monitor below started failing silently
+    # (their stderr is discarded): the portal read in sync_prefer_dark
+    # always returned failure, so the boot-seed DMS restart, the drift
+    # sentinel and the mode-switch monitor all died and mode switches
+    # stopped reaching restart_dms. Pin the store path so PATH churn can
+    # never strand this logic again.
+    gdbus() { "${pkgs.glib}/bin/gdbus" "$@"; }
+
     # Single-instance sweep. This script has no Wayland connection, so it
     # outlives the niri session that spawned it (logout does not reap its
     # transient scope); without this, each relogin leaks another monitor and
@@ -154,21 +164,20 @@ let
     last_val=""
     icon_changed=false
 
-    # Restart DMS so its Qt process re-reads the icon theme. DMS is normally
-    # spawned by niri, but spawn-at-startup only runs once, so we relaunch it
-    # ourselves as a daemon (niri's DMS config includes make it session-safe).
-    # NOTE: match the backend by its unique cmdline, NOT by process name. Nix
-    # wraps every dms invocation as ".dms-wrapped", so `pkill -x .dms-wrapped`
-    # also catches the in-flight `dms matugen queue` theme worker that DMS
-    # spawns on every mode switch — SIGTERM(15) mid-generation, and the shell
-    # toasts "Theme worker failed (15)" (quickshell reports the signal number
-    # as the exit code). "-f ...dms run$" cannot match this script (its own
-    # cmdline is just the script path) nor the worker (ends in queue args).
+    # Restart DMS so its Qt process re-reads the icon theme. DMS runs as the
+    # dms.service user unit (declared below), so a unit restart is clean by
+    # construction — no process matching, and the old pkill-by-cmdline dance
+    # (needed to spare the in-flight `dms matugen queue` theme worker from
+    # SIGTERM) is unnecessary now that systemd only restarts the unit's own
+    # cgroup.
     restart_dms() {
-      pkill -f 'bin/dms run$' 2>/dev/null
-      sleep 1
-      setsid dms run >/dev/null 2>&1 &
-      disown
+      systemctl --user restart dms.service
+      # A watcher restart drops every registration it held. fcitx5 re-registers
+      # on its own; re-register the items that own a well-known SNI bus name
+      # (sunshine etc.) on their behalf. Electron items register under unique
+      # bus names and cannot be recovered this way — they never come up before
+      # the watcher anymore thanks to the dms.service Type=dbus barrier.
+      ${trayHeal} >/dev/null 2>&1 &
     }
 
     # Boot seed: sync both keys once. DMS read the icon theme while starting,
@@ -211,6 +220,65 @@ let
   # rebuilds neither track nor clobber them, and because the includes land
   # last, they override binds and settings declared above. Consult the
   # live ~/.config/niri/dms/*.kdl files to see what currently takes effect.
+  # Re-register StatusNotifierItems that are alive on the bus but missing
+  # from the watcher's list — they registered before a watcher existed or
+  # across a DMS restart. RegisterStatusNotifierItem takes the item's bus
+  # name as its argument and quickshell honors that name regardless of
+  # caller, so the registration can be replayed on the app's behalf without
+  # restarting it (mechanism verified on quickshell 0.3.x upstream:
+  # omacom/omarchy#12214; replaying an already-registered item is a no-op).
+  # Only items owning a well-known org.{kde,freedesktop}.StatusNotifierItem-*
+  # bus name (libappindicator/Qt apps such as sunshine) can be discovered
+  # this way; Electron items register under their unique bus names and
+  # cannot be found — those are prevented by the dms.service Type=dbus
+  # barrier instead of repaired.
+  trayHeal = pkgs.writeShellScript "tray-heal" ''
+    PATH=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^PATH=//p')
+    [ -n "$PATH" ] || PATH=/run/current-system/sw/bin:/usr/bin:/bin
+    export PATH
+
+    watcher_up() {
+      busctl --user call org.kde.StatusNotifierWatcher /StatusNotifierWatcher \
+        org.freedesktop.DBus.Properties Get ss \
+        org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems >/dev/null 2>&1
+    }
+
+    registered_items() {
+      busctl --user call org.kde.StatusNotifierWatcher /StatusNotifierWatcher \
+        org.freedesktop.DBus.Properties Get ss \
+        org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems 2>/dev/null \
+        | grep -oE '"[^"]*/StatusNotifierItem"' | tr -d '"'
+    }
+
+    # theme-sync invokes us right after a dms.service restart, so the
+    # watcher is usually back within a couple of seconds. Bail quietly if
+    # it never appears: without a watcher there is nothing to repair
+    # against (and the Type=dbus barrier covers the autostart path).
+    i=0
+    until watcher_up; do
+      i=$((i + 1))
+      if [ "$i" -ge 30 ]; then
+        echo "tray-heal: StatusNotifierWatcher never appeared, nothing to do"
+        exit 0
+      fi
+      sleep 2
+    done
+
+    reg="$(registered_items)"
+    busctl --user list --no-legend --no-pager 2>/dev/null \
+      | awk '{print $1}' \
+      | grep -E '^(org\.kde|org\.freedesktop)\.StatusNotifierItem-' \
+      | while IFS= read -r name; do
+          case "$reg" in
+            *"$name/StatusNotifierItem"*) continue ;;
+          esac
+          echo "tray-heal: re-registering lost tray item $name"
+          busctl --user call org.kde.StatusNotifierWatcher /StatusNotifierWatcher \
+            org.kde.StatusNotifierWatcher RegisterStatusNotifierItem s "$name" >/dev/null 2>&1 \
+            || echo "tray-heal: failed to re-register $name" >&2
+        done
+  '';
+
   configWithDmsIncludes = pkgs.runCommand "niri-config-validated" {
     nativeBuildInputs = [ cfg.package ];
     passAsFile = [ "configBody" ];
@@ -470,9 +538,10 @@ in
       };
 
       spawn-at-startup = [
-        { command = [ "dms" "run" ]; }
         # Keep GTK's legacy dark-theme key in sync with DMS theme mode so
-        # Electron tray icons (notion) pick the right icon.
+        # Electron tray icons (notion) pick the right icon. DMS itself runs
+        # as the dms.service user unit declared below — spawning it here too
+        # would race the service for the StatusNotifierWatcher bus name.
         { command = [ "${themeSync}" ]; }
       ];
 
@@ -526,4 +595,55 @@ in
       autoload=false
     '';
   };
+
+  # DMS as a systemd user service — DMS's documented deployment mode —
+  # scoped to niri: WantedBy=niri.service instead of the upstream module's
+  # graphical-session.target binding, which would also start the shell
+  # under the KDE fallback session (see modules/nixos/desktop/dms-shell.nix
+  # for why that matters). Type=dbus holds the unit un-started until the
+  # StatusNotifierWatcher name is owned; combined with the autostart
+  # drop-in below this gives XDG autostart apps a hard barrier: Electron
+  # tray items are registered exactly once, at creation, so those apps
+  # must never start before the watcher exists (that boot race is what
+  # stranded the 1Password/WorkBuddy tray icons).
+  systemd.user.services.dms = {
+    Unit = {
+      Description = "DankMaterialShell desktop shell (niri sessions)";
+      After = [ "niri.service" "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+    Install.WantedBy = [ "niri.service" ];
+    Service = {
+      Type = "dbus";
+      BusName = "org.kde.StatusNotifierWatcher";
+      ExecStart = "${pkgs.dms-shell}/bin/dms run --session";
+      Restart = "on-failure";
+      RestartSec = "2s";
+    };
+  };
+
+  # Recover tray items whose registration was lost because they came up
+  # before the watcher or across a DMS restart (see trayHeal above). Also
+  # invoked by theme-sync after every restart_dms.
+  systemd.user.services.tray-heal = {
+    Unit = {
+      Description = "Re-register StatusNotifierItems lost across a watcher restart";
+      After = [ "dms.service" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+    Install.WantedBy = [ "niri.service" ];
+    Service = {
+      Type = "oneshot";
+      ExecStart = "${trayHeal}";
+    };
+  };
+
+  # XDG autostart applications wait for the shell. With dms.service's
+  # Type=dbus this orders every autostart unit strictly after the
+  # StatusNotifierWatcher exists, closing the boot race for good and for
+  # any future tray app, not just the two known offenders.
+  xdg.configFile."systemd/user/xdg-desktop-autostart.target.d/10-order-after-dms.conf".text = ''
+    [Unit]
+    After=dms.service
+  '';
 }

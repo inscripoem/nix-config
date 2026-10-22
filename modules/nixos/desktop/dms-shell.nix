@@ -14,11 +14,13 @@ let
 in
 {
   # Enable DankMaterialShell - desktop shell for niri.
-  # NOTE: systemd.enable is intentionally false. The upstream module would
-  # bind dms.service to graphical-session.target, which is also activated by
-  # KDE Plasma sessions, causing the niri taskbar to appear on
-  # top of those desktops. We start dms from niri's spawn-at-startup
-  # instead (see home/desktop/niri.nix) so it only runs inside niri.
+  # NOTE: systemd.enable is intentionally false. The upstream module binds
+  # dms.service to graphical-session.target, which is also activated by
+  # KDE Plasma sessions, causing the niri taskbar to appear on top of those
+  # desktops. home/desktop/niri.nix instead declares its own dms.service
+  # (WantedBy=niri.service, Type=dbus on the StatusNotifierWatcher name) so
+  # DMS only runs inside niri sessions and XDG autostart apps can never
+  # race its tray watcher.
   programs.dms-shell = {
     enable = true;
     systemd.enable = false;
