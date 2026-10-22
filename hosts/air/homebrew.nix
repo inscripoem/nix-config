@@ -50,7 +50,7 @@
       "poetry"
       "protobuf"
       "smartmontools"
-      "anomalyco/tap/opencode"
+      "anomalyco/tap/opencode-v2"
     ];
 
     # Exclude apps confirmed absent during migration; see docs/nix-config-orchestration.md.
