@@ -4,7 +4,8 @@ let
   isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
   brewPrefix = if pkgs.stdenv.hostPlatform.isAarch64 then "/opt/homebrew" else "/usr/local";
   switchCommand = if isDarwin then
-    "sudo -H darwin-rebuild switch --flake ${lib.escapeShellArg ".#${hostSpec.name}"} --show-trace"
+    # Relies on NH_FLAKE set by modules/darwin/base/nh.nix.
+    "nh darwin switch -- --show-trace"
   else
     "nh os switch -- --show-trace";
   shellAliases = lib.mapAttrs (_: value: lib.mkDefault value) ({
@@ -166,6 +167,9 @@ in
           ${brewPrefix}/bin/brew shellenv fish | source
         end
         fish_add_path --path --move ${lib.escapeShellArgs darwinPaths}
+        # fish does not read /etc/zshenv or /etc/bashrc, where nix-darwin
+        # exports NH_FLAKE; set it here so nhs works in fish too.
+        set -gx NH_FLAKE "${config.home.homeDirectory}/nix-config"
         set -gx __NIX_CONFIG_DARWIN_ENV_SOURCED 1
       end
     '';
