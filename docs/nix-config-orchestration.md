@@ -90,6 +90,11 @@ rollout logs remain in Git history.
 | Undo Homebrew adoption | Generation 3, HM commit `77515ed` | Brew installations are not rolled back by Nix |
 | Undo Lix ownership | Generation 5, Homebrew commit `9b9a49e` | Restore installer configuration using the [Lix guide](darwin-lix.md#rollback) |
 
+As of 2026-10-22 none of these generations remain on `air`: 1–4 were pruned
+on 2026-10-17, and 5–6 are retired by the `nh clean` policy after the switch to
+upstream Nix (see the [Lix guide](darwin-lix.md#2026-10-17-decision-update-upstream-nix)).
+The commit references stay valid for rebuilding a historical state.
+
 When rolling back from generation 6 or later across the Lix ownership boundary,
 recover the installer configuration before proceeding to an older HM generation.
 See [Lix recovery data](darwin-lix.md#original-recovery-data) for recorded system

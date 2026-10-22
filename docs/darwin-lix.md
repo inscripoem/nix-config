@@ -4,6 +4,34 @@
 its daemon, build users, `nix.conf`, and the flake registry. Home Manager keeps
 `nix.enable = false` to avoid a second configuration writer.
 
+## 2026-10-17 decision update: upstream Nix
+
+The system package is now upstream Nix (`pkgs.nix`), not Lix. nix-darwin keeps
+the same ownership model; only the package changed. Reasons:
+
+- nixpkgs' Lix expression was broken for 2.95.x (it passes a stale
+  `-Dmimalloc` flag that Lix removed from `meson.options`; fatal since
+  meson 0.60), with no darwin binaries on cache.nixos.org or
+  cache.lix.systems.
+- The original rationale for Lix — the installer experience provided by
+  lix-installer — expired when nix-darwin took over the daemon in phase 4.
+  Uninstall paths do not go through the installer either.
+- NixOS hosts always used upstream Nix; this restores cross-platform
+  consistency.
+
+Consequences:
+
+- The `cache.lix.systems` trust settings were removed from `nix.conf`.
+- Lix store paths remain reachable through old generations; the installer
+  fallback profile in `/nix/var/nix/profiles/default` is untouched. Periodic
+  `nh clean` reclaims them once generations roll off.
+- Rollback across the switch generation restores the Lix daemon with the
+  previous generation, as with any other generation switch.
+- Generations 5 and 6, the Lix-ownership recovery points, are retired as of
+  2026-10-22; see [recovery data](#original-recovery-data).
+- The operational procedures below (installer artifacts, ownership
+  boundaries, recovery data) remain accurate and product-independent.
+
 The migration used Lix 2.95.2 on both sides, with matching `nixbld` GID 350 and
 32 build users at UIDs 351–382. Activation and reboot checks completed on
 2026-09-15. See [recovery data](#original-recovery-data) for the original system
@@ -91,6 +119,12 @@ After changing Lix ownership, check:
 
 These values describe the original `air` migration. Verify the recorded store
 paths, generations, and backup files still exist before using them.
+
+2026-10-22: generations 5 and 6 are retired. With the switch to upstream Nix
+recorded above, the Lix-ownership rollback they existed for is obsolete, and
+the weekly `nh clean` policy (`--keep-since 4d --keep 3`, see
+[nh.nix](../modules/darwin/base/nh.nix)) removes generations of that age. The
+values below are kept as historical record only.
 
 Recorded generation 5 system, before Lix ownership transferred:
 

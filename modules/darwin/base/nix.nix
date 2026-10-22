@@ -1,20 +1,21 @@
 { pkgs, ... }:
 
 {
-  # Phase 4 transfers the package, daemon, build users, and nix.conf to
-  # nix-darwin. Keep the installer-owned APFS mount and global profile.
-  # Preparation and rollback: docs/darwin-lix.md.
+  # The installer phase originally deployed Lix (lix-installer, release
+  # tarballs); nix-darwin took over its package, daemon, build users, and
+  # nix.conf, keeping the installer-owned APFS mount and global profile.
+  # 2026-10-17: switched the package to upstream Nix — nixpkgs' lix
+  # expression was broken for 2.95.x (stale -Dmimalloc flag) with no darwin
+  # binaries on any cache, and the installer-experience rationale for lix
+  # had expired once nix-darwin owned the daemon. History and recovery:
+  # docs/darwin-lix.md.
   nix = {
     enable = true;
-    package = pkgs.lix;
+    package = pkgs.nix;
 
     settings = {
       experimental-features = [ "nix-command" "flakes" ];
       always-allow-substitutes = true;
-      trusted-substituters = [ "https://cache.lix.systems" ];
-      trusted-public-keys = [
-        "cache.lix.systems:aBnZUw8zA7H35Cz2RyKFVs3H4PlGTLawyY5KRbvJR8o="
-      ];
       bash-prompt-prefix = ''(nix:$name)\040'';
       max-jobs = "auto";
     };

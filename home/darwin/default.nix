@@ -6,7 +6,7 @@ in
 {
   imports = [ ../core.nix ];
 
-  # The system layer owns Lix; HM must not manage a second Nix configuration.
+  # The system layer owns Nix; HM must not manage a second Nix configuration.
   nix.enable = false;
 
   # Fish enables mandb indexing by default, but its current manuals fail
