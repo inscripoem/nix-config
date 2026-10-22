@@ -12,6 +12,7 @@
     htop
     bottom
     gping
+    mosh
     lazygit
     fastfetch
     zip
