@@ -1,0 +1,596 @@
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import qs.Common
+import qs.Services
+import qs.Widgets
+import "."
+
+Column {
+    id: root
+
+    property var daemon: null
+    property var popoutRoot: null
+
+    width: parent.width
+    spacing: Theme.spacingM
+
+    property bool isTerminalConfigured: (daemon?.terminalCommand ?? "").trim() !== ""
+    property bool closeOnAction: (daemon?.closeOnAction ?? true)
+    property bool closeOnCopy: (daemon?.closeOnCopy ?? false)
+    property string sshUser: (daemon?.sshUser ?? "").trim()
+
+    // "" shows peers from every account; otherwise the selected LoginName.
+    property string accountFilter: ""
+    // Height cap for the peer list; scrolling takes over beyond this so a
+    // large tailnet can never push the panel past the popout bounds.
+    readonly property int maxPeerListHeight: 300
+
+    Process {
+        id: clipboardProcess
+    }
+
+    function isIngressNode(peer) {
+        return (peer.Tags || []).indexOf("tag:ingress") !== -1;
+    }
+
+    property int ingressPeerCount: {
+        if (!daemon?.peerList) return 0;
+        var count = 0;
+        for (var i = 0; i < daemon.peerList.length; i++) {
+            if (isIngressNode(daemon.peerList[i])) count++;
+        }
+        return count;
+    }
+
+    // Distinct owning accounts (LoginName -> device count). The account
+    // owning this machine is labeled "My Devices" and sorted first, like
+    // the official client tray menus. Ingress nodes carry no user owner
+    // and are excluded.
+    property var accountOptions: {
+        if (!daemon?.peerList) return [];
+        var myOwner = daemon?.tailscaleOwner ?? "";
+        var counts = {};
+        for (var i = 0; i < daemon.peerList.length; i++) {
+            var peer = daemon.peerList[i];
+            if (isIngressNode(peer)) continue;
+            var owner = peer.Owner || "";
+            if (owner === "") continue;
+            counts[owner] = (counts[owner] || 0) + 1;
+        }
+        var entries = Object.keys(counts).map(function(owner) {
+            return {
+                "owner": owner,
+                "count": counts[owner],
+                "label": owner === myOwner ? "My Devices · " + owner : owner
+            };
+        });
+        entries.sort(function(a, b) {
+            var aMine = a.owner === myOwner;
+            var bMine = b.owner === myOwner;
+            if (aMine !== bMine) return aMine ? -1 : 1;
+            return a.owner.localeCompare(b.owner);
+        });
+        return entries;
+    }
+
+    property var sortedPeerList: {
+        if (!daemon?.peerList) return [];
+        var peers = daemon.peerList.slice();
+
+        if (!(daemon.showIngressNodes ?? false)) {
+            peers = peers.filter(function(peer) {
+                return !isIngressNode(peer);
+            });
+        }
+
+        if (root.accountFilter !== "") {
+            peers = peers.filter(function(peer) {
+                return peer.Owner === root.accountFilter;
+            });
+        }
+
+        if (daemon.hideDisconnected) {
+            peers = peers.filter(function(peer) {
+                return peer.Online === true;
+            });
+        }
+
+        peers.sort(function(a, b) {
+            if (a.Online && !b.Online) return -1;
+            if (!a.Online && b.Online) return 1;
+            var nameA = (a.HostName || a.DNSName || "").toLowerCase();
+            var nameB = (b.HostName || b.DNSName || "").toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+        return peers;
+    }
+
+    function copyToClipboard(text) {
+        clipboardProcess.command = ["wl-copy", text];
+        clipboardProcess.running = true;
+    }
+
+    function getOSIcon(os) {
+        if (!os) return "devices";
+        switch (os.toLowerCase()) {
+            case "linux": return "terminal";
+            case "macos": return "desktop_mac";
+            case "ios": return "phone_iphone";
+            case "android": return "phone_android";
+            case "windows": return "laptop_windows";
+            default: return "devices";
+        }
+    }
+
+    function launchInTerminal(cmd) {
+        if (!isTerminalConfigured) {
+            ToastService.showError("Terminal not configured - set it in plugin settings");
+            return false;
+        }
+        daemon.launchTerminal([daemon.terminalCommand, "-e", "bash", "-c", cmd + "; echo; read -p 'Press Enter to close...' key"]);
+        return true;
+    }
+
+    function executePeerAction(action, peer) {
+        var ips = daemon.filterIPv4(peer.TailscaleIPs);
+        if (ips.length === 0) return;
+        var ip = ips[0];
+
+        switch (action) {
+            case "copy-ip":
+                copyToClipboard(ip);
+                ToastService.showInfo("IP copied: " + ip);
+                break;
+            case "copy-hostname":
+                var hostname = peer.HostName || peer.DNSName || "Unknown";
+                copyToClipboard(hostname);
+                ToastService.showInfo("Hostname copied: " + hostname);
+                break;
+            case "copy-dns":
+                var dns = (peer.DNSName || "").replace(/\.$/, "");
+                if (dns === "") break;
+                copyToClipboard(dns);
+                ToastService.showInfo("DNS name copied: " + dns);
+                break;
+            case "ssh":
+                var sshTarget = root.sshUser !== "" ? root.sshUser + "@" + ip : ip;
+                if (!launchInTerminal("ssh " + sshTarget)) return;
+                break;
+            case "ping":
+                if (!launchInTerminal("ping -c " + daemon.pingCount.toString() + " " + ip)) return;
+                break;
+            case "admin-console":
+                var dnsName = (peer.DNSName || "").replace(/\.$/, "");
+                Qt.openUrlExternally("https://login.tailscale.com/admin/machines/" + encodeURIComponent(dnsName));
+                break;
+        }
+
+        var isCopyAction = (action === "copy-ip" || action === "copy-hostname" || action === "copy-dns");
+        if (root.popoutRoot && ((isCopyAction && root.closeOnCopy) || (!isCopyAction && root.closeOnAction))) {
+            root.popoutRoot.closePopout();
+        }
+    }
+
+    StyledRect {
+        width: parent.width
+        height: identityCol.implicitHeight + Theme.spacingS * 2
+        visible: (daemon?.tailscaleRunning ?? false) && (daemon?.tailscaleIp ?? "") !== ""
+        color: Theme.surfaceContainerHigh
+
+        Row {
+            id: identityRow
+            anchors.fill: parent
+            anchors.margins: Theme.spacingS
+            spacing: Theme.spacingS
+
+            DankIcon {
+                name: "dns"
+                size: Theme.iconSize - 6
+                color: Theme.primary
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Column {
+                id: identityCol
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+
+                StyledText {
+                    text: daemon?.tailscaleHostname || "Unknown"
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.surfaceVariantText
+                }
+
+                StyledText {
+                    text: daemon?.tailscaleIp || ""
+                    font.pixelSize: Theme.fontSizeMedium
+                    isMonospace: true
+                    color: ipMouseArea.containsMouse ? Theme.primary : Theme.surfaceText
+
+                    MouseArea {
+                        id: ipMouseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (daemon?.tailscaleIp) {
+                                root.copyToClipboard(daemon.tailscaleIp);
+                                ToastService.showInfo("IP copied: " + daemon.tailscaleIp);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    StyledRect {
+        width: parent.width
+        height: exitNodeLayout.implicitHeight + Theme.spacingS * 2
+        visible: daemon?.exitNodeStatus !== null && daemon?.exitNodeStatus !== undefined
+        color: Theme.withAlpha(Theme.primary, 0.1)
+        border.width: 1
+        border.color: Theme.withAlpha(Theme.primary, 0.3)
+
+        Row {
+            id: exitNodeLayout
+            anchors.fill: parent
+            anchors.margins: Theme.spacingS
+            spacing: Theme.spacingS
+
+            DankIcon {
+                name: "public"
+                size: Theme.iconSize - 6
+                color: daemon?.exitNodeStatus?.Online ? Theme.primary : Theme.surfaceVariantText
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+
+                StyledText {
+                    text: "Exit Node Active"
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.Medium
+                    color: Theme.primary
+                }
+
+                StyledText {
+                    text: {
+                        if (!daemon?.exitNodeStatus) return "";
+                        var ipv4 = daemon.filterIPv4(daemon.exitNodeStatus.TailscaleIPs)[0];
+                        var status = daemon.exitNodeStatus.Online ? "Online" : "Offline";
+                        return ipv4 ? ipv4 + " · " + status : status;
+                    }
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.surfaceVariantText
+                    isMonospace: true
+                }
+            }
+        }
+    }
+
+    StyledRect {
+        width: parent.width
+        height: termWarningLayout.implicitHeight + Theme.spacingS * 2
+        visible: !root.isTerminalConfigured
+        color: Theme.withAlpha(Theme.error, 0.1)
+        border.width: 1
+        border.color: Theme.withAlpha(Theme.error, 0.3)
+
+        Row {
+            id: termWarningLayout
+            anchors.fill: parent
+            anchors.margins: Theme.spacingS
+            spacing: Theme.spacingS
+
+            DankIcon {
+                name: "warning"
+                size: Theme.iconSize - 6
+                color: Theme.error
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Column {
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+
+                StyledText {
+                    text: "Terminal Not Configured"
+                    font.pixelSize: Theme.fontSizeSmall
+                    font.weight: Font.Medium
+                    color: Theme.error
+                }
+
+                StyledText {
+                    text: "Set terminal in settings for SSH/ping"
+                    font.pixelSize: Theme.fontSizeSmall
+                    color: Theme.surfaceVariantText
+                }
+            }
+        }
+    }
+
+    StyledRect {
+        width: parent.width
+        height: peerCol.implicitHeight + Theme.spacingM * 2
+        visible: (daemon?.tailscaleRunning ?? false)
+        color: Theme.surfaceContainerHigh
+
+        Column {
+            id: peerCol
+            anchors.fill: parent
+            anchors.margins: Theme.spacingM
+            spacing: Theme.spacingS
+
+            StyledText {
+                text: "Devices"
+                font.pixelSize: Theme.fontSizeMedium
+                font.weight: Font.Medium
+                color: Theme.surfaceText
+            }
+
+            TailscaleAccountSelector {
+                width: parent.width
+                options: root.accountOptions
+                current: root.accountFilter
+                onSelectionChanged: function(owner) {
+                    root.accountFilter = owner;
+                }
+            }
+
+            StyledText {
+                width: parent.width
+                visible: !(daemon?.showIngressNodes ?? false) && root.ingressPeerCount > 0
+                text: root.ingressPeerCount + " funnel ingress nodes hidden — enable \"Show Funnel Ingress Nodes\" in settings"
+                font.pixelSize: 11
+                color: Theme.surfaceVariantText
+                wrapMode: Text.WordWrap
+            }
+
+            DankFlickable {
+                width: parent.width
+                height: Math.min(peerListCol.implicitHeight, root.maxPeerListHeight)
+                contentWidth: width
+                contentHeight: peerListCol.implicitHeight
+                clip: true
+
+                Column {
+                    id: peerListCol
+                    width: parent.width
+                    spacing: 2
+
+                    Repeater {
+                        model: root.sortedPeerList
+
+                        delegate: Rectangle {
+                            id: peerDelegate
+                            width: peerCol.width - Theme.spacingM * 2
+                            height: 44
+                            radius: Theme.cornerRadius
+                            color: peerMouseArea.containsMouse ? Theme.surfaceHover : "transparent"
+
+                            property var peerData: modelData
+                            property string peerIp: root.daemon.filterIPv4(peerData.TailscaleIPs)[0] || ""
+                            property string peerHostname: peerData.HostName || peerData.DNSName || "Unknown"
+                            property bool peerOnline: peerData.Online || false
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: Theme.spacingS
+                                anchors.rightMargin: Theme.spacingS
+                                spacing: Theme.spacingS
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: peerDelegate.peerOnline ? Theme.primary : Theme.surfaceVariantText
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                DankIcon {
+                                    name: root.getOSIcon(peerDelegate.peerData.OS)
+                                    size: Theme.iconSize - 6
+                                    color: peerDelegate.peerOnline ? Theme.primary : Theme.surfaceVariantText
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 1
+
+                                    StyledText {
+                                        text: peerDelegate.peerHostname
+                                        color: Theme.surfaceText
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        font.weight: Font.Medium
+                                        elide: Text.ElideRight
+                                        width: peerDelegate.width - Theme.spacingS * 2 - 8 - (Theme.iconSize - 6) - Theme.spacingS * 3
+                                    }
+
+                                    StyledText {
+                                        text: peerDelegate.peerIp
+                                        font.pixelSize: 11
+                                        color: Theme.surfaceVariantText
+                                        isMonospace: true
+                                        visible: peerDelegate.peerIp !== ""
+                                    }
+                                }
+                            }
+
+                            DankRipple {
+                                id: peerRipple
+                                rippleColor: Theme.surfaceText
+                                cornerRadius: peerDelegate.radius
+                            }
+
+                            MouseArea {
+                                id: peerMouseArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                                onPressed: mouse => peerRipple.trigger(mouse.x, mouse.y)
+                                onClicked: function(mouse) {
+                                    if (mouse.button === Qt.LeftButton) {
+                                        if (peerDelegate.peerIp) {
+                                            root.executePeerAction(daemon.defaultPeerAction, peerDelegate.peerData);
+                                        }
+                                    } else if (mouse.button === Qt.RightButton) {
+                                        var pos = peerMouseArea.mapToItem(root, mouse.x, mouse.y);
+                                        peerContextMenu.peerData = peerDelegate.peerData;
+                                        peerContextMenu.show(pos.x, pos.y, false);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                        StyledText {
+                            width: parent.width
+                            text: "No peers found"
+                            visible: root.sortedPeerList.length === 0
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: Theme.surfaceVariantText
+                            horizontalAlignment: Text.AlignHCenter
+                            topPadding: Theme.spacingM
+                        }
+                    }
+                }
+            }
+    }
+
+    StyledRect {
+        width: parent.width
+        height: notConnectedCol.implicitHeight + Theme.spacingM * 2
+        visible: !(daemon?.tailscaleRunning ?? false)
+        color: Theme.surfaceContainerHigh
+
+        Column {
+            id: notConnectedCol
+            anchors.fill: parent
+            anchors.margins: Theme.spacingM
+            spacing: Theme.spacingS
+
+            StyledText {
+                text: "Tailscale is not connected"
+                font.pixelSize: Theme.fontSizeMedium
+                color: Theme.surfaceVariantText
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+            }
+        }
+    }
+
+    Rectangle {
+        width: parent.width
+        height: 40
+        visible: daemon?.tailscaleRunning ?? false
+        radius: Theme.cornerRadius
+        color: adminMouseArea.containsMouse ? Theme.withAlpha(Theme.primary, 0.8) : Theme.primary
+
+        Row {
+            anchors.centerIn: parent
+            spacing: Theme.spacingS
+
+            DankIcon {
+                name: "open_in_new"
+                size: Theme.iconSize - 8
+                color: Theme.surface
+            }
+
+            StyledText {
+                text: "Admin Console"
+                font.pixelSize: Theme.fontSizeSmall
+                color: Theme.surface
+            }
+        }
+
+        DankRipple {
+            id: adminRipple
+            rippleColor: Theme.surface
+            cornerRadius: parent.radius
+        }
+
+        MouseArea {
+            id: adminMouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onPressed: mouse => adminRipple.trigger(mouse.x, mouse.y)
+            onClicked: {
+                Qt.openUrlExternally("https://login.tailscale.com/admin");
+                if (root.popoutRoot && root.closeOnAction) {
+                    root.popoutRoot.closePopout();
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        width: parent.width
+        height: 40
+        radius: Theme.cornerRadius
+        color: {
+            if (toggleMouseArea.containsMouse) {
+                return (daemon?.tailscaleRunning ?? false)
+                    ? Theme.withAlpha(Theme.error, 0.8)
+                    : Theme.withAlpha(Theme.primary, 0.8);
+            }
+            return (daemon?.tailscaleRunning ?? false)
+                ? Theme.error
+                : Theme.primary;
+        }
+        opacity: (daemon?.tailscaleInstalled ?? false) ? 1.0 : 0.5
+
+        Row {
+            anchors.centerIn: parent
+            spacing: Theme.spacingS
+
+            DankIcon {
+                name: (daemon?.tailscaleRunning ?? false) ? "link_off" : "link"
+                size: Theme.iconSize - 8
+                color: Theme.surface
+            }
+
+            StyledText {
+                text: (daemon?.tailscaleRunning ?? false) ? "Disconnect" : "Connect"
+                font.pixelSize: Theme.fontSizeSmall
+                font.weight: Font.Medium
+                color: Theme.surface
+            }
+        }
+
+        DankRipple {
+            id: toggleRipple
+            rippleColor: Theme.surface
+            cornerRadius: parent.radius
+        }
+
+        MouseArea {
+            id: toggleMouseArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            enabled: daemon?.tailscaleInstalled ?? false
+            onPressed: mouse => toggleRipple.trigger(mouse.x, mouse.y)
+            onClicked: {
+                if (daemon) {
+                    daemon.toggleTailscale();
+                }
+            }
+        }
+    }
+
+    Item { width: 1; height: Theme.spacingS }
+
+    TailscaleContextMenu {
+        id: peerContextMenu
+        isTerminalConfigured: root.isTerminalConfigured
+        onActionRequested: (action, peer) => root.executePeerAction(action, peer)
+    }
+}

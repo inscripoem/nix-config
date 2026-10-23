@@ -26,9 +26,14 @@ in
     systemd.enable = false;
 
     plugins = {
+      # In-repo fork of hxreborn/dms-tailscale-manager @ 7e3ade6 with local
+      # additions: scrollable peer list, account-source filter, funnel
+      # ingress filtering (default off) and a Copy DNS Name action.
+      # Revert this src line to "${hxrebornPluginsSrc}/dms-tailscale-manager"
+      # to fall back to upstream.
       tailscale = {
         enable = true;
-        src = "${hxrebornPluginsSrc}/dms-tailscale-manager";
+        src = "${./dms-plugins/tailscale-manager}";
       };
       screenRecorder = {
         enable = true;
