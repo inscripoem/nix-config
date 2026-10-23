@@ -173,10 +173,9 @@ let
     restart_dms() {
       systemctl --user restart dms.service
       # A watcher restart drops every registration it held. fcitx5 re-registers
-      # on its own; re-register the items that own a well-known SNI bus name
-      # (sunshine etc.) on their behalf. Electron items register under unique
-      # bus names and cannot be recovered this way — they never come up before
-      # the watcher anymore thanks to the dms.service Type=dbus barrier.
+      # on its own; tray-heal replays the rest on the apps' behalf — both
+      # well-known SNI names (sunshine etc.) and Electron items found by
+      # probing unique bus names for a live /StatusNotifierItem object.
       ${trayHeal} >/dev/null 2>&1 &
     }
 
@@ -227,11 +226,11 @@ let
   # caller, so the registration can be replayed on the app's behalf without
   # restarting it (mechanism verified on quickshell 0.3.x upstream:
   # omacom/omarchy#12214; replaying an already-registered item is a no-op).
-  # Only items owning a well-known org.{kde,freedesktop}.StatusNotifierItem-*
-  # bus name (libappindicator/Qt apps such as sunshine) can be discovered
-  # this way; Electron items register under their unique bus names and
-  # cannot be found — those are prevented by the dms.service Type=dbus
-  # barrier instead of repaired.
+  # Discovery covers both item styles: well-known
+  # org.{kde,freedesktop}.StatusNotifierItem-* names (libappindicator/Qt
+  # apps such as sunshine) are listed by name, while Electron items export
+  # /StatusNotifierItem on their unique bus names and are found by probing
+  # every unique name for the object.
   trayHeal = pkgs.writeShellScript "tray-heal" ''
     PATH=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^PATH=//p')
     [ -n "$PATH" ] || PATH=/run/current-system/sw/bin:/usr/bin:/bin
@@ -267,10 +266,29 @@ let
     reg="$(registered_items)"
     busctl --user list --no-legend --no-pager 2>/dev/null \
       | awk '{print $1}' \
-      | grep -E '^(org\.kde|org\.freedesktop)\.StatusNotifierItem-' \
       | while IFS= read -r name; do
           case "$reg" in
             *"$name/StatusNotifierItem"*) continue ;;
+          esac
+          case "$name" in
+            org.kde.StatusNotifierItem-*|org.freedesktop.StatusNotifierItem-*)
+              # Well-known item name: ownership is itself the marker.
+              ;;
+            :1.*)
+              # Electron item style: the object lives on a unique bus name,
+              # always at the SNI-defined path /StatusNotifierItem. Probe by
+              # enumerating the connection's root children. Notes from live
+              # testing (2026-10-23): deep-object Introspect is useless —
+              # even live Electron items answer it with an empty <node/>,
+              # identical to absent ones; and several sandboxed connections
+              # never answer Introspect at all, each stalling for busctl's
+              # 25s default (--timeout= does not apply to introspect), so the
+              # probe must wear an external timeout. Worst case ~15s total;
+              # this is a background oneshot, not a boot gate.
+              timeout 1 busctl --user introspect --xml "$name" / 2>/dev/null \
+                | grep -q 'node name="StatusNotifierItem"' || continue
+              ;;
+            *) continue ;;
           esac
           echo "tray-heal: re-registering lost tray item $name"
           busctl --user call org.kde.StatusNotifierWatcher /StatusNotifierWatcher \
@@ -602,10 +620,11 @@ in
   # under the KDE fallback session (see modules/nixos/desktop/dms-shell.nix
   # for why that matters). Type=dbus holds the unit un-started until the
   # StatusNotifierWatcher name is owned; combined with the autostart
-  # drop-in below this gives XDG autostart apps a hard barrier: Electron
-  # tray items are registered exactly once, at creation, so those apps
-  # must never start before the watcher exists (that boot race is what
-  # stranded the 1Password/WorkBuddy tray icons).
+  # template drop-in below this gives XDG autostart apps a hard barrier:
+  # Electron tray items are registered exactly once, at creation, so those
+  # apps must never start before the watcher exists (that boot race — lost
+  # by 3.4s on 2026-10-23 — is what cost the 1Password/WorkBuddy tray
+  # icons until the app was restarted into a live watcher).
   systemd.user.services.dms = {
     Unit = {
       Description = "DankMaterialShell desktop shell (niri sessions)";
@@ -638,11 +657,19 @@ in
     };
   };
 
-  # XDG autostart applications wait for the shell. With dms.service's
-  # Type=dbus this orders every autostart unit strictly after the
-  # StatusNotifierWatcher exists, closing the boot race for good and for
-  # any future tray app, not just the two known offenders.
-  xdg.configFile."systemd/user/xdg-desktop-autostart.target.d/10-order-after-dms.conf".text = ''
+  # XDG autostart applications wait for the shell. The drop-in targets the
+  # systemd-xdg-autostart-generator's TEMPLATE unit, not
+  # xdg-desktop-autostart.target: the target only Wants= the generated
+  # app-*@autostart.service units, and Wants pulls units in without
+  # ordering them, so an After=dms.service on the target never reached
+  # them (verified 2026-10-23: 1Password/WorkBuddy started 27ms before
+  # dms.service and missed the watcher by 3.4s). A drop-in on
+  # app-@autostart.service applies to every instance — escaped names
+  # included — and orders each app strictly after dms.service is started,
+  # which for Type=dbus means the StatusNotifierWatcher name is owned.
+  # In KDE fallback sessions dms.service is never pulled into the boot
+  # transaction, so the After= stays inert and autostart proceeds.
+  xdg.configFile."systemd/user/app-@autostart.service.d/10-order-after-dms.conf".text = ''
     [Unit]
     After=dms.service
   '';
