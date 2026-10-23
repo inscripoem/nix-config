@@ -76,6 +76,23 @@ in
     inherit shellAliases;
   };
 
+  # fzf-tab's load order is a hard upstream requirement: after compinit,
+  # before widget-wrapping plugins like zsh-autosuggestions. The order is
+  # enforced only by the mkOrder values in initContent below, so assert the
+  # resulting layout -- an HM upgrade that shifts those blocks fails the
+  # build here instead of silently breaking Tab completion. builtins.match
+  # needs a single line (hence the flattening) and .* is order-sensitive.
+  # Unconditional: fzf-tab loads on every host now that air's oh-my-zsh
+  # (with its own compinit) is retired.
+  assertions = [
+    {
+      assertion =
+        let zshInit = lib.replaceStrings [ "\n" ] [ " " ] config.programs.zsh.initContent;
+        in builtins.match ".*compinit.*fzf-tab.*zsh-autosuggestions.*" zshInit != null;
+      message = "zsh: expected load order compinit -> fzf-tab -> zsh-autosuggestions (home-manager init order changed?)";
+    }
+  ];
+
   # zsh-autosuggestions is wired manually in initContent below instead of via
   # programs.zsh.autosuggestion: that option's `strategy` only accepts the
   # three built-in strategies and rejects "atuin", which would keep forcing
@@ -114,18 +131,35 @@ in
         fi
       ''))
 
-      # Native completion menu (zsh/complist): Tab cycles candidates with
-      # each highlighted one inserted live into the command line, and Return
-      # accepts and executes.
+      # Render completion candidates in an fzf UI; data sources (compinit,
+      # carapace) are untouched. Must source AFTER compinit (home-manager
+      # order 570) but BEFORE zsh-autosuggestions (order 700 below), which
+      # wraps widgets -- see fzf-tab README, "Install"; not via
+      # programs.zsh.plugins, which offers no ordering control. The
+      # assertion at the top of this file fails the build if an HM upgrade
+      # breaks this order.
+      #
+      # The window is an inline dropdown below the command line by default:
+      # upstream hardcodes --layout=reverse and an adaptive --height capped
+      # at 2/3 of the screen, and ignores FZF_DEFAULT_OPTS.
       (lib.mkOrder 680 ''
-        zmodload zsh/complist
-        zstyle ':completion:*' menu select
+        source ${pkgs.zsh-fzf-tab}/share/fzf-tab/fzf-tab.plugin.zsh
+
         # keep git's own branch order for checkout
         zstyle ':completion:*:git-checkout:*' sort false
-        # render group headers like [directory]
+        # render group headers like [directory]; enables F1/F2 group switching
         zstyle ':completion:*:descriptions' format '[%d]'
         # colorize filename candidates (no-op when LS_COLORS is unset)
         zstyle ':completion:*' list-colors ''${(s.:.)LS_COLORS}
+        # suppress the native menu so fzf-tab captures the unambiguous prefix
+        zstyle ':completion:*' menu no
+        # preview the candidate directory with eza while completing cd
+        zstyle ':fzf-tab:complete:cd:*' fzf-preview 'eza -1 --color=always $realpath'
+        # fzf treats Tab as multi-select toggle by default. Rebind it to move
+        # the highlight so Tab keeps its native meaning of cycling through
+        # candidates (--cycle wraps at the bottom); Enter accepts the
+        # highlighted candidate into the command line.
+        zstyle ':fzf-tab:*' fzf-flags --cycle --bind=tab:down
       '')
 
       # Sourced WITHOUT ZSH_AUTOSUGGEST_STRATEGY set: on startup the plugin
