@@ -323,6 +323,21 @@ in {
         Install.WantedBy = [ "default.target" ];
         Service = {
           Type = "simple";
+          # An unclean shutdown (drain SIGKILL, hard power-off) can leave
+          # gateway-locks/host-gateway.json pinning a dead PID; every later
+          # start then refuses to take the host over ("already owns this
+          # host", exit 75) because the dead PID's control socket never
+          # answers — a permanent crash loop (2026-10-24: 5281 restarts).
+          # A live gateway holds an flock on host-gateway.lock, so a free
+          # lock proves the record is stale and safe to drop.
+          ExecStartPre = pkgs.writeShellScript "hermes-gateway-clear-stale-record" ''
+            stateLocks="''${XDG_STATE_HOME:-$HOME/.local/state}/hermes/gateway-locks"
+            record="$stateLocks/host-gateway.json"
+            lock="$stateLocks/host-gateway.lock"
+            if [ -f "$record" ] && ${pkgs.util-linux}/bin/flock -n "$lock" true; then
+              rm -f -- "$record"
+            fi
+          '';
           ExecStart = "${hermesPkg}/bin/hermes gateway run";
           WorkingDirectory = "${config.home.homeDirectory}/.hermes";
           Environment = [
