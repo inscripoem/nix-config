@@ -2,15 +2,17 @@
 #
 # Why Sunshine (and not KRDP / RustDesk / Parsec / krfb):
 #
-#   On this machine the KDE session runs on **X11**. The X11
-#   architecture was originally chosen to work around NVIDIA proprietary
-#   driver issues (Turing RTX 2060S, see docs/nvidia.md) that made
-#   portal-based screencast unstable under Wayland, which disables
-#   every remote-desktop tool that goes through xdg-desktop-portal
-#   (KRDP, krfb-on-wayland, RustDesk-on-wayland, ...; see
-#   docs/xdg-portal.md). With the current Intel Arc A380 GPU, X11 is
-#   retained because it gives reliable pre-login Sunshine capture
-#   without requiring KMS / capSysAdmin.
+#   Sunshine captures through KMS on this machine, so it serves the
+#   SDDM greeter before login and any session compositor after login
+#   (niri and Plasma Wayland alike). KMS requires cap_sys_admin, which
+#   the upstream module grants via a security wrapper when
+#   services.sunshine.capSysAdmin is enabled. The X11 architecture
+#   below was originally chosen to work around NVIDIA proprietary
+#   driver issues (Turing RTX 2060S, see docs/nvidia.md), when capture
+#   ran over XShm and the greeter's X server was the only pre-login
+#   capture target; with the Arc A380 and KMS capture the greeter
+#   backend no longer constrains capture, but the known-good X11 SDDM
+#   setup is retained.
 #
 #   Sunshine is chosen over the alternatives:
 #     - KRDP: Wayland-only (kcm hides on X11), no Linux host path.
@@ -23,12 +25,11 @@
 #     - krfb (VNC): pure CPU compression, too laggy for cross-region
 #       use (HK <-> SZ).
 #
-#   Sunshine grabs the active X11 screen via XShm/XDamage and encodes
-#   with the Intel Arc A380's media engines, has a first-class NixOS
-#   module, and needs no third-party account/signaling server —
-#   connectivity rides on the existing Tailscale tailnet. See
-#   docs/remote-desktop.md for the full rationale, alternatives
-#   comparison, port map, and usage.
+#   Both the pre-login and post-login services capture via KMS and
+#   encode with the Intel Arc A380's media engines, need no third-party
+#   account/signaling server — connectivity rides on the existing
+#   Tailscale tailnet. See docs/remote-desktop.md for the full
+#   rationale, alternatives comparison, port map, and usage.
 #
 # How Sunshine runs before login (Windows-RDP-like experience):
 #   Two systemd services cooperate:
@@ -57,12 +58,14 @@ let
   # SDDM 0.20+ on NixOS writes the X auth cookie to /run/sddm/xauth_*
   # (root-readable). The root sunshine-sddm service must set
   # XAUTHORITY to this file so Sunshine can authenticate to the X
-  # server that SDDM started on :0. The filename is random, so we
-  # find it at service start time. HOME is pointed at the user's home
-  # (not root's) so the Sunshine pairing certificate is shared between
-  # the root service and the user service — same UUID + certificate
-  # means Moonlight sees a single host regardless of which service is
-  # currently streaming.
+  # server that SDDM started on :0. With KMS capture these X11
+  # variables are not needed, but they keep the X11 capture fallback
+  # working when no DRM output can be enumerated. The filename is
+  # random, so we find it at service start time. HOME is pointed at
+  # the user's home (not root's) so the Sunshine pairing certificate is
+  # shared between the root service and the user service — same UUID +
+  # certificate means Moonlight sees a single host regardless of which
+  # service is currently streaming.
   sunshineSddmWrapper = pkgs.writeShellScript "sunshine-sddm" ''
     set -eu
     # Find SDDM's X auth cookie (root-readable, random suffix).
@@ -82,7 +85,10 @@ in {
     services.sunshine = {
       enable = true;
       openFirewall = true;
-      capSysAdmin = false;
+      # KMS capture for both services (see header): the wrapper grants
+      # cap_sys_admin to the user service binary, mirroring what the
+      # root pre-login service already has.
+      capSysAdmin = true;
     };
 
     # Root system service: captures the SDDM X11 greeter before any user
