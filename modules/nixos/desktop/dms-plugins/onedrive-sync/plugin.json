@@ -2,7 +2,7 @@
     "id": "onedriveSync",
     "name": "OneDrive Sync",
     "description": "OneDrive sync status pill for the DankBar: service liveness plus convergence checks, with a detail popout.",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "author": "inscripoem",
     "icon": "cloud",
     "type": "widget",

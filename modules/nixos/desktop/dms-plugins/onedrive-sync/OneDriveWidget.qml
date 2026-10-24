@@ -1,17 +1,19 @@
 // OneDrive sync status widget for DankMaterialShell.
 //
 // Bar pill is a bare cloud icon; clicking opens a popout with the status
-// breakdown. Data sources, in order of cost:
-//   1. `systemctl --user is-active onedrive` — liveness, cheap, fast cadence.
-//   2. `onedrive --display-sync-status` — convergence, one API call and a
-//      full sync_dir filesystem scan per run (~10s), so it runs on a slow
+// breakdown. Data sources:
+//   1. `~/.config/onedrive/monitor-status.json` — the official machine-
+//      readable interface published by monitor mode (onedrive >= 2.5.12).
+//      Probed at runtime; when present it is the sole status source and
+//      the probe below never runs. Re-read on the liveness cadence.
+//   2. `systemctl --user is-active onedrive` — liveness, cheap, fast cadence.
+//   3. `onedrive --display-sync-status` — convergence probe for clients
+//      without monitor-status.json (2.5.11): one API call and a full
+//      sync_dir filesystem scan per run (~10s), so it runs on a slow
 //      cadence only. This is a no-sync operation: it queries a dry-run copy
 //      of items.sqlite3 and never touches the singleton lock, so it is safe
-//      alongside the running monitor (verified against 2.5.11 sources).
-//   3. `~/.config/onedrive/monitor-status.json` — the official machine-
-//      readable interface, published by monitor mode. Not present in
-//      onedrive 2.5.11 (added in 2.5.12); probed at runtime so the widget
-//      upgrades itself once the packaged client ships it.
+//      alongside the running monitor. On 2.5.11 it can crash on nameless
+//      delta tombstones (upstream bug) — rendered as the "error" state.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -37,12 +39,16 @@ PluginComponent {
 
     // Runtime state.
     property bool serviceActive: false
-    property string syncState: "unknown" // unknown|stopped|synced|pending|offline|error
+    // unknown|stopped|synced|syncing|pending|offline|error
+    property string syncState: "unknown"
     property date lastCheck: new Date(0)
     property bool checking: false
+    // Set while the JSON source is live; probe-only counters below.
+    property bool statusFileAlive: false
+    property int lastCycleFailures: 0
 
     readonly property string iconName: {
-        if (checking)
+        if (checking || syncState === "syncing")
             return "sync";
         if (syncState === "stopped")
             return "cloud_off";
@@ -72,6 +78,8 @@ PluginComponent {
             return "Stopped";
         if (syncState === "synced")
             return "Synced";
+        if (syncState === "syncing")
+            return "Syncing";
         if (syncState === "pending")
             return "Pending";
         if (syncState === "offline")
@@ -86,15 +94,27 @@ PluginComponent {
             return "Querying Microsoft OneDrive…";
         if (syncState === "stopped")
             return "The onedrive service is not running.";
-        if (syncState === "synced")
+        if (syncState === "synced") {
+            if (statusFileAlive)
+                return "The last monitor cycle completed successfully.";
             return "Your local directory matches the data online.";
-        if (syncState === "pending")
+        }
+        if (syncState === "syncing")
+            return "A sync cycle is in progress.";
+        if (syncState === "pending") {
+            if (statusFileAlive)
+                return "The last cycle finished with " + lastCycleFailures
+                       + " failed item(s); they will be retried.";
             return "There are changes waiting to be synced.";
+        }
         if (syncState === "offline")
             return "Microsoft OneDrive is not reachable.";
-        if (syncState === "error")
+        if (syncState === "error") {
+            if (statusFileAlive)
+                return "The last cycle did not complete cleanly. Check the service journal.";
             return "The status query itself failed (known onedrive 2.5.11 bug with nameless delta items). The monitor may still be syncing fine.";
-        return "No convergence check has run yet.";
+        }
+        return "Waiting for the first sync cycle to complete.";
     }
 
     readonly property string lastCheckedText: {
@@ -103,20 +123,28 @@ PluginComponent {
         return relativeTime(lastCheck) + " (" + Qt.formatDateTime(lastCheck, "HH:mm") + ")";
     }
 
-    readonly property var detailRows: [
-        {
-            label: "Service",
-            value: serviceActive ? "Running" : "Stopped"
-        },
-        {
-            label: "Sync directory",
-            value: "~/OneDrive"
-        },
-        {
-            label: "Last checked",
-            value: lastCheckedText
-        }
-    ]
+    readonly property var detailRows: {
+        var rows = [
+            {
+                label: "Service",
+                value: serviceActive ? "Running" : "Stopped"
+            },
+            {
+                label: "Sync directory",
+                value: "~/OneDrive"
+            },
+            {
+                label: statusFileAlive ? "Last successful cycle" : "Last checked",
+                value: lastCheckedText
+            }
+        ];
+        if (statusFileAlive)
+            rows.push({
+                label: "Status source",
+                value: "monitor-status.json"
+            });
+        return rows;
+    }
 
     function relativeTime(d) {
         var minutes = Math.floor((Date.now() - d.getTime()) / 60000);
@@ -130,6 +158,16 @@ PluginComponent {
         return Math.floor(hours / 24) + "d ago";
     }
 
+    // Timestamps in the status file carry microsecond precision that JS
+    // Date cannot parse; truncate the fractional part before converting.
+    function parseTs(s) {
+        if (!s || s === "")
+            return null;
+        var normalized = s.replace(/\.\d+/, "");
+        var d = new Date(normalized);
+        return isNaN(d.getTime()) ? null : d;
+    }
+
     function runLiveness() {
         if (livenessProc.running)
             return;
@@ -137,7 +175,8 @@ PluginComponent {
     }
 
     function runStatusCheck() {
-        // If the official status file exists (onedrive >= 2.5.12), it wins.
+        // If the official status file exists (onedrive >= 2.5.12), it owns
+        // the status and the probe never runs.
         if (statusFileAlive)
             return;
         if (!serviceActive || statusProc.running)
@@ -147,11 +186,6 @@ PluginComponent {
         statusProc.command = ["sh", "-c", onedriveBin + " --display-sync-status 2>&1"];
         statusProc.running = true;
     }
-
-    // monitor-status.json probe: presence proves the monitor is alive and
-    // the conditions block carries reachability. Sync-result fields are not
-    // mapped here until a released onedrive defines their schema.
-    property bool statusFileAlive: false
 
     function checkStatusFile() {
         var xhr = new XMLHttpRequest();
@@ -167,13 +201,46 @@ PluginComponent {
                 var data = JSON.parse(xhr.responseText);
                 statusFileAlive = true;
                 serviceActive = true;
-                syncState = (data.conditions && data.conditions.onedrive_reachability
-                             && data.conditions.onedrive_reachability !== "reachable") ? "offline" : syncState;
+                syncState = jsonToState(data);
+                var ok = parseTs(data.sync && data.sync.last_successful_sync_at);
+                if (ok)
+                    lastCheck = ok;
             } catch (e) {
                 statusFileAlive = false;
             }
         };
         xhr.send();
+    }
+
+    // Map the 2.5.12 monitor-status document onto this widget's states.
+    // Field semantics per upstream docs: process.state is syncing|idle|
+    // degraded; sync.last_cycle.result is success|partial_failure|
+    // service_unreachable|time_unsafe|interrupted|never_run.
+    function jsonToState(data) {
+        var reach = data.conditions && data.conditions.onedrive_reachability;
+        if (reach === "unreachable")
+            return "offline";
+        if (data.process && data.process.state === "syncing")
+            return "syncing";
+        var lc = (data.sync && data.sync.last_cycle) || {};
+        lastCycleFailures = (lc.download_failures || 0)
+            + (lc.upload_failures || 0)
+            + (lc.recycle_bin_failures || 0);
+        switch (lc.result) {
+            case "success":
+                return "synced";
+            case "partial_failure":
+                return "pending";
+            case "service_unreachable":
+                return "offline";
+            case "time_unsafe":
+            case "interrupted":
+                return "error";
+            default:
+                // never_run or absent: monitor just started, first cycle
+                // has not finished yet.
+                return "unknown";
+        }
     }
 
     Component.onCompleted: {
@@ -264,7 +331,7 @@ PluginComponent {
     }
 
     popoutWidth: 340
-    popoutHeight: 280
+    popoutHeight: 300
 
     popoutContent: Component {
         PopoutComponent {
@@ -331,14 +398,14 @@ PluginComponent {
                             spacing: Theme.spacingM
 
                             StyledText {
-                                width: 110
+                                width: 150
                                 text: modelData.label
                                 font.pixelSize: Theme.fontSizeSmall
                                 color: Theme.surfaceVariantText
                             }
 
                             StyledText {
-                                width: parent.width - 110 - Theme.spacingM
+                                width: parent.width - 150 - Theme.spacingM
                                 text: modelData.value
                                 font.pixelSize: Theme.fontSizeSmall
                                 color: Theme.surfaceText
@@ -378,7 +445,11 @@ PluginComponent {
                             }
                         }
 
+                        // The manual probe only exists for the pre-2.5.12
+                        // fallback; with monitor-status.json live the file is
+                        // refreshed by the monitor itself.
                         StyledRect {
+                            visible: !root.statusFileAlive
                             width: (parent.width - Theme.spacingM) / 2
                             height: 40
                             radius: Theme.cornerRadius
