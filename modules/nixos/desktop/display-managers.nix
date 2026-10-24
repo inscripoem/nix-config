@@ -6,17 +6,19 @@
 
   # Enable the KDE Plasma Desktop Environment.
   services.displayManager.sddm.enable = true;
-  # SDDM greeter must run on X11 (not Wayland) so that the root
-  # sunshine-sddm system service can grab the greeter framebuffer via
-  # XShm/XDamage. On a Wayland greeter there is no X server to capture.
-  # See docs/remote-desktop.md §2.
+  # SDDM greeter runs on X11 (not Wayland). This predates the KMS
+  # capture switch — Sunshine grabs the DRM framebuffer regardless of
+  # the greeter's window system — and is kept as the known-good
+  # configuration. See docs/remote-desktop.md §2.
   services.displayManager.sddm.wayland.enable = false;
   services.desktopManager.plasma6.enable = true;
-  # For the sunshine-sddm handoff to work, the user session must start on
-  # the same X display (:0) that SDDM created. plasmax11 is the only
-  # xsessions entry on this box (`ls /run/current-system/sw/share/xsessions/`
-  # → plasmax11.desktop).
-  services.displayManager.defaultSession = "plasmax11";
+  # The old pin was "plasmax11": the user session then shared SDDM's X
+  # display :0, letting the user-level Sunshine XShm-capture it for the
+  # remote handoff. KDE removed the X11 session upstream and nixpkgs now
+  # ships only the Wayland "plasma" one. Sunshine switched to KMS capture
+  # (capSysAdmin, see capabilities/sunshine.nix), so every session is
+  # streamable; niri stays the default as the daily session.
+  services.displayManager.defaultSession = "niri";
 
   # No auto-login. Sunshine runs as a root system service
   # (sunshine-sddm) that captures the SDDM X11 greeter before anyone
