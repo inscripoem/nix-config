@@ -13,7 +13,9 @@ let
   onedriveSyncManifest = lib.importJSON ./dms-plugins/onedrive-sync/plugin.json;
 in
 {
-  # Enable DankMaterialShell - desktop shell for niri.
+  # Enable Dux Shell (formerly DankMaterialShell; renamed upstream and in
+  # nixpkgs on 2026-10-20 — the `dms` CLI binary and dms.service unit
+  # names are unchanged).
   # NOTE: systemd.enable is intentionally false. The upstream module binds
   # dms.service to graphical-session.target, which is also activated by
   # KDE Plasma sessions, causing the niri taskbar to appear on top of those
@@ -21,7 +23,7 @@ in
   # (WantedBy=niri.service, Type=dbus on the StatusNotifierWatcher name) so
   # DMS only runs inside niri sessions and XDG autostart apps can never
   # race its tray watcher.
-  programs.dms-shell = {
+  programs.dux-shell = {
     enable = true;
     systemd.enable = false;
 
@@ -59,10 +61,12 @@ in
   # Required by the Screen Recorder DMS plugin
   environment.systemPackages = [ pkgs.gpu-screen-recorder ];
 
-  # DMS Spotlight's file provider stays hidden until the dsearch (DankSearch)
-  # daemon is reachable. graphical-session.target keeps it out of headless
-  # sessions; the index scope is declared in home/desktop/desktop-env.nix.
-  programs.dsearch = {
+  # DMS Spotlight's file provider stays hidden until the dsearch daemon
+  # (DankSearch, renamed dux-search in nixpkgs; the service name stays
+  # dsearch) is reachable. graphical-session.target keeps it out of
+  # headless sessions; the index scope is declared in
+  # home/desktop/desktop-env.nix.
+  programs.dux-search = {
     enable = true;
     systemd.target = "graphical-session.target";
   };

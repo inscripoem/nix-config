@@ -12,7 +12,9 @@
 # the regular rollback loop just works.
 #
 # Implementation notes:
-#   - Uses systemd-initrd (boot.initrd.systemd.enable). The classic
+#   - Uses systemd-initrd, unconditional in nixpkgs since the scripted
+#     initrd removal (boot.initrd.systemd.enable was deleted upstream).
+#     The classic
 #     boot.initrd.postDeviceCommands hook fires before udev has
 #     populated /dev/disk/by-label/*, so the first mount attempt races
 #     the SD card enumeration. A systemd unit with an explicit
@@ -34,8 +36,6 @@ in {
   options.modules.capabilities.impermanence.enable =
     lib.mkEnableOption "ephemeral root + /persist whitelist";
   config = lib.mkIf cfg.enable {
-
-    boot.initrd.systemd.enable = true;
 
     # Unauthenticated emergency shell on TTY1 if any critical initrd unit
     # fails (e.g. rollback.service timing out, sysroot.mount failing).

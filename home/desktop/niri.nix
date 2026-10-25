@@ -635,7 +635,7 @@ in
     Service = {
       Type = "dbus";
       BusName = "org.kde.StatusNotifierWatcher";
-      ExecStart = "${pkgs.dms-shell}/bin/dms run --session";
+      ExecStart = "${pkgs.dux-shell}/bin/dms run --session";
       Restart = "on-failure";
       RestartSec = "2s";
     };
