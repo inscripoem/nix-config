@@ -1,11 +1,28 @@
-# Arc A380 power observations on H410
+# Arc A380 power observations
 
-Forced ASPM was removed on 2026-08-03 after recurring idle freezes. The
-[current profile](../hosts/briefcase/gpu/intel-arc-a380.nix) uses
-`pcie_port_pm=off`; do not restore the old tuning merely to reproduce the
-lower measurement. See [idle hangs](hard-hang-cstate.md).
+The platform moved to B760M (i5-13400TEF) on 2026-10-26. `pcie_port_pm=off`
+was an H410 hard-hang mitigation and was removed with that board. ASPM is
+now enabled through the standard `pcie_aspm.policy=powersave` kernel
+parameter in the [current profile](../hosts/briefcase/gpu/intel-arc-a380.nix)
+— kernel policy over capability-negotiated links, not the "forced ASPM"
+register tuning removed 2026-08-03 during the H410 freeze investigation.
+What applied to the H410 lives in [idle hangs](hard-hang-cstate.md).
 
-## Historical measurements
+## Current measurements (B760M, 2026-10-26)
+
+| State | Power |
+|---|---|
+| Idle, display scanning (DP), ASPM L1 enabled | ~18.4 W — i915 hwmon energy counter, 30 s window, RC6 ~41% |
+| Expected ASPM L1 contribution | ~1 W (H410 measurement with the same card; clean-window re-measurement pending) |
+
+For calibration: Windows reviews of this exact card (Sparkle A380 Genie,
+TechPowerUp) idle around 10 W or below on a Windows 11 desktop. The gap is
+driver policy — the Linux driver keeps GDDR6 in a higher gear while a
+display scans out and enters shallower package idle states — not something
+host configuration can change. Headless Linux reports reach single digits
+with ASPM enabled; that state requires no attached display.
+
+## Historical measurements (H410)
 
 On the Sparkle A380 with i3-10105F / H410:
 

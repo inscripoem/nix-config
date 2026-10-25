@@ -16,12 +16,14 @@
   # Arc A380 is DG2; load i915 early and force-bind it.
   boot.initrd.kernelModules = [ "i915" ];
   boot.kernelParams = [
-    "i915.enable_guc=2"      # HuC only (disable GuC submission to avoid GPU hangs)
-    # No PCIe port runtime PM. The H410 firmware silently drops the GPU link
-    # when the port is suspended (hard hang, zero logs); capping CPU C-states
-    # alone (hosts/briefcase/default.nix) was not enough — see
-    # docs/hard-hang-cstate.md. ASPM was removed for the same reason.
-    "pcie_port_pm=off"
+    "i915.enable_guc=2"  # HuC only (disable GuC submission to avoid GPU hangs)
+    # Consumer-desktop firmware does not program ASPM at boot and the kernel
+    # "default" policy copies firmware, so every link would stay at ASPM
+    # Disabled. Verified live on the MAXSUN B760M 2026-10-26: with this
+    # policy all three links (root port, card switch, GPU endpoint) report
+    # "ASPM L1 Enabled". If hard-freezes ever recur on this machine, revert
+    # this line first — ~1 W is all it buys.
+    "pcie_aspm.policy=powersave"
   ];
 
   # Hardware decode/encode (VA-API iHD), QSV (oneVPL), OpenCL/Level Zero.
@@ -34,10 +36,9 @@
   # Make VA-API use the modern iHD backend instead of the legacy i965 driver.
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
 
-  # ReBarState sets the ReBarUEFI UEFI variable that controls the resizable
-  # BAR size. Only useful on firmware that has the ReBarUEFI DXE driver
-  # injected (this host's Intel Arc profile).
-  environment.systemPackages = with pkgs; [ rebarstate nvtopPackages.intel ];
+  # Resizable BAR comes from the board firmware natively since the B760M
+  # swap (BIOS H7.8G; GPU BAR verified at 8G) — no ReBarState needed.
+  environment.systemPackages = with pkgs; [ nvtopPackages.intel ];
 
   # Allow intel_gpu_top to run without root for GPU monitoring.
   hardware.intel-gpu-tools.enable = true;

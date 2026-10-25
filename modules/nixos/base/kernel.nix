@@ -16,8 +16,8 @@
   # C-states (C2/C3) on the H410 budget board — so far below kernel visibility
   # that even these panic hooks never fired and pstore stayed empty.
   #
-  # Root cause & fix: docs/hard-hang-cstate.md
-  # Host-level kernel param:   hosts/briefcase/default.nix (intel_idle.max_cstate=1)
+  # Root cause & fix: docs/hard-hang-cstate.md (platform replaced 2026-10-26;
+  # the host-level intel_idle.max_cstate=1 param was removed with the board)
   boot.kernel.sysctl = {
     "kernel.panic" = 10;              # auto-reboot 10s after panic
     "kernel.panic_on_oops" = 1;       # oops -> panic (so it lands in pstore)

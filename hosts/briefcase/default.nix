@@ -14,22 +14,12 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # The budget H410 board + Comet Lake combo silently drops the PCIe
-  # link when the CPU enters deep C-states (C2/C3). The GPU falls off
-  # the bus → hard freeze with zero logs from kernel panic detectors,
-  # NMI watchdog, or pstore. Restrict the CPU to C1 at deepest to
-  # keep the PCIe link alive.
-  boot.kernelParams = [ "intel_idle.max_cstate=1" ];
-
-  # The OC watchdog is useless on this board and would otherwise win the
-  # /dev/watchdog registration race; iTCO_wdt is the one systemd should feed.
-  boot.blacklistedKernelModules = [ "intel_oc_wdt" ];
-
   # Feed the PCH iTCO watchdog (heartbeat=30s) so a whole-machine hang
   # auto-resets instead of waiting for a manual power cycle. RuntimeWatchdogSec
   # makes systemd ping it every 15s; keep this below the 30s hardware timeout.
-  # Last line of defense for the silent hard-hangs documented in
-  # docs/hard-hang-cstate.md, which fall below kernel panic visibility.
+  # Kept from the H410 era (docs/hard-hang-cstate.md) as a recovery-only net
+  # while the B760M platform is on observation; verified on this board that
+  # iTCO_wdt owns /sys/class/watchdog/watchdog0.
   systemd.settings.Manager.RuntimeWatchdogSec = "30s";
 
   # zram as primary swap with the 8G disk swapfile (disk-config.nix) as
