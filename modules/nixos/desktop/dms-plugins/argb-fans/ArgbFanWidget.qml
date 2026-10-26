@@ -639,6 +639,7 @@ PluginComponent {
     // Initial value only — the popout content rewrites this from its
     // measured height as soon as it instantiates.
     popoutHeight: 620
+    onPopoutHeightChanged: console.info("[argb-h] popoutHeight ->", popoutHeight)
 
     popoutContent: Component {
         PopoutComponent {
@@ -651,26 +652,32 @@ PluginComponent {
             Item {
                 id: outerItem
                 width: parent.width
-                // Content-driven height: implicitHeight is computed from
+                height: parent.height
+                // Content-driven height: implicitHeight is measured from
                 // the tab contents only (never from popoutHeight — that
                 // would be a binding loop), then written back to the
-                // plugin-owned popoutHeight, which the shell's
-                // PluginPopout -> DPopout -> window chain binds
-                // reactively. Collapsing/expanding the palette resizes
-                // the window live; no hand-tuned constant.
+                // plugin-owned popoutHeight, whose binding chain
+                // (PluginPopout -> DPopout -> window) resizes the window;
+                // this item's own height follows the window via anchors.
                 implicitHeight: outerCol.implicitHeight + 2 * Theme.spacingM
                 onImplicitHeightChanged: syncPopoutHeight()
-                Component.onCompleted: Qt.callLater(syncPopoutHeight)
+                Component.onCompleted: {
+                    console.info("[argb-h] onCompleted: outer implicit", implicitHeight,
+                                 "height", height, "popoutRoot h", popoutRoot.height,
+                                 "header", popoutRoot.headerHeight);
+                    Qt.callLater(syncPopoutHeight);
+                }
 
                 function syncPopoutHeight() {
-                    root.popoutHeight = implicitHeight + popoutRoot.headerHeight + Theme.spacingXL;
+                    var want = implicitHeight + popoutRoot.headerHeight + Theme.spacingXL;
+                    console.info("[argb-h] sync: implicit", implicitHeight,
+                                 "-> popoutHeight", want, "(was", root.popoutHeight + ")");
+                    root.popoutHeight = want;
                 }
 
                 ColumnLayout {
                     id: outerCol
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
+                    anchors.fill: parent
                     anchors.margins: Theme.spacingM
                     spacing: Theme.spacingM
 
@@ -738,6 +745,8 @@ PluginComponent {
                         width: parent.width
                         height: parent.height - tabs.height - parent.spacing
                         currentIndex: tabs.currentIndex
+                        onHeightChanged: console.info("[argb-h] tabStack h", height,
+                                                      "implicit", implicitHeight)
 
                         // ---- ARGB tab ----
                         // Scrollable: the tab holds more rows than the
@@ -755,6 +764,8 @@ PluginComponent {
                             // without this the whole tab collapses to zero
                             // and every control stacks in one spot.
                             implicitHeight: argbCol.implicitHeight
+                            onImplicitHeightChanged: console.info("[argb-h] flick implicit", implicitHeight)
+                            onHeightChanged: console.info("[argb-h] flick h", height)
                             contentWidth: width
                             contentHeight: argbCol.implicitHeight
                             boundsBehavior: Flickable.StopAtBounds
