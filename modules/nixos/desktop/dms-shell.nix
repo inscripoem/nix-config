@@ -1,4 +1,4 @@
-{ lib, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 let
   hxrebornPluginsSrc = pkgs.fetchFromGitHub {
@@ -11,6 +11,7 @@ let
   # updates the derivation name too, so generation diffs render bumps as
   # plain version changes.
   onedriveSyncManifest = lib.importJSON ./dms-plugins/onedrive-sync/plugin.json;
+  argbFansManifest = lib.importJSON ./dms-plugins/argb-fans/plugin.json;
 in
 {
   # Enable Dux Shell (formerly DankMaterialShell; renamed upstream and in
@@ -53,6 +54,22 @@ in
           cp -r ${./dms-plugins/onedrive-sync}/. $out/
           substituteInPlace $out/OneDriveWidget.qml \
             --replace '@onedrive@' '${pkgs.onedrive}/bin/onedrive'
+        '';
+      };
+
+      # In-repo plugin: CPU fan duty + motherboard ARGB control (see
+      # dms-plugins/argb-fans). Gated on the fan-argb capability
+      # (briefcase hardware: NCT6798 + ENE 6K7750) so other hosts never
+      # see the widget. The ene-fanctl reference is substituted to an
+      # absolute store path at build time for the same PATH reason as
+      # onedrive above.
+      argbFans = {
+        enable = config.modules.capabilities.fan-argb.enable;
+        src = pkgs.runCommand "dms-plugin-argb-fans-${argbFansManifest.version}" { } ''
+          mkdir -p $out
+          cp -r ${./dms-plugins/argb-fans}/. $out/
+          substituteInPlace $out/ArgbFanWidget.qml \
+            --replace '@enefanctl@' '${pkgs.ene-fanctl}/bin/ene-fanctl'
         '';
       };
     };

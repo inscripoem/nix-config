@@ -14,5 +14,6 @@
     ./wifi-profiles.nix
     ./lan-mouse.nix
     ./bluetooth.nix
+    ./fan-argb.nix
   ];
 }

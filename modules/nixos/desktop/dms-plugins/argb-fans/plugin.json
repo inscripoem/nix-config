@@ -1,0 +1,12 @@
+{
+    "id": "argbFans",
+    "name": "Fan & ARGB",
+    "description": "Case fan duty (NCT6798) and motherboard ARGB (ENE 6K7750) control: HSV color picker with presets for the fan LEDs, live RPM readout and duty slider for the CPU fan.",
+    "version": "1.0.0",
+    "author": "inscripoem",
+    "icon": "palette",
+    "type": "widget",
+    "component": "./ArgbFanWidget.qml",
+    "settings": "./ArgbFanSettings.qml",
+    "permissions": ["settings_read", "settings_write"]
+}

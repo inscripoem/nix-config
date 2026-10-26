@@ -8,6 +8,7 @@ final: prev: {
   glances = final.callPackage ./glances.nix { originalGlances = prev.glances; };
   rebarstate = final.callPackage ./rebarstate.nix { };
   dsh-tui-launcher = final.callPackage ./dsh-tui-launcher.nix { };
+  ene-fanctl = final.callPackage ./ene-fanctl.nix { };
 
   # atuin 18.23.0's e2e tests are pty/timing-sensitive and hang in the
   # darwin build sandbox, which is why hydra publishes no darwin binary:
