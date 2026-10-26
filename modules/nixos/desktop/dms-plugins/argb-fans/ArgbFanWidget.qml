@@ -636,6 +636,8 @@ PluginComponent {
     // scope chips = 328) needs that slack — at 380 the budget was 324
     // and the row pushed everything 4px past the clip.
     popoutWidth: 400
+    // Initial value only — the popout content rewrites this from its
+    // measured height as soon as it instantiates.
     popoutHeight: 620
 
     popoutContent: Component {
@@ -649,11 +651,26 @@ PluginComponent {
             Item {
                 id: outerItem
                 width: parent.width
-                implicitHeight: root.popoutHeight - popoutRoot.headerHeight - Theme.spacingXL
+                // Content-driven height: implicitHeight is computed from
+                // the tab contents only (never from popoutHeight — that
+                // would be a binding loop), then written back to the
+                // plugin-owned popoutHeight, which the shell's
+                // PluginPopout -> DPopout -> window chain binds
+                // reactively. Collapsing/expanding the palette resizes
+                // the window live; no hand-tuned constant.
+                implicitHeight: outerCol.implicitHeight + 2 * Theme.spacingM
+                onImplicitHeightChanged: syncPopoutHeight()
+                Component.onCompleted: Qt.callLater(syncPopoutHeight)
+
+                function syncPopoutHeight() {
+                    root.popoutHeight = implicitHeight + popoutRoot.headerHeight + Theme.spacingXL;
+                }
 
                 ColumnLayout {
                     id: outerCol
-                    anchors.fill: parent
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
                     anchors.margins: Theme.spacingM
                     spacing: Theme.spacingM
 
