@@ -308,6 +308,11 @@ let
       include optional=true "dms/colors.kdl"
       include optional=true "dms/alttab.kdl"
       include optional=true "dms/outputs.kdl"
+      // Named per fragment because DMS settings greps for these exact
+      // lines to decide whether a section still needs "First Time Setup".
+      include optional=true "dms/input.kdl"
+      include optional=true "dms/windowrules.kdl"
+      include optional=true "dms/cursor.kdl"
     '';
   } ''
     niri validate -c "$configBodyPath"
