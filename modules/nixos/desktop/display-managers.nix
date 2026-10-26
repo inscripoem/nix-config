@@ -1,40 +1,53 @@
-{ pkgs, ... }:
+{ pkgs, vars, ... }:
 
 {
   # Enable the X11 windowing system.
   services.xserver.enable = true;
 
+  # greetd + Dux Greeter (dms-greeter): the DMS-native login screen running
+  # inside a niri greeter session. Replaces the X11 SDDM setup, which was
+  # retained only as the Sunshine XShm-era known-good greeter; KMS capture
+  # streams any greeter backend (see docs/remote-desktop.md §2).
+  #
+  # Session picking works on NixOS without extra plumbing: greetd's default
+  # source_profile handling sources /etc/profile → /etc/set-environment
+  # before exec'ing the greeter, which exports XDG_DATA_DIRS including the
+  # displayManager sessionData dir — dms-greeter enumerates niri.desktop and
+  # plasma.desktop from there and starts the chosen one through greetd.
+  services.displayManager.dux-greeter = {
+    enable = true;
+    compositor.name = "niri";
+    # Compositor config for the greeter session itself (not user sessions).
+    # Left empty: dms-greeter generates its own minimal niri config that
+    # just spawns the greeter UI.
+    # Mirror the desktop shell's wallpaper/theme/session settings into
+    # /var/lib/dms-greeter on every generation switch so the greeter looks
+    # like the daily desktop.
+    configHome = "/home/${vars.username}";
+    # Keep logs at /tmp/dms-greeter.log while the switch is fresh; drop
+    # once the greeter has proven stable across a few rebuilds.
+    logs.save = true;
+  };
+  # DMS greeter lists users/avatars through accountsservice.
+  services.accounts-daemon.enable = true;
+
   # Enable the KDE Plasma Desktop Environment.
-  services.displayManager.sddm.enable = true;
-  # SDDM greeter runs on X11 (not Wayland). This predates the KMS
-  # capture switch — Sunshine grabs the DRM framebuffer regardless of
-  # the greeter's window system — and is kept as the known-good
-  # configuration. See docs/remote-desktop.md §2.
-  services.displayManager.sddm.wayland.enable = false;
-  # SDDM 0.21 compiles in InputMethod=qtvirtualkeyboard as its default and
-  # hands it to the greeter as QT_IM_MODULE. Plasma 6.8 removed the breeze
-  # theme's embedded, button-gated InputPanel, so the Qt VirtualKeyboard now
-  # pops up as its own window whenever the password field gains focus. Clear
-  # the setting to drop the auto-activation only: the qtvirtualkeyboard
-  # plugin stays installed system-wide and this option can be set back to
-  # "qtvirtualkeyboard" at any time.
-  services.displayManager.sddm.settings.General.InputMethod = "";
-  services.desktopManager.plasma6.enable = true;
   # The old pin was "plasmax11": the user session then shared SDDM's X
   # display :0, letting the user-level Sunshine XShm-capture it for the
   # remote handoff. KDE removed the X11 session upstream and nixpkgs now
   # ships only the Wayland "plasma" one. Sunshine switched to KMS capture
   # (capSysAdmin, see capabilities/sunshine.nix), so every session is
   # streamable; niri stays the default as the daily session.
+  services.desktopManager.plasma6.enable = true;
   services.displayManager.defaultSession = "niri";
 
   # No auto-login. Sunshine runs as a root system service
-  # (sunshine-sddm) that captures the SDDM X11 greeter before anyone
-  # logs in — Moonlight connects, sees the SDDM login screen, you type
-  # the password, and the session hands off to the user-level Sunshine
-  # service. This avoids the auto-login + keyring problem (KWallet /
-  # gnome-keyring never unlock without a PAM password, which breaks WiFi
-  # auto-connect and Vivaldi's cookie store). See docs/remote-desktop.md.
+  # (sunshine-greeter) that captures the greeter before anyone logs in —
+  # Moonlight connects, sees the DMS greeter, you type the password, and
+  # the session hands off to the user-level Sunshine service. This avoids
+  # the auto-login + keyring problem (KWallet / gnome-keyring never unlock
+  # without a PAM password, which breaks WiFi auto-connect and Vivaldi's
+  # cookie store). See docs/remote-desktop.md.
 
   # Enable niri - scrollable-tiling Wayland compositor.
   # Use niri-unstable from the niri-flake overlay to get newer actions like

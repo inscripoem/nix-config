@@ -1,40 +1,45 @@
 # Remote desktop on briefcase
 
-Sunshine streams the SDDM login screen and the active desktop to Moonlight.
-Capture runs through KMS (cap_sys_admin via a security wrapper), which
-serves the pre-login greeter and any session compositor — niri and Plasma
-Wayland alike. Tailscale provides remote connectivity.
+Sunshine streams the greeter login screen and the active desktop to
+Moonlight. Capture runs through KMS (cap_sys_admin via a security wrapper),
+which serves the pre-login greeter and any session compositor — niri and
+Plasma Wayland alike. Tailscale provides remote connectivity.
 
 ## 1. Configuration
 
 | Source | Responsibility |
 |---|---|
 | [Sunshine capability](../modules/nixos/capabilities/sunshine.nix) | System/user service handoff, polkit rule, firewall integration |
-| [Display managers](../modules/nixos/desktop/display-managers.nix) | X11 SDDM greeter and default `niri` session |
+| [Display managers](../modules/nixos/desktop/display-managers.nix) | greetd + Dux Greeter (niri greeter session) and default `niri` session |
 | [WiFi profiles](../modules/nixos/capabilities/wifi-profiles.nix) | NetworkManager connections available before login |
 | [Tailscale capability](../modules/nixos/capabilities/tailscale.nix) | Tailnet connectivity |
 
 X11 was originally selected during NVIDIA/Wayland problems, when capture
 ran over XShm and the greeter's X server was the only pre-login capture
-target. With KMS capture the greeter backend no longer constrains capture;
-the X11 SDDM greeter is retained as the known-good configuration.
+target. With KMS capture the greeter backend no longer constrains capture,
+and the X11 SDDM greeter has been replaced by greetd + Dux Greeter (the
+DMS-native login screen inside a niri greeter session). See
+`modules/nixos/desktop/display-managers.nix` for the session-enumeration
+notes (XDG_DATA_DIRS via greetd's source_profile handling).
 
 ## 2. Service handoff
 
-1. SDDM starts its X server. System service `sunshine-sddm` runs as root, sets
-   `DISPLAY=:0`, and reads the current `/run/sddm/xauth_*` cookie (unused by
-   KMS capture, kept for the X11 capture fallback path).
-2. Moonlight connects and displays the greeter. The user logs in through SDDM;
-   PAM can unlock the desktop keyring normally.
-3. The graphical session (niri, or Plasma Wayland) starts user service
-   `sunshine`, running the cap_sys_admin security wrapper. Its
-   `ExecStartPre` stops `sunshine-sddm`, then the user service takes over
-   streaming and audio. Both services capture through KMS, so the handoff
-   switches service ownership only, not the capture backend. (The removed
-   `plasmax11` default used to share SDDM's X display so both services
-   captured the same X server over XShm; that path died with the upstream
-   Plasma X11 session removal.)
-4. On logout, the user service's `ExecStopPost` starts `sunshine-sddm` again.
+1. greetd starts the Dux Greeter session on VT1 (a niri compositor running
+   the greeter UI). System service `sunshine-greeter` runs as root after
+   `display-manager.service` and captures the greeter through KMS.
+2. Moonlight connects and displays the greeter. The user logs in through
+   Dux Greeter; PAM (`greetd` service) can unlock the desktop keyring
+   normally.
+3. greetd starts the chosen graphical session (niri, or Plasma Wayland),
+   which brings up user service `sunshine` with the cap_sys_admin security
+   wrapper. Its `ExecStartPre` stops `sunshine-greeter`, then the user
+   service takes over streaming and audio. Both services capture through
+   KMS, so the handoff switches service ownership only, not the capture
+   backend. (The removed `plasmax11` default used to share SDDM's X
+   display so both services captured the same X server over XShm; that
+   path died with the upstream Plasma X11 session removal.)
+4. On logout, the user service's `ExecStopPost` starts `sunshine-greeter`
+   again.
 
 Both services use the same user's Sunshine configuration directory, sharing
 pairing identity. Expect a short disconnect during handoff; previous sessions
@@ -42,8 +47,6 @@ measured about 5–8 seconds, but reconnect behavior depends on the client.
 A polkit rule allows members of `users` to manage the specific system service.
 
 `capSysAdmin` is enabled so both services share the KMS capture backend.
-The X11 SDDM greeter is no longer a capture requirement; switching the
-greeter backend is untested but no longer excluded by design.
 
 ## 3. Network and pairing
 
@@ -59,8 +62,10 @@ After the user activates the configuration:
    through Sunshine's UI.
 4. Connect to the greeter, log in, and reconnect after handoff if necessary.
 
-Sunshine UI credentials manage the server; Moonlight uses pairing, and SDDM
-still requires the operating-system login password.
+Sunshine UI credentials manage the server; Moonlight uses pairing, and the
+greeter still requires the operating-system login password. Note the greeter
+session has no fcitx5, so the password must be typeable on a plain US
+keyboard layout.
 
 `services.sunshine.openFirewall` manages the streaming ports. Port 47990 is
 the HTTPS management UI, not the HTTPS streaming-control port at 47984.
@@ -76,14 +81,16 @@ At the greeter, inspect the system service; inside the desktop, inspect the
 user service:
 
 ```sh
-systemctl status sunshine-sddm
-journalctl -b -u sunshine-sddm
+systemctl status sunshine-greeter
+journalctl -b -u sunshine-greeter
 systemctl --user status sunshine
 journalctl --user -b -u sunshine
 ```
 
-Check the XAUTHORITY file, display backend, port conflicts, and polkit handoff
-if capture fails. Check NetworkManager/Tailscale separately if SSH is also
+Greeter-side problems go to `journalctl -b -u greetd` and, with
+`logs.save` enabled, `/tmp/dms-greeter.log` (greeter compositor + UI).
+Check the display backend, port conflicts, and polkit handoff if capture
+fails. Check NetworkManager/Tailscale separately if SSH is also
 unreachable. Inspect Sunshine logs for the chosen hardware encoder.
 
 After changing GPU, display manager, or capture mode, test the complete sequence:

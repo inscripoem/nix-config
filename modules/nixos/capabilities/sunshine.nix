@@ -33,12 +33,12 @@
 #
 # How Sunshine runs before login (Windows-RDP-like experience):
 #   Two systemd services cooperate:
-#     1. sunshine-sddm (system, root) — starts after display-manager,
-#        grabs the SDDM X11 greeter on :0. Moonlight connects and sees
-#        the login screen.
+#     1. sunshine-greeter (system, root) — starts after display-manager,
+#        grabs the greetd/DMS greeter session. Moonlight connects and
+#        sees the login screen.
 #     2. sunshine (user, via NixOS module) — starts with graphical-
 #        session.target when a user logs in. ExecStartPre stops
-#        sunshine-sddm; ExecStopPost restarts it on logout.
+#        sunshine-greeter; ExecStopPost restarts it on logout.
 #   This avoids auto-login (which breaks KWallet/gnome-keyring because
 #   PAM never sees a password -> WiFi doesn't auto-connect, Vivaldi's
 #   cookie store is lost, etc.). See docs/remote-desktop.md.
@@ -55,25 +55,14 @@
 let
   cfg = config.modules.capabilities.sunshine;
 
-  # SDDM 0.20+ on NixOS writes the X auth cookie to /run/sddm/xauth_*
-  # (root-readable). The root sunshine-sddm service must set
-  # XAUTHORITY to this file so Sunshine can authenticate to the X
-  # server that SDDM started on :0. With KMS capture these X11
-  # variables are not needed, but they keep the X11 capture fallback
-  # working when no DRM output can be enumerated. The filename is
-  # random, so we find it at service start time. HOME is pointed at
-  # the user's home (not root's) so the Sunshine pairing certificate is
-  # shared between the root service and the user service — same UUID +
-  # certificate means Moonlight sees a single host regardless of which
-  # service is currently streaming.
-  sunshineSddmWrapper = pkgs.writeShellScript "sunshine-sddm" ''
+  # The greeter is a Wayland (niri) session under greetd and capture is
+  # pure KMS, so no X11 display/auth plumbing is needed here. HOME is
+  # pointed at the user's home (not root's) so the Sunshine pairing
+  # certificate is shared between the root service and the user service —
+  # same UUID + certificate means Moonlight sees a single host regardless
+  # of which service is currently streaming.
+  sunshineGreeterWrapper = pkgs.writeShellScript "sunshine-greeter" ''
     set -eu
-    # Find SDDM's X auth cookie (root-readable, random suffix).
-    XAUTH_FILE="$(find /run/sddm/ -name 'xauth_*' -type f 2>/dev/null | head -1)"
-    if [ -n "$XAUTH_FILE" ]; then
-      export XAUTHORITY="$XAUTH_FILE"
-    fi
-    export DISPLAY=":0"
     export HOME="/home/${vars.username}"
     export XDG_CONFIG_HOME="$HOME/.config"
     exec ${pkgs.sunshine}/bin/sunshine "$@"
@@ -103,11 +92,13 @@ in {
     # is required after toggling.
     environment.sessionVariables.KWIN_USE_OVERLAYS = "0";
 
-    # Root system service: captures the SDDM X11 greeter before any user
-    # logs in. Moonlight connects and sees the SDDM login screen — type
-    # the password and the handoff to the user service happens.
-    systemd.services.sunshine-sddm = {
-      description = "Sunshine — pre-login SDDM greeter stream";
+    # Root system service: captures the greeter before any user logs in.
+    # greetd registers the display-manager.service alias (see the NixOS
+    # greetd module), so the requires/after dependency holds unchanged.
+    # Moonlight connects and sees the DMS greeter — type the password and
+    # the handoff to the user service happens.
+    systemd.services.sunshine-greeter = {
+      description = "Sunshine — pre-login greeter stream";
       requires = [ "display-manager.service" ];
       after = [ "display-manager.service" ];
       wantedBy = [ "multi-user.target" ];
@@ -115,20 +106,20 @@ in {
         User = "root";
         Group = "root";
         ExecStartPre = "${pkgs.coreutils}/bin/sleep 2";
-        ExecStart = sunshineSddmWrapper;
+        ExecStart = sunshineGreeterWrapper;
         Restart = "on-failure";
         RestartSec = "5s";
       };
     };
 
-    # Polkit rule: allow the logged-in user to stop/start sunshine-sddm
+    # Polkit rule: allow the logged-in user to stop/start sunshine-greeter
     # from the user service's ExecStartPre/ExecStopPost without a
     # password prompt. Without this, the handoff fails because a
     # non-privileged user cannot manage a system-level systemd unit.
     security.polkit.extraConfig = ''
       polkit.addRule(function(action, subject) {
         if (action.id == "org.freedesktop.systemd1.manage-units" &&
-            action.lookup("unit") == "sunshine-sddm.service" &&
+            action.lookup("unit") == "sunshine-greeter.service" &&
             subject.isInGroup("users")) {
           return polkit.Result.YES;
         }
@@ -136,17 +127,18 @@ in {
     '';
 
     # User service handoff: when the user-level Sunshine starts (user
-    # logged in), stop the root sunshine-sddm so they don't both grab :0.
-    # When the user service stops (logout), restart sunshine-sddm so the
-    # SDDM greeter is streamable again for the next remote login.
+    # logged in), stop the root sunshine-greeter so they don't both grab
+    # the DRM output. When the user service stops (logout), restart
+    # sunshine-greeter so the greeter is streamable again for the next
+    # remote login.
     systemd.user.services.sunshine = {
       serviceConfig = {
         ExecStartPre = [
-          "${pkgs.systemd}/bin/systemctl stop sunshine-sddm.service"
+          "${pkgs.systemd}/bin/systemctl stop sunshine-greeter.service"
           "${pkgs.coreutils}/bin/sleep 1"  # let old process release ports before binding
         ];
         ExecStopPost = [
-          "${pkgs.systemd}/bin/systemctl start sunshine-sddm.service"
+          "${pkgs.systemd}/bin/systemctl start sunshine-greeter.service"
         ];
       };
     };
