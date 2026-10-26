@@ -749,6 +749,12 @@ PluginComponent {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             clip: true
+                            // Flickable's default implicitHeight is 0 —
+                            // StackLayout reads the current page's implicit
+                            // height to size the content-driven popout, so
+                            // without this the whole tab collapses to zero
+                            // and every control stacks in one spot.
+                            implicitHeight: argbCol.implicitHeight
                             contentWidth: width
                             contentHeight: argbCol.implicitHeight
                             boundsBehavior: Flickable.StopAtBounds
