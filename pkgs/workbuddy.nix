@@ -11,6 +11,23 @@ let
   version = "5.6.2.40046327";
   rev = "c7b525f3";
 
+  # nixpkgs' patchelf 0.19.x SIGABRTs while running --set-rpath on the
+  # bundled python runtime binary (resources/runtime/python/bin/
+  # python3.13) — same deb built fine under the 0.15 lineage, and the
+  # 0.19 crash family (upstream #583/#675) is unfixed as of 0.19.2,
+  # the newest release. Pin 0.15.5 (last release of the old line) for
+  # this package only: autoPatchelf and the manual patchelf call below
+  # both resolve `patchelf` from nativeBuildInputs' PATH.
+  patchelf015 = pkgs.stdenv.mkDerivation rec {
+    pname = "patchelf";
+    version = "0.15.5";
+    src = pkgs.fetchurl {
+      url = "https://github.com/NixOS/patchelf/releases/download/${version}/patchelf-${version}.tar.gz";
+      hash = "sha256-uUzTziNh+7v3uwVanZDRozh4pZQZGnxKYDcLfDIP3gg=";
+    };
+    # Release tarball ships a pregenerated configure script.
+  };
+
   workbuddy = pkgs.stdenv.mkDerivation {
     pname = "workbuddy";
     inherit version;
@@ -24,7 +41,7 @@ let
       autoPatchelfHook
       dpkg
       makeWrapper
-      patchelf
+      patchelf015
     ];
 
     buildInputs = with pkgs; [
