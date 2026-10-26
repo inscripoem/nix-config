@@ -569,6 +569,16 @@ in
 
       prefer-no-csd = true;
 
+      # Clicking a notification action only sends D-Bus ActionInvoked; the app
+      # self-activates via xdg-activation with a serial-less token, which niri
+      # by default degrades to an urgent-only flash (nothing in the shell chain
+      # can focus the window: quickshell NotificationAction.invoke just emits
+      # the signal — dux-shell #533). Honor such tokens so notification clicks
+      # bring the app forward.
+      debug = {
+        "honor-xdg-activation-with-invalid-serial" = [ ];
+      };
+
       environment = {
         "NIXOS_OZONE_WL" = "1";
         "XDG_CURRENT_DESKTOP" = "niri";
