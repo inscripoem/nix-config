@@ -11,6 +11,14 @@
   # the greeter's window system — and is kept as the known-good
   # configuration. See docs/remote-desktop.md §2.
   services.displayManager.sddm.wayland.enable = false;
+  # SDDM 0.21 compiles in InputMethod=qtvirtualkeyboard as its default and
+  # hands it to the greeter as QT_IM_MODULE. Plasma 6.8 removed the breeze
+  # theme's embedded, button-gated InputPanel, so the Qt VirtualKeyboard now
+  # pops up as its own window whenever the password field gains focus. Clear
+  # the setting to drop the auto-activation only: the qtvirtualkeyboard
+  # plugin stays installed system-wide and this option can be set back to
+  # "qtvirtualkeyboard" at any time.
+  services.displayManager.sddm.settings.General.InputMethod = "";
   services.desktopManager.plasma6.enable = true;
   # The old pin was "plasmax11": the user session then shared SDDM's X
   # display :0, letting the user-level Sunshine XShm-capture it for the
