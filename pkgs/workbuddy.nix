@@ -42,6 +42,7 @@ let
       dpkg
       makeWrapper
       patchelf015
+      python3
     ];
 
     buildInputs = with pkgs; [
@@ -131,7 +132,12 @@ let
         --add-needed ${pkgs.libglvnd}/lib/libEGL.so.1 \
         $out/share/workbuddy/workbuddy
 
-      # Create launcher script
+      # Silent-start gate (see ./workbuddy-silent-start.py): the autostart
+      # launcher below sets WORKBUDDY_SILENT_START=1 and boots to tray only;
+      # every other entry point behaves exactly like upstream.
+      python3 ${./workbuddy-silent-start.py} $out/share/workbuddy/resources/app.asar
+
+      # Create launcher scripts
       echo '#!/bin/sh' > $out/bin/workbuddy
       echo 'export ELECTRON_FORCE_IS_PACKAGED=1' >> $out/bin/workbuddy
       echo 'export ELECTRON_DISABLE_SANDBOX=1' >> $out/bin/workbuddy
@@ -139,9 +145,27 @@ let
       echo "exec $out/share/workbuddy/workbuddy --no-sandbox \"\$@\"" >> $out/bin/workbuddy
       chmod +x $out/bin/workbuddy
 
+      # Autostart twin of bin/workbuddy: identical command line plus the
+      # silent-start env gate consumed by the asar patch above.
+      echo '#!/bin/sh' > $out/bin/workbuddy-autostart
+      echo 'export ELECTRON_FORCE_IS_PACKAGED=1' >> $out/bin/workbuddy-autostart
+      echo 'export ELECTRON_DISABLE_SANDBOX=1' >> $out/bin/workbuddy-autostart
+      echo 'export DISABLE_GPU_SANDBOX=1' >> $out/bin/workbuddy-autostart
+      echo 'export WORKBUDDY_SILENT_START=1' >> $out/bin/workbuddy-autostart
+      echo "exec $out/share/workbuddy/workbuddy --no-sandbox \"\$@\"" >> $out/bin/workbuddy-autostart
+      chmod +x $out/bin/workbuddy-autostart
+
       # Fix desktop file (upstream Exec points at /opt/WorkBuddy)
       sed -i "s|Exec=.*|Exec=$out/bin/workbuddy %U|" \
         $out/share/applications/workbuddy.desktop
+
+      # Autostart variant for ~/.config/autostart (home/packs/ai.nix): same
+      # metadata as the shipped entry, Exec swapped to the silent-start
+      # launcher. Lives outside share/applications on purpose — launchers
+      # scan that directory, and this template is not a user-facing entry.
+      sed "s|Exec=.*|Exec=$out/bin/workbuddy-autostart %U|" \
+        $out/share/applications/workbuddy.desktop \
+        > $out/share/workbuddy/workbuddy-autostart.desktop
 
       # Expose commandLineArgs override surface (mirrors vivaldi/vscode API).
       # The agent CLI sandbox looks up `bwrap` and `socat` via `which`, so both
@@ -150,9 +174,11 @@ let
       # which honors none of the CLI's env hooks (CODEBUDDY_ENV_FILE /
       # WORKBUDDY_EXTRA_PATHS) — so host tools are exposed at the shell layer
       # instead: see the zshenv append in home/packs/ai.nix (workbuddy block).
-      wrapProgram $out/bin/workbuddy \
-        --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.bubblewrap pkgs.socat ]} \
-        --add-flags ${pkgs.lib.escapeShellArg commandLineArgs}
+      for launcher in workbuddy workbuddy-autostart; do
+        wrapProgram $out/bin/$launcher \
+          --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.bubblewrap pkgs.socat ]} \
+          --add-flags ${pkgs.lib.escapeShellArg commandLineArgs}
+      done
 
       runHook postInstall
     '';

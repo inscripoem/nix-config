@@ -254,15 +254,17 @@ in {
 
     (lib.mkIf cfg.workbuddy.enable {
       home.packages = [ workbuddyPkg ];
-      # XDG autostart (same pattern as 1password/desktop-env): reference the
-      # shipped desktop entry whose Exec already points at this generation's
-      # wrapper, so HM re-points it on every switch and it never goes stale.
-      # Do NOT use the app's own "auto launch" toggle: setLoginItemSettings
-      # bakes the current store path into ~/.config/autostart, which breaks
-      # after a GC, or falls back to the raw Electron binary (no sandbox
-      # flags, no bwrap/socat on PATH).
+      # XDG autostart (same pattern as 1password/desktop-env): reference our
+      # autostart entry variant (same metadata as the shipped one, Exec adds
+      # WORKBUDDY_SILENT_START=1 for the asar patch's tray-only boot), whose
+      # wrapper HM re-points on every switch so it never goes stale. The
+      # canonical workbuddy.desktop stays the plain GUI launch. Do NOT use
+      # the app's own "auto launch" toggle: setLoginItemSettings bakes the
+      # current store path into ~/.config/autostart, which breaks after a
+      # GC, or falls back to the raw Electron binary (no sandbox flags, no
+      # bwrap/socat on PATH).
       xdg.configFile."autostart/workbuddy.desktop".source =
-        "${workbuddyPkg}/share/applications/workbuddy.desktop";
+        "${workbuddyPkg}/share/workbuddy/workbuddy-autostart.desktop";
 
       # The agent sandbox replaces PATH wholesale (vendored safe-bin + managed
       # node/python) and its Rust sandbox-center exposes no env hook: the
