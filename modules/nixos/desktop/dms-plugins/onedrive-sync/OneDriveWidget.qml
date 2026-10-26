@@ -331,7 +331,7 @@ PluginComponent {
     }
 
     popoutWidth: 340
-    popoutHeight: 300
+    popoutHeight: 280
 
     popoutContent: Component {
         PopoutComponent {
