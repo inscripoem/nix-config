@@ -356,11 +356,12 @@ PluginComponent {
     // slider stays mounted and grays out for static/thermal.
     readonly property bool speedActive: pattern !== "static" && pattern !== "thermal"
 
-    // The picked color only drives static/breathing/thermal; rainbow
-    // and meteor ignore it. The color controls gray out when they have
-    // no effect instead of hiding (no layout jumps).
+    // The picked color only drives static and breathing. Rainbow and
+    // meteor derive their own hues, and thermal's color is intrinsic
+    // (temperature maps green->red). The color controls gray out when
+    // they have no effect instead of hiding (no layout jumps).
     readonly property bool colorActive: pattern === "static"
-        || pattern === "breathing" || pattern === "thermal"
+        || pattern === "breathing"
 
     function setFanDutyPct(pct) {
         var duty = Math.round(255 * pct / 100);
