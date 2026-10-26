@@ -91,6 +91,18 @@ in {
       capSysAdmin = true;
     };
 
+    # KWin 6.7+ enables DRM overlay planes by default on Intel GPUs,
+    # which breaks Sunshine's KMS capture under Plasma Wayland: kmsgrab
+    # pins a single plane, so content on other planes is missing from
+    # the stream and the pinned plane being released (fb_id 0) freezes
+    # capture with per-frame "Couldn't get drm fb" timeouts (upstream
+    # LizardByte/Sunshine#5373). Keeping KWin composing on the primary
+    # plane only fixes Plasma streaming; niri and the SDDM greeter
+    # never used overlays, so they are unaffected. The env var is read
+    # at kwin startup, so a session restart (not just service restart)
+    # is required after toggling.
+    environment.sessionVariables.KWIN_USE_OVERLAYS = "0";
+
     # Root system service: captures the SDDM X11 greeter before any user
     # logs in. Moonlight connects and sees the SDDM login screen — type
     # the password and the handoff to the user service happens.
