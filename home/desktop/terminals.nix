@@ -44,26 +44,46 @@
         end
       end
 
-      -- Direct chords mirror the zellij 0.45 "unlocked" mode defaults
+      -- Chords mirror the zellij 0.45 "unlocked" mode defaults
       -- (`zellij setup --dump-config`). Ctrl+s overrides terminal flow
-      -- control on purpose, exactly like zellij does.
-      config.keys = {
-        { key = 'h', mods = 'ALT', action = wezterm.action_callback(function(window, pane) move_focus_or_tab(window, pane, 'Left') end) },
-        { key = 'LeftArrow', mods = 'ALT', action = wezterm.action_callback(function(window, pane) move_focus_or_tab(window, pane, 'Left') end) },
-        { key = 'l', mods = 'ALT', action = wezterm.action_callback(function(window, pane) move_focus_or_tab(window, pane, 'Right') end) },
-        { key = 'RightArrow', mods = 'ALT', action = wezterm.action_callback(function(window, pane) move_focus_or_tab(window, pane, 'Right') end) },
-        { key = 'j', mods = 'ALT', action = act.ActivatePaneDirection 'Down' },
-        { key = 'DownArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Down' },
-        { key = 'k', mods = 'ALT', action = act.ActivatePaneDirection 'Up' },
-        { key = 'UpArrow', mods = 'ALT', action = act.ActivatePaneDirection 'Up' },
-        { key = 'n', mods = 'ALT', action = act.SplitHorizontal { domain = 'CurrentPaneDomain' } },
-        { key = 'i', mods = 'ALT', action = act.MoveTabRelative(-1) },
-        { key = 'o', mods = 'ALT', action = act.MoveTabRelative(1) },
+      -- control on purpose, exactly like zellij does. The outer pty's
+      -- foreground process group stays on zellij for the whole session,
+      -- so a basename match means a nested zellij owns the pane: forward
+      -- the raw chord to it and act locally only outside zellij.
+      local function chord(key, mods, action_or_fn)
+        return {
+          key = key,
+          mods = mods,
+          action = wezterm.action_callback(function(window, pane)
+            local fg = pane:get_foreground_process_name();
+            if fg and fg:match('[^/\\]+$') == 'zellij' then
+              window:perform_action(act.SendKey { key = key, mods = mods }, pane);
+            elseif type(action_or_fn) == 'function' then
+              action_or_fn(window, pane);
+            else
+              window:perform_action(action_or_fn, pane);
+            end
+          end),
+        };
+      end
 
-        { key = 'p', mods = 'CTRL', action = act.ActivateKeyTable { name = 'pane_mode', one_shot = false } },
-        { key = 't', mods = 'CTRL', action = act.ActivateKeyTable { name = 'tab_mode', one_shot = false } },
-        { key = 'n', mods = 'CTRL', action = act.ActivateKeyTable { name = 'resize_mode', one_shot = false } },
-        { key = 's', mods = 'CTRL', action = act.ActivateKeyTable { name = 'scroll_mode', one_shot = false } },
+      config.keys = {
+        chord('h', 'ALT', function(window, pane) move_focus_or_tab(window, pane, 'Left') end),
+        chord('LeftArrow', 'ALT', function(window, pane) move_focus_or_tab(window, pane, 'Left') end),
+        chord('l', 'ALT', function(window, pane) move_focus_or_tab(window, pane, 'Right') end),
+        chord('RightArrow', 'ALT', function(window, pane) move_focus_or_tab(window, pane, 'Right') end),
+        chord('j', 'ALT', act.ActivatePaneDirection 'Down'),
+        chord('DownArrow', 'ALT', act.ActivatePaneDirection 'Down'),
+        chord('k', 'ALT', act.ActivatePaneDirection 'Up'),
+        chord('UpArrow', 'ALT', act.ActivatePaneDirection 'Up'),
+        chord('n', 'ALT', act.SplitHorizontal { domain = 'CurrentPaneDomain' }),
+        chord('i', 'ALT', act.MoveTabRelative(-1)),
+        chord('o', 'ALT', act.MoveTabRelative(1)),
+
+        chord('p', 'CTRL', act.ActivateKeyTable { name = 'pane_mode', one_shot = false }),
+        chord('t', 'CTRL', act.ActivateKeyTable { name = 'tab_mode', one_shot = false }),
+        chord('n', 'CTRL', act.ActivateKeyTable { name = 'resize_mode', one_shot = false }),
+        chord('s', 'CTRL', act.ActivateKeyTable { name = 'scroll_mode', one_shot = false }),
       };
 
       -- Modes ported from zellij defaults: action keys pop back to normal
