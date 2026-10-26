@@ -356,9 +356,11 @@ PluginComponent {
     // slider stays mounted and grays out for static/thermal.
     readonly property bool speedActive: pattern !== "static" && pattern !== "thermal"
 
-    // Custom color section state. Collapsed by default: pattern,
-    // brightness and presets answer most needs without it.
-    property bool paletteOpen: false
+    // The picked color only drives static/breathing/thermal; rainbow
+    // and meteor ignore it. The color controls gray out when they have
+    // no effect instead of hiding (no layout jumps).
+    readonly property bool colorActive: pattern === "static"
+        || pattern === "breathing" || pattern === "thermal"
 
     function setFanDutyPct(pct) {
         var duty = Math.round(255 * pct / 100);
@@ -867,6 +869,94 @@ PluginComponent {
                             }
 
                             StyledText {
+                                text: "Custom color"
+                                opacity: root.colorActive ? 1 : 0.4
+                                font.pixelSize: Theme.fontSizeSmall
+                                color: Theme.surfaceVariantText
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                opacity: root.colorActive ? 1 : 0.4
+                                enabled: root.colorActive
+                                spacing: Theme.spacingM
+
+                                DSaturationValuePicker {
+                                    id: svPicker
+                                    Layout.preferredWidth: 180
+                                    Layout.preferredHeight: 180
+                                    onColorChanged: (s, v) => {
+                                        root.sat = s;
+                                        root.val = v;
+                                        commitTimer.restart();
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Theme.spacingS
+
+                                    StyledText {
+                                        text: "Color"
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        color: Theme.surfaceVariantText
+                                    }
+
+                                    StyledRect {
+                                        width: 44
+                                        height: 44
+                                        radius: 22
+                                        color: "#" + root.effectiveHex()
+                                        border.color: Theme.outlineStrong
+                                        border.width: 1
+                                    }
+
+                                    StyledText {
+                                        Layout.fillWidth: true
+                                        Layout.minimumWidth: 0
+                                        text: "#" + root.effectiveHex()
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        color: Theme.surfaceText
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                opacity: root.colorActive ? 1 : 0.4
+                                spacing: 0
+
+                                Repeater {
+                                    model: 12
+
+                                    StyledRect {
+                                        Layout.preferredWidth: 1
+                                        Layout.fillWidth: true
+                                        height: 6
+                                        radius: 2
+                                        color: Qt.hsla(index / 12, 1, 0.5, 1)
+                                    }
+                                }
+                            }
+
+                            DSlider {
+                                id: hueSlider
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                Layout.rightMargin: Theme.spacingS
+                                enabled: root.colorActive
+                                opacity: root.colorActive ? 1 : 0.4
+                                minimum: 0
+                                maximum: 360
+                                onSliderValueChanged: {
+                                    root.hue = Math.max(0, Math.min(360, value)) / 360;
+                                    svPicker.hue = root.hue;
+                                    commitTimer.restart();
+                                }
+                            }
+
+                            StyledText {
                                 text: "Presets"
                                 font.pixelSize: Theme.fontSizeSmall
                                 color: Theme.surfaceVariantText
@@ -897,128 +987,9 @@ PluginComponent {
                                                 root.hue = hsv[0];
                                                 root.sat = hsv[1];
                                                 root.val = hsv[2];
-                                                root.paletteOpen = true;
                                                 commitTimer.restart();
                                             }
                                         }
-                                    }
-                                }
-                            }
-
-                            // Hand-rolled collapsible: DCollapsibleSection
-                            // exists in 2.0.0 only behind a deprecation shim
-                            // with an undocumented expansion API; a header
-                            // row plus visible toggling has no unknowns.
-                            // The palette is the deepest control, so it
-                            // starts collapsed to keep the first screen
-                            // (pattern -> brightness -> presets) visible.
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: Theme.spacingS
-
-                                Row {
-                                    spacing: Theme.spacingXS
-
-                                    MouseArea {
-                                        id: paletteHeaderArea
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.paletteOpen = !root.paletteOpen
-                                    }
-
-                                    DIcon {
-                                        name: "expand_more"
-                                        size: 18
-                                        rotation: root.paletteOpen ? 180 : 0
-                                        color: Theme.surfaceVariantText
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-
-                                    StyledText {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "Custom color"
-                                        font.pixelSize: Theme.fontSizeSmall
-                                        color: paletteHeaderArea.containsMouse ? Theme.surfaceText : Theme.surfaceVariantText
-                                    }
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    visible: root.paletteOpen
-                                    spacing: Theme.spacingM
-
-                                    DSaturationValuePicker {
-                                        id: svPicker
-                                        Layout.preferredWidth: 180
-                                        Layout.preferredHeight: 180
-                                        onColorChanged: (s, v) => {
-                                            root.sat = s;
-                                            root.val = v;
-                                            commitTimer.restart();
-                                        }
-                                    }
-
-                                    ColumnLayout {
-                                        Layout.fillWidth: true
-                                        spacing: Theme.spacingS
-
-                                        StyledText {
-                                            text: "Color"
-                                            font.pixelSize: Theme.fontSizeSmall
-                                            color: Theme.surfaceVariantText
-                                        }
-
-                                        StyledRect {
-                                            width: 44
-                                            height: 44
-                                            radius: 22
-                                            color: "#" + root.effectiveHex()
-                                            border.color: Theme.outlineStrong
-                                            border.width: 1
-                                        }
-
-                                        StyledText {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 0
-                                            text: "#" + root.effectiveHex()
-                                            font.pixelSize: Theme.fontSizeSmall
-                                            color: Theme.surfaceText
-                                            elide: Text.ElideRight
-                                        }
-                                    }
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    visible: root.paletteOpen
-                                    spacing: 0
-
-                                    Repeater {
-                                        model: 12
-
-                                        StyledRect {
-                                            Layout.preferredWidth: 1
-                                            Layout.fillWidth: true
-                                            height: 6
-                                            radius: 2
-                                            color: Qt.hsla(index / 12, 1, 0.5, 1)
-                                        }
-                                    }
-                                }
-
-                                DSlider {
-                                    id: hueSlider
-                                    Layout.fillWidth: true
-                                    Layout.minimumWidth: 0
-                                    Layout.rightMargin: Theme.spacingS
-                                    visible: root.paletteOpen
-                                    minimum: 0
-                                    maximum: 360
-                                    onSliderValueChanged: {
-                                        root.hue = Math.max(0, Math.min(360, value)) / 360;
-                                        svPicker.hue = root.hue;
-                                        commitTimer.restart();
                                     }
                                 }
                             }
