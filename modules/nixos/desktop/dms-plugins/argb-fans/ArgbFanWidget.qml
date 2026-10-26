@@ -638,13 +638,13 @@ PluginComponent {
     // scope chips = 328) needs that slack — at 380 the budget was 324
     // and the row pushed everything 4px past the clip.
     popoutWidth: 400
-    // Fixed 780: fits the fully expanded tab (pattern/brightness/speed/
-    // scope/custom color/presets/buttons/restore, ~740 of chrome+content).
+    // Fixed 790: fits the fully expanded tab (pattern/brightness/speed/
+    // scope/custom color/presets/buttons/restore, ~750 of chrome+content).
     // An adaptive write-back (popoutHeight from measured content) froze
     // the whole shell — the write resizes the window, some child's
     // implicit height shifts a pixel, sync fires again: a synchronous
     // signal loop. Do not reintroduce.
-    popoutHeight: 780
+    popoutHeight: 790
 
     popoutContent: Component {
         PopoutComponent {
