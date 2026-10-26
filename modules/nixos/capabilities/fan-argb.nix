@@ -54,13 +54,6 @@ in {
         ExecStart = "${pkgs.writeShellScript "fan-set" ''
           set -eu
           duty="$1"
-          if ! [[ "$duty" =~ ^[0-9]+$ ]] || [ "$duty" -gt 255 ]; then
-            echo "fan-set: duty must be an integer 0-255, got '$duty'" >&2
-            exit 1
-          fi
-          if [ "$duty" -lt 64 ]; then
-            duty=64
-          fi
           hw=""
           for d in /sys/class/hwmon/hwmon*; do
             if [ "$(cat "$d/name" 2>/dev/null)" = "nct6798" ]; then
@@ -71,6 +64,20 @@ in {
           if [ -z "$hw" ]; then
             echo "fan-set: no nct6798 hwmon found (is nct6775 loaded?)" >&2
             exit 1
+          fi
+          if [ "$duty" = "auto" ]; then
+            # Release a manual override: pwm2_enable=5 is the chip's own
+            # SmartFan closed loop (temp-driven), the closest thing to
+            # handing control back to the board.
+            echo 5 > "$hw/pwm2_enable"
+            exit 0
+          fi
+          if ! [[ "$duty" =~ ^[0-9]+$ ]] || [ "$duty" -gt 255 ]; then
+            echo "fan-set: duty must be an integer 0-255 or 'auto', got '$duty'" >&2
+            exit 1
+          fi
+          if [ "$duty" -lt 64 ]; then
+            duty=64
           fi
           echo 1 > "$hw/pwm2_enable"
           echo "$duty" > "$hw/pwm2"

@@ -49,4 +49,20 @@ PluginSettings {
         placeholder: "(bundled ene-fanctl)"
         defaultValue: ""
     }
+
+    StringSetting {
+        settingKey: "fanLedCount"
+        label: "Fan LED count (calibration)"
+        description: "Physical LEDs on the ARGB ring(s), e.g. 16 per typical fan. Leave empty for auto: rainbow spans the whole header and meteor assumes 16 per fan. Cannot be auto-detected — the chip only reports header capacity. Purely cosmetic when wrong: writes past the last physical LED are ignored."
+        placeholder: "(auto)"
+        defaultValue: ""
+    }
+
+    StringSetting {
+        settingKey: "fanCount"
+        label: "ARGB fan count"
+        description: "Fans daisy-chained on the ARGB header; drives meteor's per-fan segmentation. Also not detectable (one wire to the chip)."
+        placeholder: "1"
+        defaultValue: "1"
+    }
 }
