@@ -747,6 +747,15 @@ PluginComponent {
                             contentHeight: argbCol.implicitHeight
                             boundsBehavior: Flickable.StopAtBounds
 
+                            // Layout wrapper for every control below.
+                            // MISSING WRAPPER = the great collapse: without
+                            // this ColumnLayout the controls are unmanaged
+                            // Flickable children and all pile up at (0,0).
+                            ColumnLayout {
+                                id: argbCol
+                                width: parent.width
+                                spacing: Theme.spacingS
+
                             StyledText {
                                 text: "Pattern"
                                 font.pixelSize: Theme.fontSizeSmall
@@ -1114,6 +1123,7 @@ PluginComponent {
                                         }
                                     }
                                 }
+                            }
                             }
                     }
 
