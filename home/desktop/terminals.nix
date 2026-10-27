@@ -20,7 +20,10 @@
       local act = wezterm.action;
       local config = wezterm.config_builder();
 
-      config.font = wezterm.font("Maple Mono NF CN");
+      -- explicit symbol fallback: Maple Mono NF CN has no U+23F4-23F7 (e.g.
+      -- the "⏵⏵" in Claude Code's footer) and wezterm nightly 2026-10-10's
+      -- runtime fontconfig fallback misses them, firing the Font problem toast
+      config.font = wezterm.font_with_fallback({ "Maple Mono NF CN", "Noto Sans Symbols 2", "Unifont" });
       config.color_scheme = "catppuccin-macchiato";
       config.window_close_confirmation = "NeverPrompt";
       config.scrollback_lines = 10000;

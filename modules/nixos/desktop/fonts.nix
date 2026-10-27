@@ -10,6 +10,8 @@
 
   fonts.packages = with pkgs; [
     harmonyos-sans
+    # full Noto set (Sans Symbols 2 etc.) for terminals.nix's wezterm symbol fallback
+    noto-fonts
     noto-fonts-cjk-sans
     noto-fonts-cjk-serif
   ];
