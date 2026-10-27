@@ -70,11 +70,25 @@ final: prev: {
         # NOTE: do NOT try to expose the host's /etc/xdg (fcitx5
         # classicui.conf for theming) inside this sandbox: replacing the
         # rootfs's copy breaks WeChat login outright (login webview hangs).
-        # If theming is ever revisited, the lever is a user-level
-        # ~/.config/fcitx5/conf/classicui.conf — /home is bound wholesale.
+        # Theming rides the user-level
+        # ~/.config/fcitx5/conf/classicui.conf (/home is bound wholesale).
+        #
+        # QT_IM_MODULE=text-input-unstable-v3 instead of the Flathub-style
+        # QT_IM_MODULE=fcitx: the latter activates WeChat's built-in fcitx
+        # D-Bus frontend, whose candidate panel is drawn in-process in a
+        # hardcoded default style — the binary's minimal classicui reader
+        # parses theme.conf but has no SVG rasterizer (links neither
+        # Qt/GTK nor librsvg), so every SVG-based theme (catppuccin,
+        # mellow) falls back to the built-in look, and feeding theme data
+        # through /usr/share or XDG data paths does not change that (all
+        # four lookup locations were supplied and the panel stayed gray).
+        # text-input-v3 routes composition through the compositor to
+        # fcitx5's input-method frontend, so the candidate panel is
+        # fcitx5's own classic UI and follows the configured theme like in
+        # every other application.
         postBuild = ''
           wrapProgram $out/bin/wechat \
-            --run 'case "$XMODIFIERS" in *fcitx*) export QT_IM_MODULE=fcitx GTK_IM_MODULE=fcitx ;; esac'
+            --run 'case "$XMODIFIERS" in *fcitx*) export QT_IM_MODULE=text-input-unstable-v3 ;; esac'
         '';
       }
     else

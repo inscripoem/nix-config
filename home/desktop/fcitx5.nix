@@ -10,10 +10,12 @@
 # addon declared in modules/nixos/desktop/input-method.nix
 # (catppuccin-fcitx5 stays there as an instant-rollback alternative).
 #
-# The dark variant is pinned directly on Theme= instead of using the
-# DarkTheme/UseDarkTheme follow-system keys: WeChat's embedded panel
-# reader is not known to implement those, so Theme= must carry the dark
-# variant for it to render the same look.
+# The dark variant is pinned directly on Theme= rather than using the
+# DarkTheme/UseDarkTheme follow-system keys. The panel is fcitx5's own
+# classic UI in every application — WeChat included, since its wrapper
+# switches composition to text-input-v3 (see pkgs/default.nix; WeChat's
+# self-drawn panel ignores theme data entirely) — so this one key decides
+# the look everywhere.
 {
   xdg.configFile."fcitx5/conf/classicui.conf".text = ''
     Font="Sans 13"
