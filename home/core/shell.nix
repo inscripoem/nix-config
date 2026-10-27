@@ -1,4 +1,4 @@
-{ config, pkgs, lib, hostSpec ? { }, ... }:
+{ config, pkgs, lib, ... }:
 
 let
   isDarwin = pkgs.stdenv.hostPlatform.isDarwin;

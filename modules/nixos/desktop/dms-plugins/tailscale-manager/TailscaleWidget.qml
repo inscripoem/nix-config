@@ -50,11 +50,11 @@ PluginComponent {
 
     Process {
         id: statusProcess
-        stdout: StdioCollector {}
+        stdout: StdioCollector { id: statusStdout }
         stderr: StdioCollector {}
 
         onExited: function(exitCode, exitStatus) {
-            var stdout = String(statusProcess.stdout.text || "").trim();
+            var stdout = String(statusStdout.text || "").trim();
 
             if (exitCode === 0 && stdout && stdout.length > 0) {
                 try {
@@ -222,7 +222,7 @@ PluginComponent {
 
     popoutContent: Component {
         PopoutComponent {
-            id: popoutRoot
+            id: popout
             headerText: "Tailscale"
             detailsText: root.tailscaleRunning
                 ? "Connected" + (root.showPeerCount && root.peerCount > 0 ? " · " + root.peerCount + " devices" : "")
@@ -233,7 +233,7 @@ PluginComponent {
                 width: parent.width - Theme.spacingM * 2
                 anchors.horizontalCenter: parent.horizontalCenter
                 daemon: root
-                popoutRoot: popoutRoot
+                popoutRoot: popout
             }
         }
     }

@@ -198,11 +198,11 @@ PluginComponent {
                 return;
             }
             try {
-                var data = JSON.parse(xhr.responseText);
+                const data = JSON.parse(xhr.responseText);
                 statusFileAlive = true;
                 serviceActive = true;
                 syncState = jsonToState(data);
-                var ok = parseTs(data.sync && data.sync.last_successful_sync_at);
+                const ok = parseTs(data.sync && data.sync.last_successful_sync_at);
                 if (ok)
                     lastCheck = ok;
             } catch (e) {
