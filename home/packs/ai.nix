@@ -352,6 +352,20 @@ in {
         Icon=magpie
         Terminal=false
       '';
+
+      # magpie self-registers its magpie:// scheme by rewriting
+      # ~/.local/share/applications/magpie.desktop on every fresh launch,
+      # exec'ing its own raw ELF path; that user-dir copy shadows the package
+      # entry, and the DMS launcher reads user-dir first. Take the file over
+      # declaratively so every switch refreshes the store path, and let
+      # magpie's rewrites lose: a plain write through the HM symlink hits the
+      # read-only store, and a rename-style atomic write only replaces the
+      # symlink with a bare-Exec copy — harmless since the ELF carries
+      # RUNPATH and is bare-executable (see pkgs/magpie.nix).
+      xdg.dataFile."applications/magpie.desktop" = {
+        source = "${pkgs.magpie}/share/applications/magpie.desktop";
+        force = true;
+      };
     })
 
     (lib.mkIf cfg.cc-switch.enable {
