@@ -136,6 +136,8 @@ Item {
                     model: [{ "owner": "", "count": root.totalCount }].concat(root.options)
 
                     delegate: Rectangle {
+                        id: delegateRoot
+
                         required property var modelData
                         readonly property bool isSelected: modelData.owner === root.current
                         width: parent.width
@@ -158,14 +160,14 @@ Item {
                                 name: "check"
                                 size: 14
                                 color: Theme.primary
-                                visible: parent.parent.isSelected
+                                visible: delegateRoot.isSelected
                                 anchors.verticalCenter: parent.verticalCenter
                             }
 
                             StyledText {
                                 text: root.labelFor(modelData.owner)
                                 font.pixelSize: Theme.fontSizeSmall
-                                color: parent.parent.isSelected ? Theme.primary : Theme.surfaceText
+                                color: delegateRoot.isSelected ? Theme.primary : Theme.surfaceText
                                 elide: Text.ElideRight
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: parent.width - checkIcon.width - row2Count.width - parent.spacing * 2
