@@ -362,16 +362,29 @@ in {
           # to signal a non-retryable failure.
           RestartForceExitStatus = 75;
           RestartPreventExitStatus = 78;
-          # SIGTERM drains in-flight agent turns and can outlast any generous
-          # timeout (210s still ended in SIGKILL while blocking, and failing,
-          # the whole home-manager activation). ExecStop takes the upstream
-          # CLI path: it marks a planned stop, spends its own 90s client
-          # bound, and the remainder of the 150s budget stays for a clean
-          # drain before systemd escalates to SIGKILL.
-          ExecStop = "${hermesPkg}/bin/hermes gateway stop";
+          # ExecStop takes the upstream CLI path: it marks a planned stop,
+          # then the budget below waits for a clean drain before systemd
+          # escalates to SIGKILL. The drain never finished within 90s in
+          # any of 6 recorded stops (2026-10-27, even with the network up),
+          # so the budget is capped tight; a generous one once blocked and
+          # failed a whole home-manager activation (210s and still SIGKILL).
+          #
+          # A system shutdown stops the user session and the network in
+          # parallel, so the drain can never deliver anything there; while
+          # the system manager is already stopping, kill the daemon
+          # outright instead. The ExecStartPre flock check clears the
+          # stale host record this leaves on next start.
+          ExecStop = pkgs.writeShellScript "hermes-gateway-stop" ''
+            state="$(${pkgs.systemd}/bin/systemctl is-system-running 2>/dev/null)" || true
+            if [ "$state" = stopping ]; then
+              kill -KILL "$MAINPID" 2>/dev/null || true
+              exit 0
+            fi
+            exec ${hermesPkg}/bin/hermes gateway stop
+          '';
           KillMode = "mixed";
           KillSignal = "SIGTERM";
-          TimeoutStopSec = 150;
+          TimeoutStopSec = 30;
           StandardOutput = "journal";
           StandardError = "journal";
         };

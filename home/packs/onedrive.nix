@@ -54,6 +54,12 @@ in {
           Restart = "on-failure";
           RestartSec = 15;
           RestartPreventExitStatus = 78;
+          # At shutdown the network is already going down, so "wait for the
+          # current sync to finish" can never succeed there and only stalled
+          # the User Manager stop job for the 90s default (2026-10-27).
+          # The client is crash-safe (*.partial is in skip_file, uploads
+          # resume), so escalate to SIGKILL quickly.
+          TimeoutStopSec = 15;
         };
         Install.WantedBy = [ "default.target" ];
       };
