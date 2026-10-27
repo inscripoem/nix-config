@@ -2,11 +2,11 @@
 
 python3Packages.buildPythonPackage (finalAttrs: {
   pname = "ww-manager";
-  version = "2.3.1";
+  version = "2.3.2";
 
   src = fetchurl {
     url = "https://pypi.io/packages/source/w/ww-manager/ww_manager-${finalAttrs.version}.tar.gz";
-    hash = "sha256-QT7Z+50wng6HOFG4wb2dNCcIR3oHw4qttBAYCSO7ZgE=";
+    hash = "sha256-o3YWaf3gZZaEAgZT+dMevXTZfAwGXXk9TutdbWUguRs=";
   };
 
   pyproject = true;
@@ -21,6 +21,7 @@ python3Packages.buildPythonPackage (finalAttrs: {
     requests
     rich
     typing-extensions
+    prompt-toolkit
   ];
 
   pythonImportsCheck = [
