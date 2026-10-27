@@ -210,17 +210,24 @@ PluginComponent {
         if (pattern === "rainbow") {
             // Auto (no --leds) spans the whole header, so any physical
             // LED count is covered; calibration just tightens the loop.
-            var r = "'" + fanctlBin + "' anim-daemon rainbow " + hz;
+            // The daemon generates its own colors (upstream ignores
+            // --colors there), so brightness reaches it as --scale,
+            // applied on the patched fanctl's HSV value channel.
+            var r = "'" + fanctlBin + "' anim-daemon rainbow " + hz
+                + " --scale " + (brightness / 100);
             if (fanLedCount > 0)
                 r += " --leds " + fanLedCount;
             return ["sh", "-c", r + " 2>&1"];
         }
         // Meteor segments per fan, so it needs the calibration; the
-        // 16-per-fan fallback is upstream's own convention.
+        // 16-per-fan fallback is upstream's own convention. Same
+        // --scale story as rainbow: the daemon paints with its own
+        // palette, so brightness must be handed over explicitly.
         var leds = fanLedCount > 0 ? fanLedCount : 16 * fanCount;
         return ["sh", "-c",
             "'" + fanctlBin + "' anim-daemon meteor " + mhz
             + " --leds " + leds + " --fans " + fanCount
+            + " --scale " + (brightness / 100)
             + " --speed " + speed + " 2>&1"];
     }
 

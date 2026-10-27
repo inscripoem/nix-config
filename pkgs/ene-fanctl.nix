@@ -15,10 +15,26 @@
 # LD_LIBRARY_PATH set, because find_library ignores it entirely on
 # Linux. The bin wrapper patches find_library to the store path before
 # exec'ing the upstream script.
+#
+# ene-fanctl-scale.patch adds `--scale <0..1>` to anim-daemon: upstream
+# hardcodes full HSV value for rainbow and ignores --colors there, so
+# the DMS plugin's brightness slider would be a no-op for it. The patch
+# scales rainbow via the V channel and meteor via its final channel
+# bytes; breathing is untouched (the plugin already bakes brightness
+# into its --colors). Patch targets the pinned rev; refresh it when the
+# rev moves.
+#
+# ene-fanctl-no-park.patch strips upstream's "park at dark on exit":
+# the plugin restarts the daemon on every brightness/pattern change,
+# and the park shows up as a visible black flash between the killed and
+# the replacement daemon. With the park gone the last frame freezes
+# until the new daemon takes over; Off/restore write black explicitly
+# and never relied on the park. Same rev-pinning caveat as above.
 {
   lib,
   fetchFromGitHub,
   libusb1,
+  patch,
   python3,
   runCommand,
 }:
@@ -43,6 +59,8 @@ runCommand "ene-fanctl-${version}"
 ''
   mkdir -p $out/bin $out/share/ene-fanctl
   cp ${src}/ene_fanctl.py $out/share/ene-fanctl/
+  ${patch}/bin/patch $out/share/ene-fanctl/ene_fanctl.py < ${./ene-fanctl-scale.patch}
+  ${patch}/bin/patch $out/share/ene-fanctl/ene_fanctl.py < ${./ene-fanctl-no-park.patch}
 
   cat > $out/bin/ene-fanctl <<EOF
 #!${pyEnv}/bin/python3

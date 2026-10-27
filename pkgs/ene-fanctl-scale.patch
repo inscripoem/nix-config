@@ -1,0 +1,52 @@
+--- a/ene_fanctl.py
++++ b/ene_fanctl.py
+@@ -111,7 +111,8 @@
+     return int(r * 255), int(gg * 255), int(b * 255)
+ 
+ def anim_daemon(mode, hz, led_limit=None, palette=((0xA0, 0x20, 0xFF)),
+-                fans=3, per_fan=None, speed_mult=1.0):
++                fans=3, per_fan=None, speed_mult=1.0, scale=1.0):
++    scale = max(0.0, min(1.0, scale))
+     stop = [0]
+     signal.signal(signal.SIGTERM, lambda *a: stop.__setitem__(0, 1))
+     signal.signal(signal.SIGINT, lambda *a: stop.__setitem__(0, 1))
+@@ -136,7 +137,7 @@
+                     put(buf, i, int(cr * level), int(cg * level), int(cb * level))
+             elif mode == "rainbow":
+                 for i in range(n):
+-                    put(buf, i, *hsv2rgb_byte(t * 0.12 + i / max(n, 1), 1.0, 1.0))
++                    put(buf, i, *hsv2rgb_byte(t * 0.12 + i / max(n, 1), 1.0, scale))
+             elif mode == "static":
+                 # keep-alive static fill: full RAM rewrite + strobe commit every
+                 # cycle. The LED engine sleeps ~1-2 min after a one-shot stroke
+@@ -173,9 +174,9 @@
+                             fi = (1.0 - dd / TAIL) ** 2.0
+                             is_head = dd < 1.2
+                             put(buf, seg + k,
+-                                min(255, int(cr * fi) + (150 if is_head else 0)),
+-                                int(cg * fi),
+-                                min(255, int(cb * fi) + (150 if is_head else 0)))
++                                int(min(255, int(cr * fi) + (150 if is_head else 0)) * scale),
++                                int(int(cg * fi) * scale),
++                                int(min(255, int(cb * fi) + (150 if is_head else 0)) * scale))
+             write_leds(dev, gs, g, buf, prev[g])
+             prev[g][:] = buf
+         elapsed = time.time() - frame_t
+@@ -200,6 +201,8 @@
+             opts["fans"] = int(argv[i + 1]); i += 2
+         elif argv[i] == "--speed":
+             opts["speed"] = float(argv[i + 1]); i += 2
++        elif argv[i] == "--scale":
++            opts["scale"] = float(argv[i + 1]); i += 2
+         elif argv[i] == "--colors":
+             opts["colors"] = [int(c, 16) for c in argv[i + 1].split(",")]; i += 2
+         else:
+@@ -286,7 +289,7 @@
+             pal = ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF)
+         anim_daemon(mode, hz, opts["leds"], pal,
+                     fans=opts.get("fans", 3), per_fan=opts.get("per_fan"),
+-                    speed_mult=opts.get("speed", 1.0))
++                    speed_mult=opts.get("speed", 1.0), scale=opts.get("scale", 1.0))
+         return
+     if cmd == "mode":
+         apply_mode(argv[1], opts)

@@ -1,0 +1,20 @@
+--- a/ene_fanctl.py
++++ b/ene_fanctl.py
+@@ -181,9 +181,14 @@
+         elapsed = time.time() - frame_t
+         if elapsed < period:
+             time.sleep(period - elapsed)
+-    # park at dark on exit
+-    for g, n in enumerate(gs):
+-        write_leds(dev, gs, g, bytearray(n * 3))
++    # NOTE: upstream parks the LEDs to black on exit here; stripped in
++    # NixOS packaging — the DMS plugin restarts the daemon on every
++    # brightness/pattern change, and the park turn shows up as a visible
++    # black flash. Killing the daemon now freezes the last frame until
++    # the replacement daemon's first frame lands (or it decays on the
++    # chip's own 1-2 min strobe window after a hard crash, which is a
++    # better failure mode). Off/restore paths write black explicitly and
++    # never relied on the park.
+     try:
+         dev.attach_kernel_driver(1)
+     except Exception:
