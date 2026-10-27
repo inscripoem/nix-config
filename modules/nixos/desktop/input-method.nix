@@ -89,11 +89,13 @@ in
         '';
       }))
       catppuccin-fcitx5
+      fcitx5-mellow-themes
     ];
     # Classicui theming (Theme/Font) deliberately lives at the USER level
     # in home/desktop/fcitx5.nix: WeChat's client-side candidate panel only
     # reads ~/.config/fcitx5, so the user file is the single source of
-    # truth. This module only ships the theme data via the addon above.
+    # truth. This module only ships the theme data via the addons above
+    # (fcitx5-mellow-themes active, catppuccin-fcitx5 kept for rollback).
   };
 
   environment.systemPackages = [ vinput ];

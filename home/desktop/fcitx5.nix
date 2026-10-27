@@ -6,11 +6,17 @@
 # /etc/xdg copy never reaches it (and exposing /etc/xdg into its bwrap
 # sandbox breaks WeChat login outright; see the wechat overlay in
 # pkgs/default.nix). This file is the single source of truth for
-# Theme/Font; the theme data itself comes from the catppuccin-fcitx5
-# addon declared in modules/nixos/desktop/input-method.nix.
+# Theme/Font; the theme data itself comes from the fcitx5-mellow-themes
+# addon declared in modules/nixos/desktop/input-method.nix
+# (catppuccin-fcitx5 stays there as an instant-rollback alternative).
+#
+# The dark variant is pinned directly on Theme= instead of using the
+# DarkTheme/UseDarkTheme follow-system keys: WeChat's embedded panel
+# reader is not known to implement those, so Theme= must carry the dark
+# variant for it to render the same look.
 {
   xdg.configFile."fcitx5/conf/classicui.conf".text = ''
     Font="Sans 13"
-    Theme=catppuccin-mocha-mauve
+    Theme=mellow-wechat-dark
   '';
 }
