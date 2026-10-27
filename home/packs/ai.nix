@@ -168,7 +168,10 @@ in {
     # its own git worktree. Same "bring your own agent" model as the CLIs
     # above, so it belongs in this pack rather than desktop.editors-gui.
     # Taken from the llm-agents input (deb-based build); version bumps ride
-    # flake updates instead of update-versions.sh.
+    # flake updates instead of update-versions.sh. The Linux build carries
+    # a local close-to-tray patch (upstream gates all tray plumbing on
+    # win32/darwin); its anchors live in pkgs/orca-tray.py and fail the
+    # build when an llm-agents update reshuffles the asar.
     orca.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -304,7 +307,19 @@ in {
     })
 
     (lib.mkIf cfg.orca.enable {
-      home.packages = [ agentPkgs.orca ];
+      home.packages = [
+        # Linux-only close-to-tray patch: hide on close, tray icon to
+        # restore/quit, daemon and running sessions stay alive. Darwin
+        # keeps the stock llm-agents build (air uses the brew cask anyway).
+        (if pkgs.stdenv.hostPlatform.isLinux then
+          agentPkgs.orca.overrideAttrs (old: {
+            nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.python3 ];
+            postInstall = (old.postInstall or "") + ''
+              python3 ${../../pkgs/orca-tray.py} $out/lib/Orca/resources/app.asar
+            '';
+          })
+        else agentPkgs.orca)
+      ];
     })
 
     (lib.mkIf cfg.dsh.enable {
