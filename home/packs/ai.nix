@@ -327,8 +327,31 @@ in {
       ];
     })
 
-    (lib.mkIf cfg.magpie.enable {
+    (lib.mkIf (cfg.magpie.enable && pkgs.stdenv.hostPlatform.isLinux) {
       home.packages = [ pkgs.magpie ];
+
+      # XDG autostart of `magpie tray` — the windowless app process that
+      # hosts the translating gateway on 127.0.0.1:3425; the window only
+      # opens on demand from that same instance. Verified 2026-10-27: any
+      # later `magpie` launch probes the gateway first and defers (exit 0,
+      # no second process), so tray-at-login never races the GUI and two
+      # gateways cannot coexist. A headless `magpie serve` unit was rejected
+      # for exactly that reason: with serve holding 3425 the launcher's
+      # launch defers and exits, leaving no app instance to open a window.
+      # Do NOT reach for `magpie autostart on` / `magpie daemon install`
+      # either: both write ~/.config or a unit imperatively and bake the
+      # then-current store path into Exec (same failure mode as workbuddy's
+      # setLoginItemSettings below). Tray registration ordering after DMS
+      # comes free from the global app-@autostart drop-in in
+      # home/desktop/niri.nix.
+      xdg.configFile."autostart/magpie-tray.desktop".text = ''
+        [Desktop Entry]
+        Type=Application
+        Name=magpie tray
+        Exec=${pkgs.magpie}/bin/magpie tray
+        Icon=magpie
+        Terminal=false
+      '';
     })
 
     (lib.mkIf cfg.cc-switch.enable {
