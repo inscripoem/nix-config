@@ -183,6 +183,28 @@ in {
       default = false;
       description = "dsh (DeepSeek Harness) desktop app, opt-in per host";
     };
+
+    # Opt-in extra: magpie — provider/model switcher for every agent via a
+    # local translating gateway on 127.0.0.1:3425. Self-packaged from
+    # upstream release binaries; update track is update-versions.sh. It and
+    # cc-switch below both rewrite the agent config files they manage
+    # (~/.claude/settings.json, ~/.codex/config.toml) — let only one of them
+    # switch providers on a given host, or the last writer wins.
+    magpie.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "magpie agent-model switcher, opt-in per host";
+    };
+
+    # Opt-in extra: cc-switch — provider switcher GUI that rewrites Claude
+    # Code / Codex configs directly. Migrated out of the desktop group
+    # (2026-10-27), where it shipped unconditionally to every desktop host;
+    # briefcase and vm, the two desktop hosts, now enable it explicitly.
+    cc-switch.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "cc-switch provider switcher, opt-in per host";
+    };
   };
 
   config = lib.mkMerge [
@@ -303,6 +325,14 @@ in {
         dshCliPkg
         dshTuiLauncherPkg
       ];
+    })
+
+    (lib.mkIf cfg.magpie.enable {
+      home.packages = [ pkgs.magpie ];
+    })
+
+    (lib.mkIf cfg.cc-switch.enable {
+      home.packages = [ pkgs."cc-switch" ];
     })
 
     # Declarative replacement for the gateway unit that `hermes gateway

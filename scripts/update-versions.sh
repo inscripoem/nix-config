@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Update workbuddy, cc-switch, siyuan, ww-manager, notion-electron,
+# Update workbuddy, cc-switch, magpie, siyuan, ww-manager, notion-electron,
 # zcode-cli and dsh-tui-launcher to their latest upstream versions, update
 # wechat, and align the qq version pin with the linuxqq-wayland-fix input.
 # Usage:
@@ -8,9 +8,9 @@
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {workbuddy,cc-switch,siyuan,ww-manager,notion-electron,zcode-cli,dsh-tui-launcher,wechat,qq}.
+#                          {workbuddy,cc-switch,magpie,siyuan,ww-manager,notion-electron,zcode-cli,dsh-tui-launcher,wechat,qq}.
 #                          `notion` is accepted as an alias for notion-electron.
-#                          Defaults to all nine.
+#                          Defaults to all ten.
 #
 # Requirements: curl, jq, git, nix (flakes), nix-prefetch-url, sed
 
@@ -225,6 +225,71 @@ if should_update "cc-switch"; then
       changed=true
     else
       echo "    [dry-run] would update to $cc_version"
+    fi
+  fi
+fi
+
+# ── magpie ───────────────────────────────────────────────────────────
+
+if should_update "magpie"; then
+  echo ""
+  echo "==> Checking magpie ..."
+  # /latest by design (Captain's call, 2026-10-27): upstream re-edits old
+  # releases, which can skew its timestamp-based pick behind the newest tag
+  # for one release cycle (2026-10-27: it returned v0.1.1720 while
+  # v0.1.1722 existed; we pinned 1722 manually). Self-heals at the next
+  # publish. Beware: running this update before that next publish would
+  # "update" the pin back to the skewed /latest pick.
+  if command -v gh &>/dev/null; then
+    mg_version=$(gh api repos/yetone/magpie-releases/releases/latest --jq '.tag_name' | sed 's/^v//')
+  else
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+      mg_json=$(curl -sf --max-time 10 -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/yetone/magpie-releases/releases/latest" || true)
+    else
+      mg_json=$(curl -sf --max-time 10 "https://api.github.com/repos/yetone/magpie-releases/releases/latest" || true)
+    fi
+    if [[ -z "$mg_json" ]]; then
+      echo "    ERROR: Failed to reach GitHub API. Check your network or set GITHUB_TOKEN."
+      exit 1
+    fi
+    if echo "$mg_json" | jq -e '.message' >/dev/null 2>&1; then
+      echo "    ERROR: GitHub API request failed: $(echo "$mg_json" | jq -r '.message')"
+      echo "    Try again later, set GITHUB_TOKEN, or install gh CLI."
+      exit 1
+    fi
+    mg_version=$(echo "$mg_json" | jq -r '.tag_name' | sed 's/^v//')
+  fi
+
+  mg_nix="$REPO_ROOT/pkgs/magpie.nix"
+  mg_current=$(grep 'version = ' "$mg_nix" | head -1 | grep -oP '[\d.]+')
+
+  echo "    current : $mg_current"
+  echo "    latest  : $mg_version"
+
+  if [[ "$mg_version" == "$mg_current" ]]; then
+    echo "    up to date."
+  else
+    echo "    updating ..."
+    if [[ "$DRY_RUN" == false ]]; then
+      x64_url="https://github.com/yetone/magpie-releases/releases/download/v${mg_version}/magpie-linux-amd64"
+      arm64_url="https://github.com/yetone/magpie-releases/releases/download/v${mg_version}/magpie-linux-arm64"
+
+      echo "    prefetching x86_64 ..."
+      x64_hash=$(prefetch_hash "$x64_url")
+      echo "    prefetching aarch64 ..."
+      arm64_hash=$(prefetch_hash "$arm64_url")
+
+      update_nix_field "$mg_nix" "version" "$mg_version"
+
+      # Update x86_64 hash (first occurrence after the amd64 URL)
+      sed -i "/magpie-linux-amd64/{n;s|hash = \".*\"|hash = \"${x64_hash}\"|;}" "$mg_nix"
+      # Update aarch64 hash (first occurrence after the arm64 URL)
+      sed -i "/magpie-linux-arm64/{n;s|hash = \".*\"|hash = \"${arm64_hash}\"|;}" "$mg_nix"
+
+      echo "    done: $mg_current → $mg_version"
+      changed=true
+    else
+      echo "    [dry-run] would update to $mg_version"
     fi
   fi
 fi

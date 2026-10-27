@@ -3,6 +3,7 @@ final: prev: {
   siyuan = final.callPackage ./siyuan.nix { };
   workbuddy = final.callPackage ./workbuddy.nix { };
   "cc-switch" = final.callPackage ./cc-switch.nix { };
+  magpie = final.callPackage ./magpie.nix { };
   notion-electron = final.callPackage ./notion-electron.nix { };
   zcode-cli = final.callPackage ./zcode-cli.nix { };
   glances = final.callPackage ./glances.nix { originalGlances = prev.glances; };

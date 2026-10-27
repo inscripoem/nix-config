@@ -20,7 +20,6 @@
     ./social.nix
     ./1password.nix
     ./glances.nix
-    ./cc-switch.nix
     ./rime.nix
     ./fcitx5.nix
     ./niri.nix
