@@ -58,7 +58,12 @@ in {
           pkgs.dwproton-bin
         ];
       };
-      environment.systemPackages = [ pkgs.steamcmd ];
+      # steam.run exposes the Steam FHS runtime as `steam-run` for arbitrary
+      # unpatched binaries; its closure is shared with programs.steam.
+      environment.systemPackages = [
+        pkgs.steamcmd
+        pkgs.steam.run
+      ];
     })
 
     (lib.mkIf cfg.gamemode.enable {

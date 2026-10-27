@@ -33,6 +33,16 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # nix-index-database - weekly prebuilt nix-index databases. The home
+    # module swaps programs.nix-index.package for a database-carrying
+    # wrapper and adds comma (`, cmd` runs software without installing),
+    # so no local `nix-index` full scan is ever needed; the database
+    # refreshes with flake update. Wired in home/core/nix-index.nix.
+    nix-index-database = {
+      url = "github:nix-community/nix-index-database";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # AI coding agents (claude-code, codex, opencode, antigravity-cli, rtk, ...).
     # Intentionally NOT following our nixpkgs: upstream pins its own
     # nixpkgs-unstable to guarantee binary-cache hits via cache.numtide.com.

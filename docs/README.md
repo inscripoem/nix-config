@@ -12,6 +12,7 @@ selection, module layout, and deployment commands.
 | Encrypted credentials | [SOPS and age](secrets.md) |
 | SSH authentication and Git signing | [1Password integration](ssh-agent.md) |
 | Shell history | [Atuin and Zsh](atuin-zsh.md) |
+| Running unpackaged software | [Ad-hoc software tools](adhoc-software.md) |
 | Chinese input | [Rime](rime-nixos.md) |
 | SiYuan packaging | [Workspace permissions](siyuan-workspace-perms.md) |
 | Remote access before login | [Sunshine and SDDM](remote-desktop.md) |

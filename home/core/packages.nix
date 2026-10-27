@@ -29,5 +29,8 @@
     ethtool
     pciutils
     usbutils
+
+    # Run downloaded .AppImage files without packaging them first
+    appimage-run
   ];
 }
