@@ -15,7 +15,10 @@
 #   --verbose       Full per-package detail (the old multi-line format).
 #   -h, --help      Show this help.
 # Output: one compact status line per package by default —
-#   ✓ up to date   ↻ updated   ⊘ skipped (would downgrade)   ⇒ dry-run preview
+#   ✓ up to date   ↗ updated   ⊘ skipped (would downgrade)   ⇒ dry-run preview
+# All four glyphs come from Maple Mono NF CN's own cmap (verified via
+# `fc-list :charset=…`); e.g. ↻ U+21BB is NOT covered and falls back to
+# Hack, which renders thin and misaligned — do not reintroduce it.
 #   followed by a one-line tally. Colors and the transient in-place
 #   "checking" label are TTY-only; piped output is plain lines.
 # Requirements: curl, jq, git, nix (flakes), nix-prefetch-url, npm, sed
@@ -95,7 +98,7 @@ pkg_bump() {
   fi
   if [[ "$is_tty" == true ]]; then printf '\r\033[K'; fi
   PENDING=false
-  printf '  %s↻%s %-18s %s\n' "$C_YELLOW" "$C_RESET" "$1" "$2"
+  printf '  %s↗%s %-18s %s\n' "$C_YELLOW" "$C_RESET" "$1" "$2"
 }
 
 pkg_skip() {
