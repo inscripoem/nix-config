@@ -11,6 +11,7 @@ let
   # apps' shipped SVGs.
   themeIcons = {
     "orca" = ./icons/orca.svg; # orca-ide's notifications send bare app_icon "orca", which collides with GNOME Orca's person icon
+    "orca-ide" = ./icons/orca.svg; # launcher/taskbar lookups go through orca-ide.desktop's Icon=; keep every surface on the same mark
     "zcode" = ./icons/zcode.svg;
     "notion-electron" = ./icons/notion.svg;
     "de.feschber.LanMouse" = ./icons/lanmouse.svg;
