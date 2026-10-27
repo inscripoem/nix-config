@@ -12,9 +12,12 @@ After **any** edit to a `*.nix` file, run at least one of:
 - `sudo nixos-rebuild dry-activate --flake .#<host>` (when touching activation / systemd / PAM)
 
 After **any** edit to QML under `modules/nixos/desktop/dms-plugins/`, run
-`just lint-qml`. The gate catches syntax errors, duplicate ids, and
-QtQuick/Quickshell API misuse; DMS-side `qs.*` types are unresolvable by
-design, so runtime behavior still needs a DMS plugin reload to confirm.
+`just lint-qml`. The gate type-checks against the locked dux-shell source:
+syntax errors, duplicate ids, member-level mismatches qmllint can prove,
+and qs.* resolution breakage all fail the run. Cross-scope id references
+inside Component/delegate bodies are exempt by style; member typos on
+qmldir-declared singletons (`Theme.*`) are a known gap. Runtime behavior
+still needs a DMS plugin reload to confirm.
 
 NixOS hosts: `briefcase` (primary), `vm`, `wyse3040`, `nutshell` (WSL).
 Darwin host: `air`.

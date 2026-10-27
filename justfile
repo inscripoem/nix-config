@@ -46,25 +46,34 @@ apply target="":
 
 # ══════════════════════════════════════════════════════════════
 # Verification — AGENTS.md §1 hard rule.
-# `just lint` chains the QML gate and deadnix. Both tools come from
+# `just lint` chains the QML gate and deadnix. All tools come from
 # this flake's locked nixpkgs input via `--inputs-from .`; no extra
 # flake input, no devShell.
-# `lint-qml` runs qmllint over every dms-plugins QML file. qmllint
+# `lint-qml` runs qmllint with FULL DMS type resolution. qmllint
 # ships inside qt6.qtdeclarative but is not its mainProgram, hence
-# the explicit store-path lookup. The two -I paths feed QtQuick and
-# Quickshell module resolution. The DMS-side `qs.*` modules are
-# baked into the dux-shell binary and can never resolve here, so
-# the only two warning categories that touch the exit code
-# (`--import`, `--unqualified`) are silenced; what remains — syntax
-# errors, duplicate ids, QtQuick/Quickshell API misuse — fails the
-# run. Property-level checking of DMS types stays a DMS-runtime
-# concern by design.
+# the explicit store-path lookup. The dux-shell source (the exact
+# tree the installed binary builds from, locked by flake.lock) is
+# staged as a writable copy because quickshell resolves `qs.*` as
+# directory imports at runtime while qmllint needs explicit qmldir
+# manifests; one qmldir per directory is synthesized (`module qs.X`
+# header, every .qml as a component, `pragma Singleton` files as
+# singletons) — the same mapping quickshell applies implicitly.
+# Strictness, tuned around empirically-verified qmllint 6.12 behavior:
+# syntax/structural errors exit non-zero on their own; missing-property
+# findings and qs.* import failures only print, so both are escalated to
+# fatal by explicit output scans below. Do NOT use `-W 0` here: combined
+# with a disabled category it exits 255 without printing the findings.
+# `--unqualified disable` silences cross-scope id references
+# (Component/delegate bodies reaching outer ids) — default QML behavior
+# and the ecosystem-wide style. Known residual gap: member typos on
+# qmldir-declared singletons (Theme.xyz) are not detected; runtime
+# behavior still needs a DMS plugin reload to confirm.
 # Generated hardware files retain upstream boilerplate. The scan path
 # precedes `--exclude` because deadnix consumes all following values.
 # `just check` evaluates every NixOS and Darwin host, or one named host.
 # `just dry-run <host>` previews build requirements without activation.
 # ══════════════════════════════════════════════════════════════
-# Syntax-check all DMS plugin QML files using the locked nixpkgs.
+# Syntax-check all DMS plugin QML files with full DMS type resolution.
 lint-qml:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -72,14 +81,47 @@ lint-qml:
         --inputs-from . 'nixpkgs#qt6.qtdeclarative')
     qsh=$(nix build --no-warn-dirty --no-link --print-out-paths \
         --inputs-from . 'nixpkgs#quickshell')
+    dms=$(nix build --no-warn-dirty --no-link --print-out-paths \
+        --inputs-from . 'nixpkgs#dux-shell.src')
+    stage=$(mktemp -d)
+    trap 'rm -rf "$stage"' EXIT
+    cp -rL "$dms/quickshell" "$stage/qs"
+    chmod -R u+w "$stage/qs"
     shopt -s nullglob
+    for dir in $(find "$stage/qs" -type d); do
+        entries="module qs$(printf '%s' "${dir#"$stage/qs"}" | sed 's|/|.|g')"
+        for f in "$dir"/*.qml; do
+            base=$(basename "$f" .qml)
+            if grep -q "pragma Singleton" "$f"; then
+                entries+=$'\n'"singleton $base 1.0 $base.qml"
+            else
+                entries+=$'\n'"$base 1.0 $base.qml"
+            fi
+        done
+        printf '%s\n' "$entries" > "$dir/qmldir"
+    done
     files=(modules/nixos/desktop/dms-plugins/*/*.qml)
     if [[ ${#files[@]} -eq 0 ]]; then
         echo "no QML files under modules/nixos/desktop/dms-plugins" >&2
         exit 2
     fi
-    exec "$qt/bin/qmllint" -I "$qt/lib/qt-6/qml" -I "$qsh/lib/qt-6/qml" \
-        --import disable --unqualified disable "${files[@]}"
+    rc=0
+    out=$("$qt/bin/qmllint" \
+        -I "$qt/lib/qt-6/qml" -I "$qsh/lib/qt-6/qml" -I "$stage" \
+        --unqualified disable \
+        "${files[@]}" 2>&1) || rc=$?
+    [[ -z "$out" ]] || printf '%s\n' "$out"
+    if [[ $rc -ne 0 ]]; then
+        exit "$rc"
+    fi
+    if grep -q '\[missing-property\]' <<<"$out"; then
+        echo "lint-qml: FAIL (member-level findings above)" >&2
+        exit 1
+    fi
+    if grep -q 'Failed to import qs\.' <<<"$out"; then
+        echo "lint-qml: FAIL (qs.* imports unresolved — dux-shell staging drifted)" >&2
+        exit 1
+    fi
 
 # Check unused Nix declarations, then the QML gate above.
 lint: lint-qml
