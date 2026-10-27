@@ -7,7 +7,6 @@ final: prev: {
   notion-electron = final.callPackage ./notion-electron.nix { };
   zcode-cli = final.callPackage ./zcode-cli.nix { };
   glances = final.callPackage ./glances.nix { originalGlances = prev.glances; };
-  rebarstate = final.callPackage ./rebarstate.nix { };
   dsh-tui-launcher = final.callPackage ./dsh-tui-launcher.nix { };
   ene-fanctl = final.callPackage ./ene-fanctl.nix { };
 

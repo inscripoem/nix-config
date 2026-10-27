@@ -18,9 +18,8 @@ available for hardware changes.
 | `intel-compute-runtime` | OpenCL and Level Zero |
 | `hardware.intel-gpu-tools.enable` | GPU monitoring integration |
 
-The host enables redistributable firmware. The profile also installs
-`nvtopPackages.intel` and `rebarstate`; the latter only applies when the firmware
-has the ReBarUEFI component. Recheck kernel support and actual initialization
+The host enables redistributable firmware. The profile installs
+`nvtopPackages.intel`. Recheck kernel support and actual initialization
 logs before changing GuC/HuC settings.
 
 See [idle hangs](hard-hang-cstate.md) and [power observations](intel-arc-a380-power.md)

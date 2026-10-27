@@ -43,6 +43,13 @@ The user runs `nhs` themselves. Don't trigger a real rebuild unsolicited.
 - `docs/` — long-form rationale for non-obvious decisions (e.g. `docs/nvidia.md`).
   Consult before touching the related config; update when you change the
   decision it documents.
+- Every package added to `pkgs/` MUST ship with an update mechanism in
+  `scripts/update-versions.sh` (auto-bump section; for commit-pinned
+  sources with local patches, a section that tracks upstream HEAD and
+  re-fetches the hash — patches are validated at build time). Follows are
+  the only exception: nixpkgs overrides that ride the flake's nixpkgs
+  input need no section. State the mechanism in the package's `.nix`
+  header comment.
 
 ## 3. Git policy
 

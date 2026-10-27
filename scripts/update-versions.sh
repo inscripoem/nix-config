@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Update workbuddy, cc-switch, magpie, siyuan, ww-manager, notion-electron,
-# zcode-cli and dsh-tui-launcher to their latest upstream versions, update
-# wechat, and align the qq version pin with the linuxqq-wayland-fix input.
+# zcode-cli, dsh-tui-launcher and ene-fanctl to their latest upstream
+# versions, update wechat, and align the qq version pin with the
+# linuxqq-wayland-fix input.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>]
 #
 # Options:
 #   --dry-run              Show what would change without modifying files.
 #   --only=<names>         Comma-separated subset of
-#                          {workbuddy,cc-switch,magpie,siyuan,ww-manager,notion-electron,zcode-cli,dsh-tui-launcher,wechat,qq}.
+#                          {workbuddy,cc-switch,magpie,siyuan,ww-manager,notion-electron,zcode-cli,dsh-tui-launcher,ene-fanctl,wechat,qq}.
 #                          `notion` is accepted as an alias for notion-electron.
-#                          Defaults to all ten.
+#                          Defaults to all twelve.
 #
 # Requirements: curl, jq, git, nix (flakes), nix-prefetch-url, sed
 
@@ -682,6 +683,69 @@ if should_update "dsh-tui-launcher"; then
         echo "    [dry-run] would update to $dt_target"
       fi
     fi
+  fi
+fi
+
+# ── ene-fanctl ───────────────────────────────────────────────────────
+# Userspace driver for the ENE 6K7750 ARGB controller
+# (pkgs/ene-fanctl.nix). Upstream is a one-shot repo: created 2026-10-01,
+# one commit, zero stars/issues since — no releases exist, so this tracks
+# the default-branch HEAD. Two local patches
+# (pkgs/ene-fanctl-scale.patch, pkgs/ene-fanctl-no-park.patch) ride on
+# the pinned rev and are re-applied at build time; if a build fails after
+# a bump, refresh those two patches against the new source.
+
+if should_update "ene-fanctl"; then
+  echo ""
+  echo "==> Checking ene-fanctl ..."
+  ef_nix="$REPO_ROOT/pkgs/ene-fanctl.nix"
+  ef_current=$(grep -oP 'rev = "\K[0-9a-f]{40}' "$ef_nix" | head -1)
+  ef_json=""
+  ef_sha=""
+  if command -v gh &>/dev/null; then
+    ef_json=$(gh api repos/teamlocabit/ene-6k7750-rgb/commits/main 2>/dev/null) || true
+    ef_sha=$(echo "${ef_json:-}" | jq -r '.sha // empty' 2>/dev/null)
+  fi
+  if [[ -z "$ef_sha" || "$ef_sha" == "null" ]]; then
+    ef_auth=()
+    [[ -n "${GITHUB_TOKEN:-}" ]] && ef_auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+    ef_json=$(curl -sf --max-time 10 "${ef_auth[@]}" \
+      "https://api.github.com/repos/teamlocabit/ene-6k7750-rgb/commits/main") || true
+    ef_sha=$(echo "${ef_json:-}" | jq -r '.sha // empty' 2>/dev/null)
+  fi
+  if [[ -z "$ef_sha" || "$ef_sha" == "null" ]]; then
+    echo "    ERROR: could not read the HEAD sha of teamlocabit/ene-6k7750-rgb." >&2
+    exit 1
+  fi
+
+  echo "    current : ${ef_current:0:7}"
+  echo "    target  : ${ef_sha:0:7}"
+
+  # Commit shas are unordered, so there is no downgrade gate here; the
+  # equality check alone decides.
+  if [[ "$ef_sha" == "$ef_current" ]]; then
+    echo "    up to date."
+  elif [[ "$DRY_RUN" == true ]]; then
+    echo "    [dry-run] would update rev ${ef_current:0:7} → ${ef_sha:0:7}"
+    echo "    NOTE: if the next build fails, refresh pkgs/ene-fanctl-{scale,no-park}.patch against the new source."
+  else
+    echo "    updating ..."
+    ef_date=$(echo "$ef_json" | jq -r '.commit.committer.date // empty' 2>/dev/null | cut -d'T' -f1)
+    # fetchFromGitHub's hash is the unpacked-tree narHash, NOT the raw
+    # tarball hash that prefetch_hash computes — flake prefetch speaks the
+    # same hash (verified: reproduces the pinned sha256 for the current rev).
+    ef_hash=$(nix --extra-experimental-features 'nix-command flakes' flake prefetch --json \
+      "github:teamlocabit/ene-6k7750-rgb/${ef_sha}" 2>/dev/null | jq -r '.hash // empty')
+    if [[ -z "$ef_hash" ]]; then
+      echo "    ERROR: could not prefetch the source tree hash." >&2
+      exit 1
+    fi
+    update_nix_field "$ef_nix" "rev" "$ef_sha"
+    update_nix_field "$ef_nix" "hash" "$ef_hash"
+    [[ -n "$ef_date" ]] && update_nix_field "$ef_nix" "version" "0-unstable-${ef_date}"
+    echo "    done: ${ef_current:0:7} → ${ef_sha:0:7}"
+    echo "    NOTE: if the next build fails, refresh pkgs/ene-fanctl-{scale,no-park}.patch against the new source."
+    changed=true
   fi
 fi
 
