@@ -23,6 +23,15 @@ neutral comparisons so Linux joins the win32 tray path:
      session bus (libayatana-appindicator is already on the RUNPATH),
      close hides the window and keeps the daemon alive, and a second
      launch restores the window via the second-instance path.
+  5. The tray click line keeps its win32 gate otherwise: the linux build
+     would never set a tooltip nor attach the click handler, leaving the
+     SNI item mute. Un-gating it to linux makes a single left-click on
+     the DMS tray icon call Activate -> Electron's Tray click event ->
+     onOpen, restoring the hidden window (verified by calling Activate
+     over D-Bus on a hidden window). The tooltip text is "Orca"; note
+     Electron's appindicator backend does not surface it as the SNI
+     Title property, so hosts keep showing the cosmetic Id
+     "Orca_status_icon_1".
 
 Quit still works: the tray menu's Quit sets isQuitting first, and the
 close handler short-circuits on getIsQuitting() before the hide branch.
@@ -62,6 +71,14 @@ PATCHES = [
     (
         b"s?.getSettings().minimizeToTrayOnClose!==!0",
         b"!!1&&s?.getSettings().minimizeToTrayOnClose",
+    ),
+    # Tray click/tooltip line — attach click handler on Linux too, so a
+    # left-click on the tray icon (SNI Activate) restores the window.
+    # Semantically this removes tooltip+click from win32, which never runs
+    # this Linux-only build; darwin takes the mCe() branch either way.
+    (
+        b"process.platform===`win32`?(Zd.setToolTip(rf())",
+        b"process.platform===`linux`?(Zd.setToolTip(rf())",
     ),
 ]
 
