@@ -46,15 +46,43 @@ apply target="":
 
 # ══════════════════════════════════════════════════════════════
 # Verification — AGENTS.md §1 hard rule.
-# `just lint` checks for unused Nix declarations with the deadnix
-# package from this flake's locked nixpkgs input.
+# `just lint` chains the QML gate and deadnix. Both tools come from
+# this flake's locked nixpkgs input via `--inputs-from .`; no extra
+# flake input, no devShell.
+# `lint-qml` runs qmllint over every dms-plugins QML file. qmllint
+# ships inside qt6.qtdeclarative but is not its mainProgram, hence
+# the explicit store-path lookup. The two -I paths feed QtQuick and
+# Quickshell module resolution. The DMS-side `qs.*` modules are
+# baked into the dux-shell binary and can never resolve here, so
+# the only two warning categories that touch the exit code
+# (`--import`, `--unqualified`) are silenced; what remains — syntax
+# errors, duplicate ids, QtQuick/Quickshell API misuse — fails the
+# run. Property-level checking of DMS types stays a DMS-runtime
+# concern by design.
 # Generated hardware files retain upstream boilerplate. The scan path
 # precedes `--exclude` because deadnix consumes all following values.
 # `just check` evaluates every NixOS and Darwin host, or one named host.
 # `just dry-run <host>` previews build requirements without activation.
 # ══════════════════════════════════════════════════════════════
-# Check unused Nix declarations using the locked nixpkgs input.
-lint:
+# Syntax-check all DMS plugin QML files using the locked nixpkgs.
+lint-qml:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    qt=$(nix build --no-warn-dirty --no-link --print-out-paths \
+        --inputs-from . 'nixpkgs#qt6.qtdeclarative')
+    qsh=$(nix build --no-warn-dirty --no-link --print-out-paths \
+        --inputs-from . 'nixpkgs#quickshell')
+    shopt -s nullglob
+    files=(modules/nixos/desktop/dms-plugins/*/*.qml)
+    if [[ ${#files[@]} -eq 0 ]]; then
+        echo "no QML files under modules/nixos/desktop/dms-plugins" >&2
+        exit 2
+    fi
+    exec "$qt/bin/qmllint" -I "$qt/lib/qt-6/qml" -I "$qsh/lib/qt-6/qml" \
+        --import disable --unqualified disable "${files[@]}"
+
+# Check unused Nix declarations, then the QML gate above.
+lint: lint-qml
     nix run --no-warn-dirty --inputs-from . 'nixpkgs#deadnix' -- \
         --fail \
         . \

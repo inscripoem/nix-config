@@ -11,6 +11,11 @@ After **any** edit to a `*.nix` file, run at least one of:
 - `nix build --no-link --dry-run .#nixosConfigurations.<host>.config.system.build.toplevel` (when touching packages / overlays)
 - `sudo nixos-rebuild dry-activate --flake .#<host>` (when touching activation / systemd / PAM)
 
+After **any** edit to QML under `modules/nixos/desktop/dms-plugins/`, run
+`just lint-qml`. The gate catches syntax errors, duplicate ids, and
+QtQuick/Quickshell API misuse; DMS-side `qs.*` types are unresolvable by
+design, so runtime behavior still needs a DMS plugin reload to confirm.
+
 NixOS hosts: `briefcase` (primary), `vm`, `wyse3040`, `nutshell` (WSL).
 Darwin host: `air`.
 
