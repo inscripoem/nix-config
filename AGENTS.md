@@ -15,8 +15,9 @@ After **any** edit to QML under `modules/nixos/desktop/dms-plugins/`, run
 `just lint-qml`. The gate type-checks against the locked dux-shell source:
 syntax errors, duplicate ids, member-level mismatches qmllint can prove,
 and qs.* resolution breakage all fail the run. Cross-scope id references
-inside Component/delegate bodies are exempt by style; member typos on
-qmldir-declared singletons (`Theme.*`) are a known gap. Runtime behavior
+inside Component/delegate bodies are exempt by style. Member checking is
+partial by qmllint's limits (reliable mainly on parent-chain receivers);
+typos via ids or `Theme.*` singletons are a known gap. Runtime behavior
 still needs a DMS plugin reload to confirm.
 
 NixOS hosts: `briefcase` (primary), `vm`, `wyse3040`, `nutshell` (WSL).

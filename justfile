@@ -65,8 +65,12 @@ apply target="":
 # with a disabled category it exits 255 without printing the findings.
 # `--unqualified disable` silences cross-scope id references
 # (Component/delegate bodies reaching outer ids) — default QML behavior
-# and the ecosystem-wide style. Known residual gap: member typos on
-# qmldir-declared singletons (Theme.xyz) are not detected; runtime
+# and the ecosystem-wide style. Known residual gap: qmllint only proves
+# member absence on narrow receiver shapes (parent chains to concrete
+# Item types); member typos reached via ids or qmldir-declared
+# singletons (Theme.xyz) go undetected, and qmlplugindump cannot dump
+# pure-QML modules that need the quickshell runtime — no stronger QML
+# analyzer exists (qmllint/qmlls is the whole ecosystem). Runtime
 # behavior still needs a DMS plugin reload to confirm.
 # Generated hardware files retain upstream boilerplate. The scan path
 # precedes `--exclude` because deadnix consumes all following values.
