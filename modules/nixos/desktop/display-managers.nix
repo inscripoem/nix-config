@@ -41,6 +41,13 @@
   services.desktopManager.plasma6.enable = true;
   services.displayManager.defaultSession = "niri";
 
+  # plasma6 turns the GNOME Orca screen reader on by default (upstream
+  # `services.orca.enable = mkDefault true`), which installs orca.desktop
+  # under the bare id "orca" — the same id orca-ide reports as its window
+  # app-id and notification app_icon, so launchers and DMS resolve the
+  # wrong desktop entry. No screen reader is used here; drop the package.
+  services.orca.enable = false;
+
   # No auto-login. Sunshine runs as a root system service
   # (sunshine-greeter) that captures the greeter before anyone logs in —
   # Moonlight connects, sees the DMS greeter, you type the password, and
