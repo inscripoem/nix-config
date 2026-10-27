@@ -28,6 +28,15 @@ in {
         # missing defaults when skip_file is overridden. .swo covers the
         # other vim swap file.
         skip_file = "~*|.~*|*.tmp|*.swp|*.partial|*.swo"
+
+        # The client queries the GitHub API at every daemon start and raises a
+        # desktop notification whenever the pinned nixpkgs version lags an
+        # upstream release (2.5.11 vs 2.5.12 as of 2026-10-27). Upgrading the
+        # client only silences the nag until the next release; disabling the
+        # check silences it permanently. Sync-error notifications are
+        # unaffected. Option verified present in 2.5.11 and 2.5.12
+        # (upstream docs/application-config-options.md).
+        disable_version_check = "true"
       '';
     })
 
