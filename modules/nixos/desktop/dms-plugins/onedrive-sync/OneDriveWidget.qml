@@ -345,10 +345,27 @@ PluginComponent {
                 width: parent.width
                 implicitHeight: root.popoutHeight - popoutRoot.headerHeight - popoutRoot.detailsHeight - Theme.spacingXL
 
-                Column {
+                // Scrollable body: only the long error-state message
+                // overflows the fixed 280px popout; the Flickable is inert
+                // otherwise. Content children must use x/y positioning —
+                // anchors would defeat contentY and freeze the scroll
+                // (same pattern as the argb-fans popout).
+                Flickable {
+                    id: bodyFlick
+
                     anchors.fill: parent
-                    anchors.margins: Theme.spacingM
-                    spacing: Theme.spacingM
+                    clip: true
+                    contentWidth: width
+                    contentHeight: bodyCol.height + Theme.spacingM * 2
+                    boundsBehavior: Flickable.StopAtBounds
+                    interactive: contentHeight > height
+
+                    Column {
+                        id: bodyCol
+                        x: Theme.spacingM
+                        y: Theme.spacingM
+                        width: bodyFlick.width - Theme.spacingM * 2
+                        spacing: Theme.spacingM
 
                     Row {
                         id: heroRow
@@ -477,6 +494,7 @@ PluginComponent {
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
