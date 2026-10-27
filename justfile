@@ -2,24 +2,31 @@
 default:
     @{{quote(just_executable())}} --list
 
-# Update custom package versions (optional package, --dry-run).
+# Update custom package versions (optional package, --dry-run, --verbose).
 update *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    dry=""
-    filtered=()
+    flags=()
+    pkgs=()
     for a in {{args}}; do
         case "$a" in
-            --dry|--dry-run) dry="--dry-run" ;;
-            *) filtered+=("$a") ;;
+            --dry|--dry-run) flags+=(--dry-run) ;;
+            --verbose|-v) flags+=(--verbose) ;;
+            --only=*) flags+=("$a") ;;
+            -*) echo "update: unknown flag: $a" >&2; exit 2 ;;
+            *) pkgs+=("$a") ;;
         esac
     done
-    pkg="${filtered[0]:-}"
+    if [[ ${#pkgs[@]} -gt 1 ]]; then
+        echo "update: at most one package name (use --only=a,b for several)" >&2
+        exit 2
+    fi
+    pkg="${pkgs[0]:-}"
 
     if [[ -z "$pkg" ]]; then
-        ./scripts/update-versions.sh $dry
+        exec ./scripts/update-versions.sh "${flags[@]}"
     else
-        ./scripts/update-versions.sh --only="$pkg" $dry
+        exec ./scripts/update-versions.sh "${flags[@]}" --only="$pkg"
     fi
 
 # Deploy NixOS hosts via Colmena (optional host or selector).
