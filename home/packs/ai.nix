@@ -530,7 +530,9 @@ in {
           ExecReload = "${pkgs.util-linux}/bin/kill -USR1 $MAINPID";
           KillMode = "mixed";
           KillSignal = "SIGTERM";
-          TimeoutStopSec = 30;
+          # Upstream floor: drain (180s) + cron_drain (30s); below it the
+          # gateway warns of a mid-drain SIGKILL (gateway/run_startup.py:1003).
+          TimeoutStopSec = 210;
           StandardOutput = "journal";
           StandardError = "journal";
         };
