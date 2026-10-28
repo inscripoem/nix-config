@@ -8,5 +8,6 @@
     pkgs.libreoffice
     pkgs.localsend
     pkgs.notion-electron
+    pkgs.typst
   ];
 }
