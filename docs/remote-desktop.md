@@ -48,23 +48,33 @@ A polkit rule allows members of `users` to manage the specific system service.
 
 `capSysAdmin` is enabled so both services share the KMS capture backend.
 
-## 3. Fake streaming output (DP-3)
+## 3. Fake streaming output (HDMI-A-1)
 
 Streaming needs a lit CRTC: a GPU with nothing connected keeps no display
 pipeline active, so a headless host has no framebuffer to capture at all.
-Instead of a hardware dummy plug, DP-3 is force-enabled at the DRM level
-and fed a generated EDID (`sunshine-fake-edid.bin`: preferred 3840x2160@60 —
-the CEA-861 VIC 97 timing — plus a 1920x1080@60 standard timing) through
-the `video=DP-3:e` + `drm.edid_firmware` kernel params. Every compositor
-and Sunshine see one constant "monitor", so the streamed picture never
-drifts with whatever is plugged in on the other ports.
+Instead of a hardware dummy plug, the reserved port is force-enabled at
+the DRM level and fed a generated EDID (`sunshine-fake-edid.bin`:
+preferred 3840x2160@60 — the CEA-861 VIC 97 timing — plus a
+1920x1080@60 standard timing) through the `video=` + `drm.edid_firmware`
+kernel params. Every compositor and Sunshine see one constant "monitor",
+so the streamed picture never drifts with whatever is plugged in on the
+other ports.
+
+**The fake port must be HDMI, not DisplayPort.** A forced DP connector
+has no DPCD — there is no physical sink to report link capabilities —
+so i915 validates every mode against the fallback link and only
+640x480 survives (EDID load and parse are fine: the connector exposes
+the injected EDID and its identity; the rejection happens at mode
+validation). HDMI has no DPCD dependency; its mode validation reads the
+limits straight from the EDID, whose range descriptor declares a
+600 MHz max dotclock. Verified live on the A380, 2026-10-28.
 
 Port roles:
 
 | Port | Role |
 |---|---|
-| DP-1, HDMI-A-* | real monitors (true EDID, native modes) |
-| DP-3 | reserved fake output — never plug a real monitor in here; the forced EDID shadows it |
+| DP-1, HDMI-A-2 | real monitors (true EDID, native modes) |
+| HDMI-A-1 | reserved fake output — never plug a real monitor in here; the forced EDID shadows it |
 
 Routing by scenario:
 
@@ -72,17 +82,18 @@ Routing by scenario:
 |---|---|
 | monitor present, local login | greeter UI on the real monitor (niri auto-placement: alphabetically-first connected output first) |
 | monitor present, remote login | `sunshine-greeter` probes the first connected DRM connector and streams that output |
-| headless, remote login | DP-3 is the only output; the greeter runs on it at 1080p |
-| logged in, remote desktop | user session pins DP-3 at 4K; Sunshine's output selection must be DP-3 |
+| headless, remote login | the fake output is the only one; the greeter runs on it at 1080p |
+| logged in, remote desktop | user session pins the fake output at 4K; Sunshine's output selection must be `HDMI-A-1` |
 
 The EDID binary is regenerated with
 `modules/nixos/capabilities/sunshine-fake-edid.py` (validate with
-`edid-decode`). The greeter session pins DP-3 at 1080p so the pre-login
-stream keeps the login UI readable; the daily session
+`edid-decode`). The greeter session pins the fake output at 1080p so the
+pre-login stream keeps the login UI readable; the daily session
 (home/desktop/niri.nix) pins the preferred 4K. The greeter session has no
 idle daemon, so nothing ever DPMS-blanks it — the pre-login stream stays
-live indefinitely. `fake-screen-toggle` switches DP-3 off while working
-locally so the cursor cannot wander onto an invisible screen.
+live indefinitely. `fake-screen-toggle` switches the fake output off
+while working locally so the cursor cannot wander onto an invisible
+screen.
 
 After changing GPU, re-verify the connector name — the
 `modules.capabilities.sunshine.fakeOutputName` option is the single
@@ -91,11 +102,12 @@ wrapper probe and this document all derive from it, and the session
 layer (home/desktop/niri.nix) reads it through `osConfig` while gating
 on `sunshine.enable`, so non-streaming desktops carry no fake-output
 config at all. The option has no default: it is host-specific physical
-knowledge (which port the GPU enumerates free of monitors), so every
-enabling host declares it in its own config block — briefcase sets
-`DP-3` in outputs/default.nix — and omitting it fails evaluation
-loudly. A second streaming desktop needs the capability enabled plus
-its own `fakeOutputName` line.
+knowledge (which port the GPU enumerates free of monitors — and it must
+be an HDMI port, per the note above), so every enabling host declares it
+in its own config block — briefcase sets `HDMI-A-1` in
+outputs/default.nix — and omitting it fails evaluation loudly. A second
+streaming desktop needs the capability enabled plus its own
+`fakeOutputName` line.
 
 ## 4. Network and pairing
 

@@ -139,16 +139,24 @@ in {
     #
     # A GPU keeps no CRTC lit when nothing is connected, so a headless
     # machine has no framebuffer to stream at all — every capture backend
-    # needs an active display. Instead of a hardware dummy plug, DP-3 is
-    # force-enabled at the DRM level and fed a generated EDID
-    # (sunshine-fake-edid.bin: preferred 3840x2160@60, the CEA-861 VIC 97
-    # timing, plus a 1920x1080@60 standard timing). Every compositor and
-    # Sunshine see one constant "monitor" no matter what is plugged in on
-    # other ports; the streamed picture never drifts with the hardware.
+    # needs an active display. Instead of a hardware dummy plug, the
+    # reserved port is force-enabled at the DRM level and fed a generated
+    # EDID (sunshine-fake-edid.bin: preferred 3840x2160@60, the CEA-861
+    # VIC 97 timing, plus a 1920x1080@60 standard timing). Every
+    # compositor and Sunshine see one constant "monitor" no matter what
+    # is plugged in on other ports; the streamed picture never drifts
+    # with the hardware.
+    #
+    # The port must be HDMI, not DisplayPort: a forced DP connector has
+    # no DPCD (there is no physical sink to report link capabilities),
+    # so i915 validates modes against the fallback link and only
+    # 640x480 survives — observed live on the A380, 2026-10-28. HDMI
+    # has no DPCD dependency; its mode validation reads the limits
+    # straight from the injected EDID (max dotclock 600 MHz here).
     #
     # Port roles on briefcase:
-    #   DP-1 / HDMI-A-* : real monitors (true EDID, native modes)
-    #   DP-3            : reserved fake output — do NOT plug a real
+    #   DP-1, HDMI-A-2  : real monitors (true EDID, native modes)
+    #   HDMI-A-1        : reserved fake output — do NOT plug a real
     #                     monitor in here; the forced EDID shadows it
     #
     # Params take effect at boot; the EDID is delivered through
@@ -170,11 +178,11 @@ in {
     # core/internal/config/embedded/niri-greeter.kdl — copied verbatim
     # below, re-sync if that template ever grows new session essentials);
     # dms-greeter appends its own spawn-at-startup for the greeter UI on
-    # top. DP-3 is pinned to its 1080p standard timing so the pre-login
-    # stream keeps the login UI readable; the daily niri session pins the
-    # preferred 4K instead (home/desktop/niri.nix). The greeter session
-    # has no idle daemon, so nothing ever DPMS-blanks it — the pre-login
-    # stream stays live indefinitely.
+    # top. The fake output is pinned to its 1080p standard timing so the
+    # pre-login stream keeps the login UI readable; the daily niri
+    # session pins the preferred 4K instead (home/desktop/niri.nix). The
+    # greeter session has no idle daemon, so nothing ever DPMS-blanks
+    # it — the pre-login stream stays live indefinitely.
     services.displayManager.dux-greeter.compositor.customConfig = ''
       hotkey-overlay {
           skip-at-startup
