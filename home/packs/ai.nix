@@ -20,7 +20,44 @@ let
   # Linux by the community deepseek-harness flake (dataelement's own
   # releases ship macOS/Windows only). It bundles the official runtime and
   # Web UI, so version bumps ride flake updates of that input.
-  dshPkg = deepseek-harness.packages.${pkgs.stdenv.hostPlatform.system}.dsh-desktop-official;
+  dshUpstream = deepseek-harness.packages.${pkgs.stdenv.hostPlatform.system}.dsh-desktop-official;
+
+  # Tray icon for the Linux patch applied in dshPkg below: upstream ships
+  # tray.ico for Windows only and no icon at all in the Linux build, so reuse
+  # the mark the launcher already uses and rasterize it at build time.
+  dshTrayIcon = pkgs.runCommand "dsh-tray-icon" {
+    nativeBuildInputs = [ pkgs.librsvg ];
+  } ''
+    rsvg-convert -w 32 -h 32 ${../../modules/nixos/desktop/icons/dsh.svg} -o $out
+  '';
+
+  # Upstream creates its tray — and the one-time first-close notice that
+  # points at it — behind `process.platform === "win32"` in
+  # resources/app/lib/main.js, so on Linux close means hide with no way back
+  # to the window and no exit entry. Electron's StatusNotifierItem path works
+  # on Linux (verified against a live DankMaterialShell watcher), so re-enable
+  # upstream's own code instead of reimplementing it. The substitutions are
+  # anchored: a bundle bump that moves one fails the build rather than
+  # silently shipping a tray-less app.
+  dshPkg =
+    if !cfg.dsh.tray.enable then
+      dshUpstream
+    else
+      dshUpstream.overrideAttrs (old: {
+        postInstall = (old.postInstall or "") + ''
+          main="$out/lib/dsh-desktop/resources/app/lib/main.js"
+          substituteInPlace "$main" --replace-fail \
+            'if (process.platform === "win32") try {' \
+            'if (process.platform === "win32" || process.platform === "linux") try {'
+          substituteInPlace "$main" --replace-fail \
+            'join(process.resourcesPath, "tray.ico")' \
+            'join(process.resourcesPath, process.platform === "linux" ? "tray.png" : "tray.ico")'
+          substituteInPlace "$main" --replace-fail \
+            'const backgroundNotice = process.platform === "win32" ?' \
+            'const backgroundNotice = process.platform === "win32" || process.platform === "linux" ?'
+          install -Dm644 ${dshTrayIcon} "$out/lib/dsh-desktop/resources/tray.png"
+        '';
+      });
 
   # Bare official dsh CLI (kernel) from the same deepseek-harness flake,
   # version-matched with the desktop app's bundled runtime. Plain official
@@ -211,6 +248,17 @@ in {
       type = lib.types.bool;
       default = false;
       description = "dsh (DeepSeek Harness) desktop app, opt-in per host";
+    };
+
+    # The Linux build of the desktop app hides its window on close and, with
+    # no tray, offers no way back to it and no exit entry. dshPkg re-enables
+    # upstream's own tray implementation, so this is on by default; turning it
+    # off falls back to the unmodified upstream package (a different store
+    # path, so it rebuilds).
+    dsh.tray.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "expose the dsh desktop tray on Linux (DBus StatusNotifierItem)";
     };
 
     # Opt-in extra: magpie — provider/model switcher for every agent via a
