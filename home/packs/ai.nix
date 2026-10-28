@@ -79,7 +79,13 @@ let
   # above: the flake's own bundle pairing does not extend to npm (e.g.
   # 0.15.0 targets kernel 0.2.0-rc.2 and dsh plugin add rejects it on
   # 0.2.1-rc.2). Update track: update-versions.sh, which resolves the
-  # kernel from flake.lock and picks the newest release accepting it.
+  # kernel from flake.lock and picks the newest release accepting it. The
+  # updater also realigns this rolling profile's @deepseek-ai/* family to
+  # the kernel (and the TUI copy to the pin) once the running system is on
+  # the target kernel — guarded, because `dsh plugin add` checks its peer
+  # contract against the running kernel; before an nhs it only prints the
+  # commands. Third-party profile plugins and the Electron-managed desktop
+  # profile stay user-state and are never touched by it.
   dshTuiLauncherPkg = pkgs.dsh-tui-launcher;
 
   # The overridden derivation must be the ONLY workbuddy in the module: the
