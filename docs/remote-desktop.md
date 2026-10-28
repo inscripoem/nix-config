@@ -48,7 +48,48 @@ A polkit rule allows members of `users` to manage the specific system service.
 
 `capSysAdmin` is enabled so both services share the KMS capture backend.
 
-## 3. Network and pairing
+## 3. Fake streaming output (DP-3)
+
+Streaming needs a lit CRTC: a GPU with nothing connected keeps no display
+pipeline active, so a headless host has no framebuffer to capture at all.
+Instead of a hardware dummy plug, DP-3 is force-enabled at the DRM level
+and fed a generated EDID (`dp3-fake-edid.bin`: preferred 3840x2160@60 —
+the CEA-861 VIC 97 timing — plus a 1920x1080@60 standard timing) through
+the `video=DP-3:e` + `drm.edid_firmware` kernel params. Every compositor
+and Sunshine see one constant "monitor", so the streamed picture never
+drifts with whatever is plugged in on the other ports.
+
+Port roles:
+
+| Port | Role |
+|---|---|
+| DP-1, HDMI-A-* | real monitors (true EDID, native modes) |
+| DP-3 | reserved fake output — never plug a real monitor in here; the forced EDID shadows it |
+
+Routing by scenario:
+
+| Scenario | Behavior |
+|---|---|
+| monitor present, local login | greeter UI on the real monitor (niri auto-placement: alphabetically-first connected output first) |
+| monitor present, remote login | `sunshine-greeter` probes the first connected DRM connector and streams that output |
+| headless, remote login | DP-3 is the only output; the greeter runs on it at 1080p |
+| logged in, remote desktop | user session pins DP-3 at 4K; Sunshine's output selection must be DP-3 |
+
+The EDID binary is regenerated with
+`modules/nixos/capabilities/dp3-fake-edid.py` (validate with
+`edid-decode`). The greeter session pins DP-3 at 1080p so the pre-login
+stream keeps the login UI readable; the daily session
+(home/desktop/niri.nix) pins the preferred 4K. The greeter session has no
+idle daemon, so nothing ever DPMS-blanks it — the pre-login stream stays
+live indefinitely. `fake-screen-toggle` switches DP-3 off while working
+locally so the cursor cannot wander onto an invisible screen.
+
+After changing GPU, re-verify the connector name (`fakeOutput` in
+capabilities/sunshine.nix): it appears in the kernel params, the greeter
+customConfig, the wrapper probe, home/desktop/niri.nix, this document,
+and the EDID generator header.
+
+## 4. Network and pairing
 
 WiFi credentials are supplied by SOPS to NetworkManager system connections,
 so the network does not wait for a user keyring unlock. See [secrets](secrets.md)
@@ -75,7 +116,13 @@ Sunshine settings are currently managed through its UI. Adding Nix
 `services.sunshine.settings` changes the generated configuration path; review
 both services' command lines and configuration ownership before doing so.
 
-## 4. Troubleshooting and validation
+The user service captures whichever output Sunshine's UI has selected
+(Configuration → Output Name). Set it to `DP-3` once for the 4K streaming
+canvas; the greeter service does not use that setting — its wrapper probes
+the first connected connector at every start. Switching the UI setting back
+to a real monitor is how you stream the local screen from the desk instead.
+
+## 5. Troubleshooting and validation
 
 At the greeter, inspect the system service; inside the desktop, inspect the
 user service:
@@ -96,6 +143,15 @@ unreachable. Inspect Sunshine logs for the chosen hardware encoder.
 After changing GPU, display manager, or capture mode, test the complete sequence:
 boot → remote greeter → login → desktop/audio → logout → remote greeter.
 Also test reconnect after reboot. Avoid assuming a desktop-only test covers it.
+
+The fake output adds its own matrix. `video=`/`drm.edid_firmware` are
+boot-time params — a `nixos-rebuild switch` alone does not light DP-3 up;
+reboot first. Then verify all four rows of the routing table above:
+monitor-present local login, monitor-present remote greeter, headless
+remote greeter (unplug + reboot or restart display-manager), and the
+post-login 4K desktop stream. `cat /sys/class/drm/*/status` should show
+DP-3 `connected` at all times; `niri msg outputs` shows DP-3 at
+3840x2160 in the session.
 
 References: [Sunshine NixOS module](https://github.com/NixOS/nixpkgs/blob/nixos-unstable/nixos/modules/services/networking/sunshine.nix),
 [Sunshine boot autostart](https://app.lizardbyte.dev/2024-10-16-autostart-sunshine-on-boot-without-auto-login/).

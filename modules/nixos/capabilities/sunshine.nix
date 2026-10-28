@@ -3,16 +3,16 @@
 # Why Sunshine (and not KRDP / RustDesk / Parsec / krfb):
 #
 #   Sunshine captures through KMS on this machine, so it serves the
-#   SDDM greeter before login and any session compositor after login
-#   (niri and Plasma Wayland alike). KMS requires cap_sys_admin, which
-#   the upstream module grants via a security wrapper when
+#   greetd/DMS greeter before login and any session compositor after
+#   login (niri and Plasma Wayland alike). KMS requires cap_sys_admin,
+#   which the upstream module grants via a security wrapper when
 #   services.sunshine.capSysAdmin is enabled. The X11 architecture
-#   below was originally chosen to work around NVIDIA proprietary
-#   driver issues (Turing RTX 2060S, see docs/nvidia.md), when capture
+#   was originally chosen to work around NVIDIA proprietary driver
+#   issues (Turing RTX 2060S, see docs/nvidia.md), when capture
 #   ran over XShm and the greeter's X server was the only pre-login
 #   capture target; with the Arc A380 and KMS capture the greeter
-#   backend no longer constrains capture, but the known-good X11 SDDM
-#   setup is retained.
+#   backend no longer constrains capture, and the greeter is now
+#   greetd + Dux Greeter (see modules/nixos/desktop/display-managers.nix).
 #
 #   Sunshine is chosen over the alternatives:
 #     - KRDP: Wayland-only (kcm hides on X11), no Linux host path.
@@ -55,17 +55,41 @@
 let
   cfg = config.modules.capabilities.sunshine;
 
+  # Reserved fake-output port (see the kernelParams block below).
+  # Connector names are driver-enumerated: re-verify after any GPU swap
+  # (hosts/briefcase/gpu sibling-profile workflow). The name also appears
+  # in the greeter customConfig, the wrapper probe, home/desktop/niri.nix,
+  # docs/remote-desktop.md, and the EDID generator header.
+  fakeOutput = "DP-3";
+
   # The greeter is a Wayland (niri) session under greetd and capture is
   # pure KMS, so no X11 display/auth plumbing is needed here. HOME is
   # pointed at the user's home (not root's) so the Sunshine pairing
   # certificate is shared between the root service and the user service —
   # same UUID + certificate means Moonlight sees a single host regardless
   # of which service is currently streaming.
+  #
+  # output_name pins the capture to the output that carries the greeter:
+  # niri's automatic placement puts the alphabetically-first connected
+  # output first and opens the greeter UI there, so probe the same rule —
+  # first connected DRM connector, fake output included (headless, it is
+  # the only one). An unmatched name degrades to Sunshine's first-monitor
+  # default with a journal warning (kmsgrab.cpp
+  # map_display_name_to_monitor_index), never a hard failure.
   sunshineGreeterWrapper = pkgs.writeShellScript "sunshine-greeter" ''
     set -eu
     export HOME="/home/${vars.username}"
     export XDG_CONFIG_HOME="$HOME/.config"
-    exec ${pkgs.sunshine}/bin/sunshine "$@"
+
+    real="$(for c in /sys/class/drm/card*-*; do
+      [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
+      name="''${c##*/}"
+      echo "''${name#*-}"
+      break
+    done)"
+    output="''${real:-${fakeOutput}}"
+
+    exec ${pkgs.sunshine}/bin/sunshine "output_name=$output" "$@"
   '';
 in {
   options.modules.capabilities.sunshine.enable =
@@ -86,11 +110,86 @@ in {
     # the stream and the pinned plane being released (fb_id 0) freezes
     # capture with per-frame "Couldn't get drm fb" timeouts (upstream
     # LizardByte/Sunshine#5373). Keeping KWin composing on the primary
-    # plane only fixes Plasma streaming; niri and the SDDM greeter
+    # plane only fixes Plasma streaming; niri and the greeter session
     # never used overlays, so they are unaffected. The env var is read
     # at kwin startup, so a session restart (not just service restart)
     # is required after toggling.
     environment.sessionVariables.KWIN_USE_OVERLAYS = "0";
+
+    # ── Fake streaming output (software dummy plug) ─────────────────────
+    #
+    # A GPU keeps no CRTC lit when nothing is connected, so a headless
+    # machine has no framebuffer to stream at all — every capture backend
+    # needs an active display. Instead of a hardware dummy plug, DP-3 is
+    # force-enabled at the DRM level and fed a generated EDID
+    # (dp3-fake-edid.bin: preferred 3840x2160@60, the CEA-861 VIC 97
+    # timing, plus a 1920x1080@60 standard timing). Every compositor and
+    # Sunshine see one constant "monitor" no matter what is plugged in on
+    # other ports; the streamed picture never drifts with the hardware.
+    #
+    # Port roles on briefcase:
+    #   DP-1 / HDMI-A-* : real monitors (true EDID, native modes)
+    #   DP-3            : reserved fake output — do NOT plug a real
+    #                     monitor in here; the forced EDID shadows it
+    #
+    # Params take effect at boot; the EDID is delivered through
+    # /lib/firmware/edid/ (request_firmware path the kernel param names).
+    boot.kernelParams = [
+      "video=${fakeOutput}:e"
+      "drm.edid_firmware=${fakeOutput}:edid/briefcase-dp3-fake.bin"
+    ];
+    hardware.firmware = [
+      (pkgs.runCommand "briefcase-dp3-fake-edid" { } ''
+        mkdir -p $out/lib/firmware/edid
+        install -Dm644 ${./dp3-fake-edid.bin} \
+          $out/lib/firmware/edid/briefcase-dp3-fake.bin
+      '')
+    ];
+
+    # Greeter session output config. compositor.customConfig REPLACES the
+    # upstream embedded template (dux-greeter v2.0.0
+    # core/internal/config/embedded/niri-greeter.kdl — copied verbatim
+    # below, re-sync if that template ever grows new session essentials);
+    # dms-greeter appends its own spawn-at-startup for the greeter UI on
+    # top. DP-3 is pinned to its 1080p standard timing so the pre-login
+    # stream keeps the login UI readable; the daily niri session pins the
+    # preferred 4K instead (home/desktop/niri.nix). The greeter session
+    # has no idle daemon, so nothing ever DPMS-blanks it — the pre-login
+    # stream stays live indefinitely.
+    services.displayManager.dux-greeter.compositor.customConfig = ''
+      hotkey-overlay {
+          skip-at-startup
+      }
+      environment {
+          DMS_RUN_GREETER "1"
+      }
+      input {
+          keyboard {
+              xkb {
+              }
+              numlock
+          }
+          touchpad {
+              tap
+              natural-scroll
+          }
+          mouse {
+          }
+          trackpoint {
+          }
+      }
+      gestures {
+          hot-corners {
+              off
+          }
+      }
+      layout {
+          background-color "#000000"
+      }
+      output "${fakeOutput}" {
+          mode "1920x1080@60.000"
+      }
+    '';
 
     # Root system service: captures the greeter before any user logs in.
     # greetd registers the display-manager.service alias (see the NixOS
