@@ -47,6 +47,13 @@ let
     commandLineArgs = "--password-store=${passwordStore}";
   };
 
+  # Single-copy rule (same as workbuddyPkg): home.packages and the
+  # autostart desktop file must resolve to one derivation. The build
+  # logic — both asar patches, the autostart wrapper and its desktop
+  # template — lives in pkgs/orca-patched.nix; version bumps ride
+  # llm-agents flake updates, no update-versions.sh section needed.
+  orcaPkg = pkgs.callPackage ../../pkgs/orca.nix { orca = agentPkgs.orca; };
+
   # The desktop app keeps its binary but the terminal `zcode` name moves to
   # pkgs.zcode-cli (official open-source CLI, built from source): the
   # desktop-bundled glm/zcode.cjs cannot run its TUI upstream — the
@@ -169,13 +176,25 @@ in {
     # above, so it belongs in this pack rather than desktop.editors-gui.
     # Taken from the llm-agents input (deb-based build); version bumps ride
     # flake updates instead of update-versions.sh. The Linux build carries
-    # a local close-to-tray patch (upstream gates all tray plumbing on
-    # win32/darwin); its anchors live in pkgs/orca-tray.py and fail the
-    # build when an llm-agents update reshuffles the asar.
+    # two local asar patches (upstream gates all tray plumbing on
+    # win32/darwin): close-to-tray and the silent-start env gate; their
+    # anchors live in pkgs/orca-tray.py and pkgs/orca-silent-start.py and
+    # fail the build when an llm-agents update reshuffles the asar.
     orca.enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
       description = "orca agentic desktop app (Stably AI), opt-in per host";
+    };
+
+    # Autostart orca silently to tray at login (Linux): an XDG autostart
+    # entry runs bin/orca-autostart, which sets ORCA_SILENT_START=1 for the
+    # asar gate — no window, daemon and tray up, agents one tray-click away.
+    # Ordered after dms.service by the app-@autostart drop-in (niri.nix), so
+    # the tray icon registers against a live StatusNotifierWatcher.
+    orca.autostart = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "autostart orca silently to tray at login (Linux only)";
     };
 
     # Opt-in extra: DeepSeek Harness (dsh) desktop app — Electron shell over
@@ -307,19 +326,15 @@ in {
     })
 
     (lib.mkIf cfg.orca.enable {
-      home.packages = [
-        # Linux-only close-to-tray patch: hide on close, tray icon to
-        # restore/quit, daemon and running sessions stay alive. Darwin
-        # keeps the stock llm-agents build (air uses the brew cask anyway).
-        (if pkgs.stdenv.hostPlatform.isLinux then
-          agentPkgs.orca.overrideAttrs (old: {
-            nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.python3 ];
-            postInstall = (old.postInstall or "") + ''
-              python3 ${../../pkgs/orca-tray.py} $out/lib/Orca/resources/app.asar
-            '';
-          })
-        else agentPkgs.orca)
-      ];
+      home.packages = [ orcaPkg ];
+    })
+
+    (lib.mkIf (cfg.orca.enable && cfg.orca.autostart && pkgs.stdenv.hostPlatform.isLinux) {
+      # Same single-copy rule as workbuddy's autostart entry (ai.nix workbuddy
+      # block): point autostart at the patched derivation's template instead
+      # of referencing a store path that GC would orphan after an update.
+      xdg.configFile."autostart/orca-ide.desktop".source =
+        "${orcaPkg}/share/orca/orca-autostart.desktop";
     })
 
     (lib.mkIf cfg.dsh.enable {

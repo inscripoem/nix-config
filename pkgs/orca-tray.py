@@ -11,11 +11,9 @@ neutral comparisons so Linux joins the win32 tray path:
      the darwin branch (template icon, menubar extras) is not taken.
   2. Close-handler platform gate: same win32->linux swap, so the close
      event is allowed to consider hiding instead of quitting.
-  3. Renderer-facing settings projection default: ===!0 -> !==!1, so the
-     (Linux-invisible) settings UI and any consumer of the projected
-     settings agree with the enforced behavior.
-  4. The persisted-setting read in the close handler becomes a constant
-     falsy term. Upstream's first-run settings migration persists
+  3. The persisted-setting read in the close handler becomes a constant
+     falsy term (short-circuited, so the setting is never even read).
+     Upstream's first-run settings migration persists
      "minimizeToTrayOnClose":false into profile-state.db for every fresh
      profile (verified in the wild), so a default-flip alone never helps
      existing profiles; treating the stored value as advisory makes close
@@ -23,7 +21,7 @@ neutral comparisons so Linux joins the win32 tray path:
      session bus (libayatana-appindicator is already on the RUNPATH),
      close hides the window and keeps the daemon alive, and a second
      launch restores the window via the second-instance path.
-  5. The tray click line keeps its win32 gate otherwise: the linux build
+  4. The tray click line keeps its win32 gate otherwise: the linux build
      would never set a tooltip nor attach the click handler, leaving the
      SNI item mute. Un-gating it to linux makes a single left-click on
      the DMS tray icon call Activate -> Electron's Tray click event ->
@@ -62,12 +60,7 @@ PATCHES = [
         b"process.platform!==`win32`||n.isRendererProcessGone()",
         b"process.platform!==`linux`||n.isRendererProcessGone()",
     ),
-    # Renderer-facing settings projection — default the toggle to on.
-    (
-        b"minimizeToTrayOnClose:e.settings?.minimizeToTrayOnClose===!0",
-        b"minimizeToTrayOnClose:e.settings?.minimizeToTrayOnClose!==!1",
-    ),
-    # Persisted-setting read — always falsy (see docstring point 4).
+    # Persisted-setting read — always falsy (see docstring point 3).
     (
         b"s?.getSettings().minimizeToTrayOnClose!==!0",
         b"!!0&&s?.getSettings().minimizeToTrayOnClose",

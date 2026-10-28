@@ -6,6 +6,7 @@
   packs.ai.hermes-agent.enable = true;
   packs.ai.workbuddy.enable = true;
   packs.ai.orca.enable = true;
+  packs.ai.orca.autostart = true;
   packs.ai.dsh.enable = true;
   packs.ai.magpie.enable = true;
   packs.ai.cc-switch.enable = true;
