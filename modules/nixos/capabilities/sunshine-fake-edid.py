@@ -4,8 +4,8 @@ capability (modules/nixos/capabilities/sunshine.nix).
 
 The binary is committed; regenerate and revalidate with:
 
-    python3 dp3-fake-edid.py > dp3-fake-edid.bin
-    edid-decode dp3-fake-edid.bin
+    python3 sunshine-fake-edid.py > sunshine-fake-edid.bin
+    edid-decode sunshine-fake-edid.bin
 
 Structure (EDID 1.4, 128 bytes, no extensions):
   - Preferred detailed timing: 3840x2160@60, the CEA-861 VIC 97 timing

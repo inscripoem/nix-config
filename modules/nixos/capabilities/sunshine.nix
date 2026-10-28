@@ -141,7 +141,7 @@ in {
     # machine has no framebuffer to stream at all — every capture backend
     # needs an active display. Instead of a hardware dummy plug, DP-3 is
     # force-enabled at the DRM level and fed a generated EDID
-    # (dp3-fake-edid.bin: preferred 3840x2160@60, the CEA-861 VIC 97
+    # (sunshine-fake-edid.bin: preferred 3840x2160@60, the CEA-861 VIC 97
     # timing, plus a 1920x1080@60 standard timing). Every compositor and
     # Sunshine see one constant "monitor" no matter what is plugged in on
     # other ports; the streamed picture never drifts with the hardware.
@@ -155,13 +155,13 @@ in {
     # /lib/firmware/edid/ (request_firmware path the kernel param names).
     boot.kernelParams = [
       "video=${fakeOutput}:e"
-      "drm.edid_firmware=${fakeOutput}:edid/briefcase-dp3-fake.bin"
+      "drm.edid_firmware=${fakeOutput}:edid/sunshine-fake.bin"
     ];
     hardware.firmware = [
-      (pkgs.runCommand "briefcase-dp3-fake-edid" { } ''
+      (pkgs.runCommand "sunshine-fake-edid" { } ''
         mkdir -p $out/lib/firmware/edid
-        install -Dm644 ${./dp3-fake-edid.bin} \
-          $out/lib/firmware/edid/briefcase-dp3-fake.bin
+        install -Dm644 ${./sunshine-fake-edid.bin} \
+          $out/lib/firmware/edid/sunshine-fake.bin
       '')
     ];
 

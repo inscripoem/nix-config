@@ -53,7 +53,7 @@ A polkit rule allows members of `users` to manage the specific system service.
 Streaming needs a lit CRTC: a GPU with nothing connected keeps no display
 pipeline active, so a headless host has no framebuffer to capture at all.
 Instead of a hardware dummy plug, DP-3 is force-enabled at the DRM level
-and fed a generated EDID (`dp3-fake-edid.bin`: preferred 3840x2160@60 —
+and fed a generated EDID (`sunshine-fake-edid.bin`: preferred 3840x2160@60 —
 the CEA-861 VIC 97 timing — plus a 1920x1080@60 standard timing) through
 the `video=DP-3:e` + `drm.edid_firmware` kernel params. Every compositor
 and Sunshine see one constant "monitor", so the streamed picture never
@@ -76,7 +76,7 @@ Routing by scenario:
 | logged in, remote desktop | user session pins DP-3 at 4K; Sunshine's output selection must be DP-3 |
 
 The EDID binary is regenerated with
-`modules/nixos/capabilities/dp3-fake-edid.py` (validate with
+`modules/nixos/capabilities/sunshine-fake-edid.py` (validate with
 `edid-decode`). The greeter session pins DP-3 at 1080p so the pre-login
 stream keeps the login UI readable; the daily session
 (home/desktop/niri.nix) pins the preferred 4K. The greeter session has no
