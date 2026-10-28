@@ -442,7 +442,9 @@
     "niri": {
       "inputs": {
         "niri-stable": "niri-stable",
-        "niri-unstable": "niri-unstable",
+        "niri-unstable": [
+          "niri-unstable"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ],
@@ -482,17 +484,20 @@
       }
     },
     "niri-unstable": {
-      "flake": false,
+      "inputs": {
+        "nixpkgs": "nixpkgs_7"
+      },
       "locked": {
-        "lastModified": 1785701241,
-        "narHash": "sha256-ircVOzPWRircI39ac/tqJajr5OoJxEVrDlBb05TULEk=",
-        "owner": "YaLTeR",
+        "lastModified": 1793091370,
+        "narHash": "sha256-PM8tinYBMFRZfRkOiRZPbgBdDK0tMlsqpeupa2b8CcU=",
+        "owner": "niri-wm",
         "repo": "niri",
-        "rev": "feb3e43f1475e0865bb89cbd1e898b34d1d2ccf6",
+        "rev": "fcbc971cf49a987b1e8d5ff1d64da6b1f61a1787",
         "type": "github"
       },
       "original": {
-        "owner": "YaLTeR",
+        "owner": "niri-wm",
+        "ref": "main",
         "repo": "niri",
         "type": "github"
       }
@@ -727,6 +732,22 @@
     },
     "nixpkgs_7": {
       "locked": {
+        "lastModified": 1785110946,
+        "narHash": "sha256-WWuWxmXKzGZWryswWlijP3Mjp6aGy4Ngmeil5nGMMjk=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "d3498f786f97ac0bded21b34bae0bf3809b45aa3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixpkgs-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_8": {
+      "locked": {
         "lastModified": 1792773339,
         "narHash": "sha256-rZLrzrC6i+jnTAlvPZHogKDulY7WWDEv9hJeHieO7Zw=",
         "owner": "NixOS",
@@ -741,7 +762,7 @@
         "type": "github"
       }
     },
-    "nixpkgs_8": {
+    "nixpkgs_9": {
       "locked": {
         "lastModified": 1744536153,
         "narHash": "sha256-awS2zRgF4uTwrOKwwiJcByDzDOdo3Q1rPZbiHQg/N38=",
@@ -883,11 +904,12 @@
         "linuxqq-wayland-fix": "linuxqq-wayland-fix",
         "llm-agents": "llm-agents",
         "niri": "niri",
+        "niri-unstable": "niri-unstable",
         "nix-darwin": "nix-darwin",
         "nix-flatpak": "nix-flatpak",
         "nix-index-database": "nix-index-database",
         "nixos-wsl": "nixos-wsl",
-        "nixpkgs": "nixpkgs_7",
+        "nixpkgs": "nixpkgs_8",
         "nixpkgs-qq": "nixpkgs-qq",
         "plasma-manager": "plasma-manager",
         "rime-wanxiang": "rime-wanxiang",
@@ -898,7 +920,7 @@
     },
     "rust-overlay": {
       "inputs": {
-        "nixpkgs": "nixpkgs_8"
+        "nixpkgs": "nixpkgs_9"
       },
       "locked": {
         "lastModified": 1792913333,

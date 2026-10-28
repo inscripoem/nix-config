@@ -87,7 +87,18 @@
     niri = {
       url = "github:sodiboo/niri-flake";
       inputs.nixpkgs.follows = "nixpkgs";
+      # The niri-flake repo is effectively abandoned: its auto-update bot
+      # stopped 2026-08-04 when nixpkgs removed libdisplay-info 0.2 (see
+      # niriCompatOverlay in outputs/default.nix), and its lock has been
+      # frozen at the 2026-08-02 compositor ever since. The module is
+      # frozen but functional; the compositor itself moved 187 commits
+      # (incl. a batch of PipeWire screencast fixes). Feed it upstream
+      # main ourselves so `flake update` actually rolls niri.
+      inputs.niri-unstable.follows = "niri-unstable";
     };
+
+    # See the niri comment above.
+    niri-unstable.url = "github:niri-wm/niri/main";
 
     # colmena - remote deployment tool for NixOS
     colmena = {
