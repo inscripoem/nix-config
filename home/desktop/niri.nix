@@ -1,4 +1,4 @@
-{ pkgs, lib, config, ... }:
+{ pkgs, lib, config, osConfig, ... }:
 let
   cfg = config.programs.niri;
 
@@ -602,19 +602,23 @@ in
         "QT_QPA_PLATFORMTHEME" = "gtk3";
       };
 
-      # Fake streaming output (kernel-forced EDID on DP-3, briefcase only —
-      # see modules/nixos/capabilities/sunshine.nix). Pin the preferred 4K
-      # mode so the remote-desktop canvas renders at full resolution; the
-      # greeter session pins the same output to its 1080p standard timing
-      # instead. Inert on hosts without the fake output (niri warns about
-      # unknown output names and ignores the node). DMS's GUI-managed
-      # include dms/outputs.kdl lands last and wins if the user ever
-      # manages DP-3 through the DMS display settings.
-      outputs."DP-3" = {
-        mode = {
-          width = 3840;
-          height = 2160;
-          refresh = 60.0;
+      # Fake streaming output (kernel-forced EDID, hosts with the Sunshine
+      # capability — see modules/nixos/capabilities/sunshine.nix). Pin the
+      # preferred 4K mode so the remote-desktop canvas renders at full
+      # resolution; the greeter session pins the same output to its 1080p
+      # standard timing instead. Gated on the capability and named from
+      # its option, so non-streaming desktops carry none of this — even if
+      # their real monitor happens to sit on a connector with the same
+      # name. DMS's GUI-managed include dms/outputs.kdl lands last and
+      # wins if the user ever manages this output through the DMS display
+      # settings.
+      outputs = lib.mkIf osConfig.modules.capabilities.sunshine.enable {
+        "${osConfig.modules.capabilities.sunshine.fakeOutputName}" = {
+          mode = {
+            width = 3840;
+            height = 2160;
+            refresh = 60.0;
+          };
         };
       };
 
@@ -624,15 +628,16 @@ in
   # One-key switch for the fake output: off while working locally (so the
   # cursor and windows cannot wander onto an invisible screen), on before
   # streaming. niri's JSON output list only contains enabled outputs, so
-  # its presence is the on/off signal. Inert on hosts without DP-3 — the
-  # trailing `on` just fails with "output not found".
-  home.packages = [
+  # its presence is the on/off signal. Gated on the Sunshine capability —
+  # hosts without the fake output do not get the script at all.
+  home.packages = lib.mkIf osConfig.modules.capabilities.sunshine.enable [
     (pkgs.writeShellScriptBin "fake-screen-toggle" ''
+      fake="${osConfig.modules.capabilities.sunshine.fakeOutputName}"
       outputs=$("${cfg.package}/bin/niri" msg --json outputs 2>/dev/null) || outputs='{}'
-      if printf '%s' "$outputs" | ${pkgs.jq}/bin/jq -e 'has("DP-3")' >/dev/null 2>&1; then
-        exec "${cfg.package}/bin/niri" msg output DP-3 off
+      if printf '%s' "$outputs" | ${pkgs.jq}/bin/jq -e --arg fake "$fake" 'has($fake)' >/dev/null 2>&1; then
+        exec "${cfg.package}/bin/niri" msg output "$fake" off
       fi
-      exec "${cfg.package}/bin/niri" msg output DP-3 on
+      exec "${cfg.package}/bin/niri" msg output "$fake" on
     '')
   ];
 

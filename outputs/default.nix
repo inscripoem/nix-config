@@ -45,7 +45,12 @@ let
           aagl.honkers-railway-launcher.enable = true;
           # aagl.sleepy-launcher.enable = true;  # Zenless Zone Zero
         };
-        modules.capabilities.sunshine.enable = true;
+        modules.capabilities.sunshine = {
+          enable = true;
+          # Reserved fake streaming output port (capabilities/sunshine.nix):
+          # host-specific — this GPU enumerates DP-3 free of monitors.
+          fakeOutputName = "DP-3";
+        };
         modules.capabilities."1password".enable = true;
         modules.capabilities.smart.enable = true;
         modules.capabilities.deploy-tools.enable = true;

@@ -58,9 +58,10 @@ let
   # Reserved fake-output port (see the kernelParams block below).
   # Connector names are driver-enumerated: re-verify after any GPU swap
   # (hosts/briefcase/gpu sibling-profile workflow). The name also appears
-  # in the greeter customConfig, the wrapper probe, home/desktop/niri.nix,
-  # docs/remote-desktop.md, and the EDID generator header.
-  fakeOutput = "DP-3";
+  # in the greeter customConfig, the wrapper probe, home/desktop/niri.nix
+  # (which reads it from the option below), docs/remote-desktop.md, and
+  # the EDID generator header.
+  fakeOutput = cfg.fakeOutputName;
 
   # The greeter is a Wayland (niri) session under greetd and capture is
   # pure KMS, so no X11 display/auth plumbing is needed here. HOME is
@@ -92,8 +93,26 @@ let
     exec ${pkgs.sunshine}/bin/sunshine "output_name=$output" "$@"
   '';
 in {
-  options.modules.capabilities.sunshine.enable =
-    lib.mkEnableOption "Moonlight/Sunshine game streaming";
+  options.modules.capabilities.sunshine = {
+    enable = lib.mkEnableOption "Moonlight/Sunshine game streaming";
+
+    # Single source of truth for the fake-output connector name. Required
+    # (no default) and set by each enabling host: which port is free is
+    # host-specific physical knowledge — the GPU's connector enumeration
+    # and which ports real monitors occupy. Omitting it fails evaluation
+    # loudly at the point of use instead of silently forcing a port that
+    # may have a real monitor on it. The session layer
+    # (home/desktop/niri.nix) reads it through osConfig and gates on
+    # `enable`, so hosts without the capability carry nothing.
+    fakeOutputName = lib.mkOption {
+      type = lib.types.str;
+      description = ''
+        DRM connector name reserved as the fake streaming output. Must
+        match the connector the drm.edid_firmware kernel param forces;
+        re-verify against the actual enumeration after a GPU swap.
+      '';
+    };
+  };
   config = lib.mkIf cfg.enable {
     services.sunshine = {
       enable = true;

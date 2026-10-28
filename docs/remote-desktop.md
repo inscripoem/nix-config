@@ -84,10 +84,18 @@ idle daemon, so nothing ever DPMS-blanks it — the pre-login stream stays
 live indefinitely. `fake-screen-toggle` switches DP-3 off while working
 locally so the cursor cannot wander onto an invisible screen.
 
-After changing GPU, re-verify the connector name (`fakeOutput` in
-capabilities/sunshine.nix): it appears in the kernel params, the greeter
-customConfig, the wrapper probe, home/desktop/niri.nix, this document,
-and the EDID generator header.
+After changing GPU, re-verify the connector name — the
+`modules.capabilities.sunshine.fakeOutputName` option is the single
+source of truth; the kernel params, the greeter customConfig, the
+wrapper probe and this document all derive from it, and the session
+layer (home/desktop/niri.nix) reads it through `osConfig` while gating
+on `sunshine.enable`, so non-streaming desktops carry no fake-output
+config at all. The option has no default: it is host-specific physical
+knowledge (which port the GPU enumerates free of monitors), so every
+enabling host declares it in its own config block — briefcase sets
+`DP-3` in outputs/default.nix — and omitting it fails evaluation
+loudly. A second streaming desktop needs the capability enabled plus
+its own `fakeOutputName` line.
 
 ## 4. Network and pairing
 
