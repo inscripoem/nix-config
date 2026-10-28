@@ -70,7 +70,7 @@ PATCHES = [
     # Persisted-setting read — always falsy (see docstring point 4).
     (
         b"s?.getSettings().minimizeToTrayOnClose!==!0",
-        b"!!1&&s?.getSettings().minimizeToTrayOnClose",
+        b"!!0&&s?.getSettings().minimizeToTrayOnClose",
     ),
     # Tray click/tooltip line — attach click handler on Linux too, so a
     # left-click on the tray icon (SNI Activate) restores the window.
