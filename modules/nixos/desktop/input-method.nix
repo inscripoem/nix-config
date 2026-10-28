@@ -17,6 +17,15 @@ let
   vinput = vinputBase.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ../../../pkgs/fcitx5-vinput-client-preedit.patch ];
   });
+  # USER-SPACE provider patch (lives outside nix): the active cloud provider
+  # `wetype-stream` strips sentence-final punctuation before commit via a
+  # one-line rstrip at the final emit in
+  # ~/.local/share/vinput/providers/wetype/streaming (marked "Local patch"
+  # there). `vinput provider update wetype-stream` restores the registry
+  # version and silently reverts it — reapply via
+  # `vinput provider edit wetype-stream`. Probed 2026-10-28: the WeType
+  # cloud protocol has no punctuation switch (request field 24 only gates
+  # server-side finalization), so the strip must stay client-side.
 in
 
 {
