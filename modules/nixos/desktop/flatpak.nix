@@ -1,9 +1,11 @@
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 
 {
   services.flatpak = {
     enable = true;
-    uninstallUnmanaged = true;
+    # mkDefault: this uninstalls manually-installed flatpaks on activation,
+    # a side-effectful default — keep it overridable by lower layers.
+    uninstallUnmanaged = lib.mkDefault true;
     remotes = [
       { name = "flathub"; location = "https://flathub.org/repo/flathub.flatpakrepo"; }
     ];

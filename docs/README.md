@@ -8,7 +8,7 @@ selection, module layout, and deployment commands.
 | macOS user environment | [Home Manager on air](darwin-home-manager.md) |
 | macOS package manager | [Lix ownership and recovery](darwin-lix.md) |
 | macOS recovery generations | [Original migration recovery](nix-config-orchestration.md#original-migration-recovery) |
-| Wyse installation and recovery | [Wyse 3040](wyse3040-install.md) |
+| Wyse 3040 hardware notes and DietPi layout | [Wyse 3040](wyse3040.md) |
 | Encrypted credentials | [SOPS and age](secrets.md) |
 | SSH authentication and Git signing | [1Password integration](ssh-agent.md) |
 | Shell history | [Atuin and Zsh](atuin-zsh.md) |

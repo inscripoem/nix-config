@@ -29,7 +29,3 @@ creation_rules:
       # briefcase (host key — auto-decrypt on NixOS activation via
       # /etc/ssh/ssh_host_ed25519_key).
       - age1mu6fuurmsg0pys7gsnep3p8tvtu536mqjjy67egu35uljfjq75asglllvk
-      #
-      # wyse3040 (host key — auto-decrypt on NixOS activation via
-      # /etc/ssh/ssh_host_ed25519_key).
-      - age1w5yy06yh9m6yn87fzmcu0392j3kndxmqvj4r2pn3swchf58px5lqj70fj2

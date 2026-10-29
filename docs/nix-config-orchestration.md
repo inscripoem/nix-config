@@ -2,7 +2,11 @@
 
 [outputs/default.nix](../outputs/default.nix) declares the hosts and assembles
 NixOS, nix-darwin, Colmena, and deploy-rs outputs. Edit that table when adding a
-host; the flake target name is independent of its network hostname.
+host; the flake target name is independent of its network hostname. Creating a
+new module file is not enough: register it by hand in the imports list of the
+matching `default.nix` (`base`, `capabilities`, `desktop`, or the packs
+collection). An unregistered file is silently ignored; see the notes in
+[Adding configuration](#adding-configuration).
 
 ## Hosts
 
@@ -10,7 +14,6 @@ host; the flake target name is independent of its network hostname.
 |---|---|---|---|
 | `briefcase` | x86_64 Linux | `desktop`, `lan` | `home/hosts/briefcase.nix` |
 | `vm` | x86_64 Linux | `vm`, `desktop`, `lan` | `home/hosts/vm.nix` |
-| `wyse3040` | x86_64 Linux | `server`, `lan` | `home/hosts/wyse3040.nix` |
 | `nutshell` | x86_64 Linux / WSL | `wsl` | `home/hosts/nutshell.nix` |
 | `air` | Apple Silicon macOS | nix-darwin base | `home/hosts/air.nix` |
 
@@ -30,8 +33,11 @@ NixOS and Colmena:
 
 Classes describe the machine or its environment. For example, `lan` enables
 mDNS; Tailscale remains an optional capability because LAN membership does not
-imply tailnet membership. `public` provides a stricter SSH baseline but is not
-currently assigned to a host.
+imply tailnet membership. `public` is a planned hardening class for
+internet-facing machines: tightened SSH (password and root login disabled),
+fail2ban, and a deny-by-default firewall. It is not implemented yet —
+`modules/nixos/public/default.nix` is an empty placeholder containing only
+TODOs — and no host currently selects the class.
 
 Capability modules are imported centrally and guard their configuration with
 `lib.mkIf cfg.enable`. Multi-component capabilities can expose child switches.
@@ -126,7 +132,11 @@ application paths before its first activation.
 
 For a capability or pack, create its module and import it from the corresponding
 `default.nix`. Add new `.nix` files to Git before evaluation: flakes ignore
-untracked files. Evaluate every affected platform.
+untracked files. `just lint-modules` verifies registration completeness (every
+`.nix` in a manifest directory must be reachable from its `default.nix`) and
+class usage; it evaluates the real `imports` fields and the host table via the
+`moduleRegistration` flake output (logic in `lib/check-registration.nix`, where
+the RESERVED whitelist also lives). Evaluate every affected platform.
 
 ### Capability example
 
@@ -253,9 +263,11 @@ sudo -H darwin-rebuild switch --flake .#air --show-trace
 
 Other Macs need their own alias or can use that command with their target name.
 The user runs `nhs` for local NixOS activation. Remote deployment uses
-`just apply wyse3040`; initial installation uses the separate
-[Wyse procedure](wyse3040-install.md). `just build-tarball nutshell` builds a
-WSL import image; see the [justfile](../justfile) for its arguments.
+`just apply <host>` for hosts declared with `deploy = true`; no current host
+sets that flag, so the colmena and deploy-rs outputs are empty. Initial
+installation of a new bare host uses `just install-remote`; see the
+[justfile](../justfile). `just build-tarball nutshell` builds a WSL import
+image; see the [justfile](../justfile) for its arguments.
 
 At nix-darwin revision `4cff07de74b50e64bdd68cd4e722ab5b6b35ee48`,
 `darwin-rebuild check` was observed to activate the system: the activation

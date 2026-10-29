@@ -58,7 +58,7 @@ let
   # Reserved fake-output port (see the kernelParams block below).
   # Connector names are driver-enumerated: re-verify after any GPU swap
   # (hosts/briefcase/gpu sibling-profile workflow). The name also appears
-  # in the greeter customConfig, the wrapper probe, home/desktop/niri.nix
+  # in the greeter customConfig, the wrapper probe, home/desktop/niri/default.nix
   # (which reads it from the option below), docs/remote-desktop.md, and
   # the EDID generator header.
   fakeOutput = cfg.fakeOutputName;
@@ -102,7 +102,7 @@ in {
     # and which ports real monitors occupy. Omitting it fails evaluation
     # loudly at the point of use instead of silently forcing a port that
     # may have a real monitor on it. The session layer
-    # (home/desktop/niri.nix) reads it through osConfig and gates on
+    # (home/desktop/niri/default.nix) reads it through osConfig and gates on
     # `enable`, so hosts without the capability carry nothing.
     fakeOutputName = lib.mkOption {
       type = lib.types.str;

@@ -1,4 +1,4 @@
-{ lib, vars, inputs, ... }:
+{ vars, inputs, ... }:
 
 {
   imports = [
@@ -9,5 +9,6 @@
   wsl.defaultUser = vars.username;
   wsl.startMenuLaunchers = true;
 
-  networking.networkmanager.enable = lib.mkForce false;
+  # Plain assignment is enough to outrank the base module's mkDefault.
+  networking.networkmanager.enable = false;
 }

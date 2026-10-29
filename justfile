@@ -53,9 +53,9 @@ apply target="":
 
 # ══════════════════════════════════════════════════════════════
 # Verification — AGENTS.md §1 hard rule.
-# `just lint` chains the QML gate and deadnix. All tools come from
-# this flake's locked nixpkgs input via `--inputs-from .`; no extra
-# flake input, no devShell.
+# `just lint` chains lint-modules (pure shell, no nix), the QML gate
+# and deadnix. The nix-run tools come from this flake's locked nixpkgs
+# input via `--inputs-from .`; no extra flake input, no devShell.
 # `lint-qml` runs qmllint with FULL DMS type resolution. qmllint
 # ships inside qt6.qtdeclarative but is not its mainProgram, hence
 # the explicit store-path lookup. The dux-shell source (the exact
@@ -134,15 +134,21 @@ lint-qml:
         exit 1
     fi
 
-# Check unused Nix declarations, then the QML gate above.
-lint: lint-qml
+# Static reachability check for the manual registration chain: every
+# .nix in a manifest directory must be reachable from its default.nix,
+# and every class directory must be claimed by a host or reserved.
+# Pure text inspection — no nix. RESERVED whitelist: script header.
+lint-modules:
+    ./scripts/check-module-registration.sh
+
+# Check module registration, unused Nix declarations, then the QML gate above.
+lint: lint-modules lint-qml
     nix run --no-warn-dirty --inputs-from . 'nixpkgs#deadnix' -- \
         --fail \
         . \
         --exclude \
         hosts/briefcase/hardware-configuration.nix \
-        hosts/vm/hardware-configuration.nix \
-        hosts/wyse3040/hardware-configuration.nix
+        hosts/vm/hardware-configuration.nix
 
 # Evaluate one host, or all NixOS and Darwin hosts when omitted.
 check host="": (_verify "eval" host)
@@ -188,9 +194,7 @@ _verify action host:
 # Initial install (bare host or Live USB). Runs on briefcase;
 # the target only receives the closure. Reboots after install.
 #
-#     just install-remote wyse3040 <wyse3040-ip>
-#
-# See docs/wyse3040-install.md §5.
+#     just install-remote <host> <ip>
 # ══════════════════════════════════════════════════════════════
 install-remote host ip *extra:
     nix run 'github:nix-community/nixos-anywhere' -- \

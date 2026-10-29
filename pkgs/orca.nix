@@ -5,7 +5,7 @@
 # for XDG autostart, and the matching autostart desktop template.
 #
 # This is a function over the upstream derivation, not a package of its
-# own: the flake wiring (which orca to feed in) lives in home/packs/ai.nix
+# own: the flake wiring (which orca to feed in) lives in home/packs/ai/orca.nix
 # and version bumps ride llm-agents flake updates, so there is no
 # update-versions.sh section (same exemption class as the workbuddy
 # autostart twin). Both patch scripts assert their anchors; an upstream

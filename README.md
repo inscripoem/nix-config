@@ -9,7 +9,6 @@ Personal NixOS and nix-darwin configuration, managed as a single flake.
 | `briefcase` | NixOS | Primary workstation, Niri + DMS desktop |
 | `air` | macOS | Laptop managed with nix-darwin |
 | `vm` | NixOS | Virtual machine guest |
-| `wyse3040` | NixOS | Low-power thin client; remote builder |
 | `nutshell` | NixOS | Windows Subsystem for Linux instance |
 
 Host declarations live in `outputs/default.nix`.

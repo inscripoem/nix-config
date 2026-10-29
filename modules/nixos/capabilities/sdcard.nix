@@ -1,4 +1,4 @@
-# SD-card wear-mitigation knobs. See docs/wyse3040-install.md.
+# SD-card wear-mitigation knobs.
 #
 # Two goals:
 #   1. Keep writes off the SD as much as possible (tmpfs /tmp, zram
@@ -27,7 +27,8 @@ in {
     nix.settings.max-free = toString (1024 * 1024 * 1024);
 
     # Disable nh clean to avoid conflict with nix.gc.automatic above.
-    programs.nh.clean.enable = lib.mkForce false;
+    # Plain assignment outranks the base module's mkDefault.
+    programs.nh.clean.enable = false;
 
     # Deduplicate identical store paths via hardlinks; run nightly to
     # avoid contending with typical daytime activity.

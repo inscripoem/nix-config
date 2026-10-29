@@ -16,7 +16,9 @@ spec:
       useUserPackages = true;
       backupFileExtension = "backup";
       users.${vars.username} = import spec.hmEntryPoint;
-      extraSpecialArgs = inputs // { hostSpec = spec; };
+      # Expose vars to HM modules (home/core, packs, ...) so central
+      # identity values (username, email, stateVersion) resolve there.
+      extraSpecialArgs = inputs // { inherit vars; hostSpec = spec; };
     };
   }
 ]

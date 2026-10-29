@@ -6,6 +6,7 @@
     ./remote-builder.nix
     ./tailscale.nix
     ./sdcard.nix
+    ./oom-guard.nix
     ./impermanence.nix
     ./remote-build-client.nix
     ./smart.nix

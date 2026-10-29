@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ pkgs, lib, vars, ... }:
 
 let
   signingKey = builtins.readFile ../../keys/ssh-ed25519.pub;
@@ -11,8 +11,8 @@ in
     enable = true;
     settings = {
       user = {
-        name = lib.mkDefault "inscripoem";
-        email = "changxuben@gmail.com";
+        name = lib.mkDefault vars.username;
+        email = vars.email;
         signingkey = "key::${signingKey}";
       };
       gpg.format = "ssh";

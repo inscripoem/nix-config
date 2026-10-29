@@ -5,9 +5,9 @@
 # vars.builders. The client does no local building (max-jobs = 0).
 #
 # The SSH key at /persist/root/.ssh/builder_ed25519 is deployed
-# declaratively via sops-nix (secrets/builder.yaml → sops.secrets on
-# wyse3040). Each remote-build client gets its own keypair; the public
-# half lives in keys/ and is referenced by vars.builderClientKeys.
+# declaratively via sops-nix (secrets/builder.yaml → sops.secrets).
+# Each remote-build client gets its own keypair; the public half
+# lives in keys/ and is referenced by vars.builderClientKeys.
 
 { config, lib, vars, ... }:
 let cfg = config.modules.capabilities.remote-build-client;

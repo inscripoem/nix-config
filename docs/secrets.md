@@ -146,12 +146,15 @@ example of a `sops.templates` environment file consumed by a service.
 | File | Keys | Consumer |
 |---|---|---|
 | `secrets/wifi.yaml` | `wifi_HKHomeNet_5G_ssid`, `wifi_HKHomeNet_5G_psk`, `wifi_HKHomeNet_ssid`, `wifi_HKHomeNet_psk` | [WiFi profiles capability](../modules/nixos/capabilities/wifi-profiles.nix) |
-| `secrets/builder.yaml` | `wyse3040_builder_ed25519` | [Wyse host](../hosts/wyse3040/default.nix), at `/persist/root/.ssh/builder_ed25519` |
+
+`secrets/builder.yaml` is kept as an archive. Its `wyse3040_builder_ed25519`
+key lost its consumer when the wyse3040 host left the flake on 2026-10-29;
+the orphan entry is harmless and no module reads the file anymore.
 
 WiFi profiles are opt-in through `modules.capabilities.wifi-profiles.enable`.
 They use a root-only environment template with NetworkManager system
 connections, so networking does not depend on a desktop keyring unlock.
-`briefcase` enables them; Wyse currently uses Ethernet.
+`briefcase` enables them; fixed-Ethernet hosts do not need them.
 
 A remote-build client's public key belongs in `keys/` and
 `vars.builderClientKeys`; its private half belongs in the encrypted builder

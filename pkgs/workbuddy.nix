@@ -159,7 +159,7 @@ let
       sed -i "s|Exec=.*|Exec=$out/bin/workbuddy %U|" \
         $out/share/applications/workbuddy.desktop
 
-      # Autostart variant for ~/.config/autostart (home/packs/ai.nix): same
+      # Autostart variant for ~/.config/autostart (home/packs/ai/workbuddy.nix): same
       # metadata as the shipped entry, Exec swapped to the silent-start
       # launcher. Lives outside share/applications on purpose — launchers
       # scan that directory, and this template is not a user-facing entry.
@@ -173,7 +173,7 @@ let
       # vendored safe-bin + managed runtimes, rebuilt by the Rust sandbox-center,
       # which honors none of the CLI's env hooks (CODEBUDDY_ENV_FILE /
       # WORKBUDDY_EXTRA_PATHS) — so host tools are exposed at the shell layer
-      # instead: see the zshenv append in home/packs/ai.nix (workbuddy block).
+      # instead: see the zshenv append in home/packs/ai/workbuddy.nix.
       for launcher in workbuddy workbuddy-autostart; do
         wrapProgram $out/bin/$launcher \
           --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.bubblewrap pkgs.socat ]} \

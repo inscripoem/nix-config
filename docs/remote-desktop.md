@@ -120,7 +120,7 @@ After changing GPU, re-verify the connector name — the
 `modules.capabilities.sunshine.fakeOutputName` option is the single
 source of truth; the kernel params, the greeter customConfig, the
 wrapper probe and this document all derive from it, and the session
-layer (home/desktop/niri.nix) reads it through `osConfig` while gating
+layer (home/desktop/niri/default.nix) reads it through `osConfig` while gating
 on `sunshine.enable`, so non-streaming desktops carry no fake-output
 config at all. The option has no default: it is host-specific physical
 knowledge (which port the GPU enumerates free of monitors — and it must

@@ -22,7 +22,7 @@ in
       # docs/ssh-agent.md §2 / §3 for why this lives in $SSH_AUTH_SOCK
       # AND in IdentityAgent simultaneously. The agent itself, its key
       # allowlist (agent.toml), and the $SSH_AUTH_SOCK export are
-      # configured in home/secrets/1password.nix.
+      # configured in home/desktop/1password.nix.
       "*" = {
         IdentityAgent = lib.mkDefault onePasswordAgent;
       };

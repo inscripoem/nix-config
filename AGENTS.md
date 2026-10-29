@@ -20,7 +20,7 @@ partial by qmllint's limits (reliable mainly on parent-chain receivers);
 typos via ids or `Theme.*` singletons are a known gap. Runtime behavior
 still needs a DMS plugin reload to confirm.
 
-NixOS hosts: `briefcase` (primary), `vm`, `wyse3040`, `nutshell` (WSL).
+NixOS hosts: `briefcase` (primary), `vm`, `nutshell` (WSL).
 Darwin host: `air`.
 
 A change is only "done" when the chosen command exits 0 with no `error:` or

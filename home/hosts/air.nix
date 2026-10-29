@@ -17,7 +17,6 @@
   programs.git = {
     lfs.enable = true;
     settings = {
-      user.name = "CHANG Xuben";
       init.defaultBranch = "main";
       lfs."customtransfer.xet" = {
         path = "git-xet";

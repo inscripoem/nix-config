@@ -49,7 +49,7 @@
   #
   # The autostart entry starts the 1Password GUI at graphical session
   # login, minimised to the tray via `--silent`. Same XDG autostart
-  # mechanism as home/desktop/deskflow.nix: any .desktop file dropped
+  # mechanism as home/desktop/desktop-env.nix: any .desktop file dropped
   # into ~/.config/autostart/ is honoured by every XDG-compliant DE
   # (KDE Plasma, GNOME, ...) during session startup.
   #

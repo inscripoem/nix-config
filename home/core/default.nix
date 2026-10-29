@@ -1,4 +1,4 @@
-{ config, lib, pkgs, nix-index-database, ... }:
+{ config, lib, pkgs, vars, nix-index-database, ... }:
 
 {
   imports = [
@@ -13,9 +13,10 @@
     nix-index-database.homeModules.nix-index
   ];
 
-  home.username = "inscripoem";
+  home.username = vars.username;
   home.homeDirectory = lib.mkDefault (
     "${if pkgs.stdenv.hostPlatform.isDarwin then "/Users" else "/home"}/${config.home.username}"
   );
-  home.stateVersion = "25.05";
+  # NixOS and HM stateVersions intentionally follow the same value.
+  home.stateVersion = vars.stateVersion;
 }

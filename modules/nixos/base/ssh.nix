@@ -9,14 +9,14 @@
 # X11Forwarding and further hardening are layered by class modules:
 #   - desktop/ssh-x11.nix enables X11 forwarding for GUI hosts.
 #   - public/default.nix will harden SSH for internet-facing servers.
-{ ... }:
+{ lib, ... }:
 {
   services.openssh = {
     enable = true;
-    openFirewall = true;
+    openFirewall = lib.mkDefault true;
     settings = {
-      PermitRootLogin = "prohibit-password";   # key-only for colmena/deploy-rs
-      PasswordAuthentication = true;             # local convenience
+      PermitRootLogin = "prohibit-password";        # key-only for colmena/deploy-rs
+      PasswordAuthentication = lib.mkDefault true;  # local convenience
     };
   };
 }

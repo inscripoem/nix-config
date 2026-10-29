@@ -64,6 +64,7 @@ let
         modules.capabilities.docker.enable = true;
         modules.capabilities.lan-mouse.enable = true;
         modules.capabilities.bluetooth.enable = true;
+        modules.capabilities.oom-guard.enable = true;
         # NCT6798 fan duty + ENE 6K7750 ARGB (Maxsun B760M D4 hardware).
         modules.capabilities.fan-argb.enable = true;
       };
@@ -82,26 +83,6 @@ let
       ];
       extraConfig = {
         modules.capabilities.tailscale.enable = true;
-      };
-    };
-
-    wyse3040 = {
-      arch = "x86_64-linux";
-      hardwarePath = ../hosts/wyse3040;
-      classes = [ "server" "lan" ];
-      hmEntryPoint = ../home/hosts/wyse3040.nix;
-      hmSharedModules = [ ];
-      deploy = true;
-      hostname = "wyse3040.local";
-      sshUser = "root";
-      tags = [ "home" ];
-      extraModules = [ disko.nixosModules.disko ];
-      extraConfig = {
-        modules.capabilities.tailscale.enable = true;
-        modules.capabilities.sdcard.enable = true;
-        modules.capabilities.impermanence.enable = true;
-        modules.capabilities.remote-build-client.enable = true;
-        modules.capabilities.docker.enable = true;
       };
     };
 
@@ -145,6 +126,15 @@ let
 in
 {
   inherit nixosHosts nixosConfigurations darwinHosts darwinConfigurations;
+
+  # Registration-completeness and class-usage audit (consumed by
+  # `just lint-modules`; see lib/check-registration.nix).
+  moduleRegistration = import ../lib/check-registration.nix {
+    lib = nixpkgs.lib;
+    src = self;
+    inherit inputs;
+  };
+
   colmena = import ./colmena.nix (inputs // { inherit nixosHosts vars; });
   deploy = import ./deploy.nix (inputs // { inherit nixosHosts; });
 

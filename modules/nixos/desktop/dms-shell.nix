@@ -20,7 +20,7 @@ in
   # NOTE: systemd.enable is intentionally false. The upstream module binds
   # dms.service to graphical-session.target, which is also activated by
   # KDE Plasma sessions, causing the niri taskbar to appear on top of those
-  # desktops. home/desktop/niri.nix instead declares its own dms.service
+  # desktops. home/desktop/niri/default.nix instead declares its own dms.service
   # (WantedBy=niri.service, Type=dbus on the StatusNotifierWatcher name) so
   # DMS only runs inside niri sessions and XDG autostart apps can never
   # race its tray watcher.

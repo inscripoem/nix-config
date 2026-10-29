@@ -22,8 +22,6 @@
 #   - DefaultDependencies=no is required to avoid the implicit
 #     sysinit.target -> ... -> sysroot.mount ordering cycle that
 #     systemd would otherwise break by dropping this service.
-#
-# See docs/wyse3040-install.md for the design.
 
 { config, lib, vars, pkgs, inputs, ... }:
 let cfg = config.modules.capabilities.impermanence;

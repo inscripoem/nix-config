@@ -10,9 +10,9 @@
 #     `/etc/`, also strictly system territory.
 #
 # User-facing pieces (the SSH agent socket consumer wiring, the
-# `agent.toml` vault allowlist, etc.) live in `home/secrets/1password.nix`.
+# `agent.toml` vault allowlist, etc.) live in `home/desktop/1password.nix`.
 
-{ config, lib, ... }:
+{ config, lib, vars, ... }:
 let cfg = config.modules.capabilities."1password";
 in {
   options.modules.capabilities."1password".enable =
@@ -27,7 +27,7 @@ in {
     programs._1password.enable = true;
     programs._1password-gui = {
       enable = true;
-      polkitPolicyOwners = [ "inscripoem" ];
+      polkitPolicyOwners = [ vars.username ];
     };
 
     # Allowlist for the 1Password browser-integration native-messaging

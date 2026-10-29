@@ -14,7 +14,9 @@ let
       sharedModules = [ ../home/packs ] ++ (spec.hmSharedModules or [ ]);
       backupFileExtension = "backup";
       users.${vars.username} = import spec.hmEntryPoint;
-      extraSpecialArgs = inputs;
+      # Expose vars to HM modules (home/core, packs, ...) so central
+      # identity values (username, email, stateVersion) resolve there.
+      extraSpecialArgs = inputs // { inherit vars; };
     };
   };
 
