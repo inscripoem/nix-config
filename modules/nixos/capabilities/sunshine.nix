@@ -178,11 +178,11 @@ in {
     # core/internal/config/embedded/niri-greeter.kdl — copied verbatim
     # below, re-sync if that template ever grows new session essentials);
     # dms-greeter appends its own spawn-at-startup for the greeter UI on
-    # top. The fake output is pinned to its 1080p standard timing so the
-    # pre-login stream keeps the login UI readable; the daily niri
-    # session pins the preferred 4K instead (home/desktop/niri.nix). The
-    # greeter session has no idle daemon, so nothing ever DPMS-blanks
-    # it — the pre-login stream stays live indefinitely.
+    # top. The fake output is pinned to its 1080p standard timing — the
+    # same mode the daily session and the real monitor run, so login and
+    # post-login screens are logically identical. The greeter session
+    # has no idle daemon, so nothing ever DPMS-blanks it — the pre-login
+    # stream stays live indefinitely.
     services.displayManager.dux-greeter.compositor.customConfig = ''
       hotkey-overlay {
           skip-at-startup

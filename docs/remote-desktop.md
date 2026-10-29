@@ -65,15 +65,24 @@ has no DPCD — there is no physical sink to report link capabilities —
 so i915 validates every mode against the fallback link and only
 640x480 survives (EDID load and parse are fine: the connector exposes
 the injected EDID and its identity; the rejection happens at mode
-validation). HDMI has no DPCD dependency; its mode validation reads the
-limits straight from the EDID, whose range descriptor declares a
-600 MHz max dotclock. Verified live on the A380, 2026-10-28.
+validation). HDMI has no DPCD dependency. Verified live on the A380,
+2026-10-28.
+
+**The EDID must also carry a CEA-861 extension with an HDMI Forum
+VSDB.** Without it the kernel never sets `display_info.max_tmds_clock`
+and i915 caps the sink at the 165 MHz DVI baseline
+(intel_hdmi.c `hdmi_port_clock_limit`): 1080p60 (148.5 MHz) survives
+but 4K60 (594 MHz) is rejected — the generator's CEA extension block
+(HDMI VSDB + HF-VSDB declaring a 600 MHz Max TMDS Character Rate,
+SCDC deliberately not present since no sink answers I2C reads) lifts
+the cap to the source's own limit. Both blocks are plain tag-3
+vendor-specific blocks distinguished by OUI, not extended-tag blocks.
 
 Port roles:
 
 | Port | Role |
 |---|---|
-| DP-1, HDMI-A-2 | real monitors (true EDID, native modes) |
+| DP-1..DP-3, HDMI-A-2 | real monitors (true EDID, native modes) |
 | HDMI-A-1 | reserved fake output — never plug a real monitor in here; the forced EDID shadows it |
 
 Routing by scenario:
@@ -83,17 +92,29 @@ Routing by scenario:
 | monitor present, local login | greeter UI on the real monitor (niri auto-placement: alphabetically-first connected output first) |
 | monitor present, remote login | `sunshine-greeter` probes the first connected DRM connector and streams that output |
 | headless, remote login | the fake output is the only one; the greeter runs on it at 1080p |
-| logged in, remote desktop | user session pins the fake output at 4K; Sunshine's output selection must be `HDMI-A-1` |
+| logged in, remote desktop | user session pins the fake output at the same 1080p the real monitor runs; Sunshine's output selection must be `HDMI-A-1` |
 
 The EDID binary is regenerated with
 `modules/nixos/capabilities/sunshine-fake-edid.py` (validate with
-`edid-decode`). The greeter session pins the fake output at 1080p so the
-pre-login stream keeps the login UI readable; the daily session
-(home/desktop/niri.nix) pins the preferred 4K. The greeter session has no
-idle daemon, so nothing ever DPMS-blanks it — the pre-login stream stays
-live indefinitely. `fake-screen-toggle` switches the fake output off
-while working locally so the cursor cannot wander onto an invisible
-screen.
+`edid-decode`). The EDID keeps its 4K preferred timing as a dormant
+option, but every consumer pins the fake output at 1080p — the same
+mode the real monitor runs — so the desk screen and the streamed
+picture are the same logical desktop. The greeter session has no idle
+daemon, so nothing ever DPMS-blanks it — the pre-login stream stays
+live indefinitely.
+
+`fake-screen-toggle` is the session handover button between the two:
+
+- **Going remote**: enables the fake output, then moves every workspace
+  from the real monitor onto it — Moonlight picks up exactly what was
+  on the desk screen.
+- **Back at the desk**: disables the fake output; niri migrates its
+  workspaces onto the remaining output automatically.
+
+The toggle records its last state under
+`~/.local/state/sunshine/fake-screen`; a session-start hook
+(`fake-screen-init`, spawned by niri) restores "off" after a relogin,
+since the config pin re-enables the output on every session start.
 
 After changing GPU, re-verify the connector name — the
 `modules.capabilities.sunshine.fakeOutputName` option is the single

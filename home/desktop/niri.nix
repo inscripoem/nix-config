@@ -318,6 +318,24 @@ let
     niri validate -c "$configBodyPath"
     cp "$configBodyPath" $out
   '';
+
+  # State file (under XDG_STATE_HOME) shared by fake-screen-toggle and the
+  # session-start restore script below.
+  fakeScreenStateFile = "sunshine/fake-screen";
+
+  # Session-start state restore: the niri config pin re-enables the fake
+  # output on every login; if the user last toggled it off, disable it
+  # again shortly after startup. Referencing osConfig here is safe on
+  # non-streaming hosts — the binding is only used under the gated
+  # spawn-at-startup entry, and Nix never forces unused bindings.
+  fakeScreenInit = pkgs.writeShellScript "fake-screen-init" ''
+    fake="${osConfig.modules.capabilities.sunshine.fakeOutputName}"
+    state_file="''${XDG_STATE_HOME:-$HOME/.local/state}/${fakeScreenStateFile}"
+    [ -f "$state_file" ] || exit 0
+    [ "$(cat "$state_file" 2>/dev/null)" = "off" ] || exit 0
+    sleep 1
+    exec "${cfg.package}/bin/niri" msg output "$fake" off
+  '';
 in
 {
   programs.niri = {
@@ -566,6 +584,11 @@ in
         # as the dms.service user unit declared below — spawning it here too
         # would race the service for the StatusNotifierWatcher bus name.
         { command = [ "${themeSync}" ]; }
+      ] ++ lib.optionals osConfig.modules.capabilities.sunshine.enable [
+        # Restore the persisted fake-output on/off state after login (the
+        # config pin above re-enables the fake output on every session
+        # start); see fakeScreenInit in the let block.
+        { command = [ "${fakeScreenInit}" ]; }
       ];
 
       xwayland-satellite = {
@@ -603,20 +626,24 @@ in
       };
 
       # Fake streaming output (kernel-forced EDID, hosts with the Sunshine
-      # capability — see modules/nixos/capabilities/sunshine.nix). Pin the
-      # preferred 4K mode so the remote-desktop canvas renders at full
-      # resolution; the greeter session pins the same output to its 1080p
-      # standard timing instead. Gated on the capability and named from
-      # its option, so non-streaming desktops carry none of this — even if
-      # their real monitor happens to sit on a connector with the same
-      # name. DMS's GUI-managed include dms/outputs.kdl lands last and
-      # wins if the user ever manages this output through the DMS display
-      # settings.
+      # capability — see modules/nixos/capabilities/sunshine.nix). Pinned
+      # to the SAME mode the real monitor runs (1080p@60) so the two
+      # screens are logically identical: disabling the fake output makes
+      # niri migrate its workspaces onto the real monitor untouched, and
+      # fake-screen-toggle moves them back when going remote — the desk
+      # screen and the streamed picture are the same desktop. The EDID
+      # retains its 4K preferred timing, so a future 4K or scale-2 canvas
+      # is a pin change, not an EDID rebuild. Gated on the capability and
+      # named from its option, so non-streaming desktops carry none of
+      # this — even if their real monitor happens to sit on a connector
+      # with the same name. DMS's GUI-managed include dms/outputs.kdl
+      # lands last and wins if the user manages this output through the
+      # DMS display settings.
       outputs = lib.mkIf osConfig.modules.capabilities.sunshine.enable {
         "${osConfig.modules.capabilities.sunshine.fakeOutputName}" = {
           mode = {
-            width = 3840;
-            height = 2160;
+            width = 1920;
+            height = 1080;
             refresh = 60.0;
           };
         };
@@ -625,19 +652,41 @@ in
     };
   };
 
-  # One-key switch for the fake output: off while working locally (so the
-  # cursor and windows cannot wander onto an invisible screen), on before
-  # streaming. niri's JSON output list only contains enabled outputs, so
-  # its presence is the on/off signal. Gated on the Sunshine capability —
-  # hosts without the fake output do not get the script at all.
+  # Session handover button between the real monitor and the fake
+  # streaming output. niri's JSON output list only contains enabled
+  # outputs, so its presence is the on/off signal:
+  #   OFF (back at the desk): disable the fake output — niri migrates its
+  #   workspaces to the remaining output automatically.
+  #   ON (going remote): enable the fake output, then move every
+  #   workspace from the real monitor over, so Moonlight picks up exactly
+  #   what was on the desk screen.
+  # The last state is recorded so the init script (let binding below) can
+  # restore "off" after a relogin — the config pin re-enables the output
+  # on every session start. Gated on the Sunshine capability.
   home.packages = lib.mkIf osConfig.modules.capabilities.sunshine.enable [
     (pkgs.writeShellScriptBin "fake-screen-toggle" ''
       fake="${osConfig.modules.capabilities.sunshine.fakeOutputName}"
-      outputs=$("${cfg.package}/bin/niri" msg --json outputs 2>/dev/null) || outputs='{}'
+      state_file="''${XDG_STATE_HOME:-$HOME/.local/state}/${fakeScreenStateFile}"
+      niri="${cfg.package}/bin/niri"
+
+      outputs=$("$niri" msg --json outputs 2>/dev/null) || outputs='{}'
       if printf '%s' "$outputs" | ${pkgs.jq}/bin/jq -e --arg fake "$fake" 'has($fake)' >/dev/null 2>&1; then
-        exec "${cfg.package}/bin/niri" msg output "$fake" off
+        "$niri" msg output "$fake" off
+        state=off
+      else
+        "$niri" msg output "$fake" on
+        # Workspaces are moved by stable id; niri always keeps at least
+        # one (empty) workspace per output, so the desk screen is not
+        # left output-less.
+        "$niri" msg --json workspaces 2>/dev/null \
+          | ${pkgs.jq}/bin/jq -r --arg fake "$fake" '.[] | select(.output != $fake) | .id' \
+          | while IFS= read -r ws; do
+              "$niri" msg action move-workspace-to-monitor --reference "$ws" "$fake"
+            done
+        state=on
       fi
-      exec "${cfg.package}/bin/niri" msg output "$fake" on
+      mkdir -p "$(dirname "$state_file")"
+      printf '%s\n' "$state" > "$state_file"
     '')
   ];
 

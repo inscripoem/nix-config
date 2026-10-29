@@ -99,7 +99,10 @@ def main():
     BYTEMAP.extend(dtd(594_000, 3840, 176, 88, 296, 2160, 8, 10, 72, 1210, 680))
 
     # -- DTD2: monitor name ------------------------------------------------
-    BYTEMAP.extend(text_descriptor(0xFC, "DP3-Fake-4K"))
+    # Max 12 chars: 13-byte descriptor data area, 0x0a-terminated, space
+    # padded. The name is host-agnostic — do not bake a resolution or a
+    # connector name into the label.
+    BYTEMAP.extend(text_descriptor(0xFC, "Sunshine"))
 
     # -- DTD3: range limits covering both modes ----------------------------
     # 13-byte data area: 6 limits, extended-timing flags 0x00, 0x0a end
@@ -111,11 +114,53 @@ def main():
     BYTEMAP.extend([0x00] * 17)
 
     # -- Checksum -----------------------------------------------------------
-    # 0x7E bytes so far: everything except the extensions flag and the
-    # checksum itself, which are emitted together below.
+    # 0x7E bytes so far. The extensions-count byte participates in the
+    # checksum, so append it first and sum over bytes 0..126.
     assert len(BYTEMAP) == 0x7E, f"expected 126 bytes before checksum, got {len(BYTEMAP)}"
+    # One CEA-861 extension follows (see the CEA extension below).
+    BYTEMAP.append(0x01)
     checksum = (-sum(BYTEMAP)) & 0xFF
-    emit(0x7E, "extensions/checksum", 0x00, checksum)
+    emit(0x7F, "checksum", checksum)
+
+    # -- CEA-861 extension: declare HDMI 2.0 sink capabilities --------------
+    #
+    # Without this block the connector has no HF-VSDB, so the kernel
+    # leaves display_info.max_tmds_clock at 0 and i915 caps the sink at
+    # the 165 MHz DVI baseline (intel_hdmi.c hdmi_port_clock_limit):
+    # 1080p60 (148.5 MHz) survives but 4K60 (594 MHz) is rejected. The
+    # HF-VSDB's Max_TMDS_Character_Rate (600 MHz, > 340 MHz so the
+    # kernel honors it) lifts the cap to the source's own DG2 limit.
+    # SCDC support is deliberately NOT declared — there is no sink to
+    # answer SCDC reads over I2C, and the TMDS cap does not require it.
+    ext = []
+
+    def emit_ext(offset, comment, *values):
+        ext.extend(values)
+        print(f"  ext {offset:#06x}: {' '.join(f'{v:02X}' for v in values)}  ; {comment}", file=sys.stderr)
+
+    # byte 2 = byte offset where DTDs would start: 4-byte header + 6-byte
+    # HDMI VSDB (1 header + 5 payload) + 8-byte HF-VSDB (1 header + 7
+    # payload) = 18. Parsers read data blocks from byte 4 up to this
+    # offset; a zero here hides the VSDBs from some parsers.
+    emit_ext(0x00, "CEA-861 tag/rev, DTD offset", 0x02, 0x03, 0x12, 0x00)
+    # HDMI 1.4 VSDB: data-block header byte = (tag<<5)|len; tag 3 len 5
+    # = 0x65; OUI 00-0C-03 (LSb first); physical address 1.0.0.0. Marks
+    # the sink as HDMI (kernel cea_db_is_hdmi_vsdb: tag 3 + this OUI +
+    # payload >= 5). Layout copied from the real KTC monitor's EDID.
+    emit_ext(0x04, "HDMI VSDB", 0x65, 0x03, 0x0C, 0x00, 0x10, 0x00)
+    # HDMI Forum VSDB: ALSO a plain tag-3 vendor block (NOT an extended
+    # tag-7 block), OUI C4-5D-D8 (LSb first); version 1;
+    # Max_TMDS_Character_Rate 0x78 = 600 MHz (kernel reads hf_scds[5]);
+    # SCDC flags 0x00 — no sink exists to answer SCDC reads over I2C,
+    # and the TMDS cap does not require SCDC. Kernel
+    # cea_db_is_hdmi_forum_vsdb: tag 3 + this OUI + payload >= 7.
+    emit_ext(0x0A, "HF-VSDB", 0x67, 0xD8, 0x5D, 0xC4, 0x01, 0x78, 0x00, 0x00)
+    ext.extend([0x00] * (127 - len(ext)))  # indices 0..126; checksum is 127
+    print(f"  ext 0x40..0x7d: zero padding", file=sys.stderr)
+    ext_checksum = (-sum(ext)) & 0xFF
+    emit_ext(0x7E, "checksum", ext_checksum)
+    assert len(ext) == 128, f"extension must be 128 bytes, got {len(ext)}"
+    BYTEMAP.extend(ext)
 
     sys.stdout.buffer.write(bytes(BYTEMAP))
 
