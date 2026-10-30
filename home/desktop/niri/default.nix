@@ -416,10 +416,25 @@ in
   # plasma-manager theming; only its KDE→GTK auto-sync is lost. force because
   # KDE apps may rewrite kded6rc at runtime; this setting must survive
   # switches.
+  #
+  # statusnotifierwatcher: kded6 autoloads this plasma-workspace module, and
+  # its watcher claims org.kde.StatusNotifierWatcher whenever the name sits
+  # free for a few seconds. dms.service is Type=dbus with that exact BusName,
+  # so a hijack turns every dms start into a 90s start-job timeout and
+  # Restart=on-failure loops it forever. Seen live 2026-10-30: a dms restart
+  # whose stop phase burned the whole TimeoutStopSec left the name free ~90s,
+  # kded6 claimed it within ~2s, and every manual recovery lost the race
+  # (kded6 respawns in 2-3s, dms needs ~10s to reach the claim). The module's
+  # X-KDE-Kded-load-on-demand is false, so blocking autoload blocks every
+  # load path. Plasma sessions keep working: plasmashell owns the watcher
+  # name there on its own.
   xdg.configFile."kded6rc" = {
     force = true;
     text = ''
       [Module-gtkconfig]
+      autoload=false
+
+      [Module-statusnotifierwatcher]
       autoload=false
     '';
   };
