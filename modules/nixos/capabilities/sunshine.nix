@@ -48,10 +48,10 @@
 #   - services.udev.packages += sunshine  (controller / udev rules)
 #   - systemd.user.services.sunshine      (auto-starts with graphical-session)
 #   - services.avahi publish.userServices (mDNS discovery for Moonlight;
-#     uses mkDefault so it merges cleanly with the explicit avahi config
-#     in the lan class)
+#     its deprecated mkDefault is cleared below while the LAN class supplies
+#     the equivalent settings.publish values)
 
-{ config, lib, pkgs, vars, ... }:
+{ config, lib, options, pkgs, vars, ... }:
 let
   cfg = config.modules.capabilities.sunshine;
 
@@ -113,7 +113,7 @@ in {
       '';
     };
   };
-  config = lib.mkIf cfg.enable {
+  config = lib.mkIf cfg.enable ({
     services.sunshine = {
       enable = true;
       openFirewall = true;
@@ -268,5 +268,14 @@ in {
         ];
       };
     };
-  };
+  } // lib.optionalAttrs (lib.hasAttrByPath [ "services" "avahi" "publish" "enable" ] options) {
+    # Nixpkgs' Sunshine module still sets these deprecated compatibility
+    # options with mkDefault (priority 1000). The LAN class above supplies
+    # their settings replacements; override only those defaults so an
+    # explicit legacy setting still takes precedence and exposes itself.
+    services.avahi.publish = {
+      enable = lib.mkOverride 999 null;
+      userServices = lib.mkOverride 999 null;
+    };
+  });
 }

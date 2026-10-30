@@ -10,8 +10,9 @@
     settings.publish = {
       # nixpkgs renamed the `services.avahi.publish.*` options to these
       # settings and flipped the defaults: `disable-publishing` now
-      # defaults to true, so it must be set explicitly to keep publishing.
+      # defaults to true, so both publishing controls must be explicit.
       disable-publishing = false;
+      disable-user-service-publishing = false;
       publish-addresses = true;
       publish-workstation = true;
     };
