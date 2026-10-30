@@ -34,6 +34,119 @@ let
   # session-start restore script below.
   fakeScreenStateFile = "sunshine/fake-screen";
 
+  # Shared handover logic for stream-mode / desk-mode / fake-screen-toggle.
+  # Both directions move workspaces EXPLICITLY: `niri msg output off` does
+  # NOT migrate them (verified 2026-10-30 — they stay on the disabled
+  # output; only a physical disconnect triggers niri's auto-migration), so
+  # relying on auto-migration strands them on the dark screen.
+  fakeScreenLib = pkgs.writeText "fake-screen-lib.sh" ''
+    fake="${osConfig.modules.capabilities.sunshine.fakeOutputName}"
+    state_file="''${XDG_STATE_HOME:-$HOME/.local/state}/${fakeScreenStateFile}"
+    niri="${cfg.package}/bin/niri"
+    jq="${pkgs.jq}/bin/jq"
+
+    fake_enabled() {
+      "$niri" msg --json outputs 2>/dev/null | "$jq" -e --arg f "$fake" 'has($f)' >/dev/null 2>&1
+    }
+
+    # Explicitly move every workspace not on $1 onto $1.
+    move_all_to() {
+      "$niri" msg --json workspaces 2>/dev/null \
+        | "$jq" -r --arg t "$1" '.[] | select(.output != $t) | .id' \
+        | while IFS= read -r ws; do
+            [ -n "$ws" ] && "$niri" msg action move-workspace-to-monitor --reference "$ws" "$1"
+          done
+    }
+
+    enabled_real_outputs() {
+      "$niri" msg --json outputs 2>/dev/null | "$jq" -r --arg f "$fake" 'keys[] | select(. != $f)'
+    }
+
+    # Physically connected outputs except the fake one. sysfs reports them
+    # regardless of niri's enabled state; niri's JSON only lists enabled
+    # outputs, so re-enabling needs this view.
+    connected_real_outputs() {
+      for c in /sys/class/drm/card*-*; do
+        [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
+        name="''${c##*/}"
+        name="''${name#*-}"
+        [ "$name" = "$fake" ] || echo "$name"
+      done
+    }
+
+    save_state() {
+      mkdir -p "$(dirname "$state_file")"
+      printf '%s\n' "$1" > "$state_file"
+    }
+
+    # Dynamic alignment (B): match the fake output's logical size to the
+    # first enabled real output's logical size, using the fake's largest
+    # mode. Real 1080p -> 4K @ scale 2; real 4K -> 4K @ scale 1; real
+    # 1440p -> 4K @ scale 1.5. Scale is rounded to quarter steps and
+    # clamped to [1, 4]; no enabled real output (headless) keeps the
+    # configured fallback pin. This is what makes a monitor swap a
+    # zero-config event: alignment is computed at stream time, never
+    # hardcoded.
+    align_fake_to_desk() {
+      local dims
+      dims=$("$niri" msg --json outputs 2>/dev/null | "$jq" -r \
+        --arg f "$fake" '
+        to_entries[] | select(.key != $f) | .value.logical |
+        "\(.width) \(.height)"' | head -n1)
+      [ -n "$dims" ] || return 0
+      local lw lh
+      read -r lw lh <<< "$dims"
+      [ -n "$lw" ] && [ "$lw" -gt 0 ] 2>/dev/null || return 0
+
+      local mode_arg scale
+      read -r mode_arg scale < <("$niri" msg --json outputs 2>/dev/null | "$jq" -rn \
+        --arg f "$fake" --argjson lw "$lw" --argjson lh "$lh" '
+        .[$f].modes | max_by(.width * .height) |
+        "\(.width)x\(.height) " +
+        ((.width / $lw * 4 | round) / 4 |
+         if . < 1 then 1 elif . > 4 then 4 else . end | tostring)')
+      [ -n "$mode_arg" ] || return 0
+
+      # Partial mode names (no @refresh) are accepted: verified live
+      # 2026-10-30, niri matches by resolution and picks the best refresh.
+      "$niri" msg output "$fake" mode "$mode_arg"
+      "$niri" msg output "$fake" scale "$scale"
+    }
+
+    # Going remote: fake canvas on, aligned to the desk's logical size,
+    # every workspace moved onto it, real outputs off. One active output
+    # means the cursor cannot escape the streamed picture.
+    do_stream() {
+      "$niri" msg output "$fake" on
+      sleep 0.3
+      align_fake_to_desk
+      sleep 0.3
+      move_all_to "$fake"
+      for out in $(enabled_real_outputs); do
+        "$niri" msg output "$out" off
+      done
+      save_state on
+    }
+
+    # Back at the desk: real outputs on (from sysfs), every workspace
+    # moved onto the first real one, fake canvas off. No real monitor
+    # connected is a hard no-op — never strand the only screen.
+    do_desk() {
+      reals=$(connected_real_outputs)
+      if [ -z "$reals" ]; then
+        echo "desk-mode: no real monitor connected, nothing to do" >&2
+        exit 1
+      fi
+      for out in $reals; do
+        "$niri" msg output "$out" on
+      done
+      sleep 0.3
+      move_all_to "$(printf '%s\n' $reals | head -1)"
+      fake_enabled && "$niri" msg output "$fake" off
+      save_state off
+    }
+  '';
+
   # Session-start state restore: the niri config pin re-enables the fake
   # output on every login; if the user last toggled it off, disable it
   # again shortly after startup. Referencing osConfig here is safe on
@@ -336,19 +449,17 @@ in
       };
 
       # Fake streaming output (kernel-forced EDID, hosts with the Sunshine
-      # capability — see modules/nixos/capabilities/sunshine.nix). Pinned
-      # to the SAME mode the real monitor runs (1080p@60) so the two
-      # screens are logically identical: disabling the fake output makes
-      # niri migrate its workspaces onto the real monitor untouched, and
-      # fake-screen-toggle moves them back when going remote — the desk
-      # screen and the streamed picture are the same desktop. The EDID
-      # retains its 4K preferred timing, so a future 4K or scale-2 canvas
-      # is a pin change, not an EDID rebuild. Gated on the capability and
-      # named from its option, so non-streaming desktops carry none of
-      # this — even if their real monitor happens to sit on a connector
-      # with the same name. DMS's GUI-managed include dms/outputs.kdl
-      # lands last and wins if the user manages this output through the
-      # DMS display settings.
+      # capability — see modules/nixos/capabilities/sunshine.nix). This
+      # pin is only the HEADLESS FALLBACK: stream-mode dynamically aligns
+      # the fake output's logical size to whatever the real monitor runs
+      # at stream time (see fakeScreenLib), so swapping monitors needs no
+      # config change. The EDID keeps a 4K preferred timing as alignment
+      # headroom (1080p desk -> 4K @ scale 2, etc.). Gated on the
+      # capability and named from its option, so non-streaming desktops
+      # carry none of this — even if their real monitor happens to sit on
+      # a connector with the same name. DMS's GUI-managed include
+      # dms/outputs.kdl lands last and wins if the user manages this
+      # output through the DMS display settings.
       outputs = lib.mkIf osConfig.modules.capabilities.sunshine.enable {
         "${osConfig.modules.capabilities.sunshine.fakeOutputName}" = {
           mode = {
@@ -362,41 +473,38 @@ in
     };
   };
 
-  # Session handover button between the real monitor and the fake
-  # streaming output. niri's JSON output list only contains enabled
-  # outputs, so its presence is the on/off signal:
-  #   OFF (back at the desk): disable the fake output — niri migrates its
-  #   workspaces to the remaining output automatically.
-  #   ON (going remote): enable the fake output, then move every
-  #   workspace from the real monitor over, so Moonlight picks up exactly
-  #   what was on the desk screen.
-  # The last state is recorded so the init script (let binding below) can
-  # restore "off" after a relogin — the config pin re-enables the output
-  # on every session start. Gated on the Sunshine capability.
+  # Session handover entry points between the real monitor and the fake
+  # streaming output (core logic in fakeScreenLib). Semantics:
+  #   stream-mode: going remote — fake canvas on, dynamically aligned to
+  #     the desk's logical size, workspaces moved onto it explicitly
+  #     (`output off` does not migrate), desk screen off. One active
+  #     output = the cursor cannot escape the streamed picture.
+  #   desk-mode: back at the desk — real outputs re-enabled via sysfs,
+  #     workspaces moved back, fake canvas off. No real monitor is a
+  #     hard no-op.
+  #   fake-screen-toggle: state-aware alternator between the two.
+  # Recovery if the stream dies in stream-mode (desk screen dark):
+  # plug the monitor into ANY other free port (a never-disabled connector
+  # lights up immediately), re-login (the greeter always enables every
+  # connected output), or SSH: NIRI_SOCKET=$(ls /run/user/1000/niri.*.sock)
+  # + niri msg output <name> on. The disabled state is session-scoped and
+  # never persisted; only stream-mode ever disables a real output.
   home.packages = lib.mkIf osConfig.modules.capabilities.sunshine.enable [
+    (pkgs.writeShellScriptBin "stream-mode" ''
+      . ${fakeScreenLib}
+      do_stream
+    '')
+    (pkgs.writeShellScriptBin "desk-mode" ''
+      . ${fakeScreenLib}
+      do_desk
+    '')
     (pkgs.writeShellScriptBin "fake-screen-toggle" ''
-      fake="${osConfig.modules.capabilities.sunshine.fakeOutputName}"
-      state_file="''${XDG_STATE_HOME:-$HOME/.local/state}/${fakeScreenStateFile}"
-      niri="${cfg.package}/bin/niri"
-
-      outputs=$("$niri" msg --json outputs 2>/dev/null) || outputs='{}'
-      if printf '%s' "$outputs" | ${pkgs.jq}/bin/jq -e --arg fake "$fake" 'has($fake)' >/dev/null 2>&1; then
-        "$niri" msg output "$fake" off
-        state=off
+      . ${fakeScreenLib}
+      if [ "$(cat "$state_file" 2>/dev/null)" = "on" ] || { [ ! -f "$state_file" ] && fake_enabled; }; then
+        do_desk
       else
-        "$niri" msg output "$fake" on
-        # Workspaces are moved by stable id; niri always keeps at least
-        # one (empty) workspace per output, so the desk screen is not
-        # left output-less.
-        "$niri" msg --json workspaces 2>/dev/null \
-          | ${pkgs.jq}/bin/jq -r --arg fake "$fake" '.[] | select(.output != $fake) | .id' \
-          | while IFS= read -r ws; do
-              "$niri" msg action move-workspace-to-monitor --reference "$ws" "$fake"
-            done
-        state=on
+        do_stream
       fi
-      mkdir -p "$(dirname "$state_file")"
-      printf '%s\n' "$state" > "$state_file"
     '')
   ];
 

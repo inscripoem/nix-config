@@ -96,25 +96,51 @@ Routing by scenario:
 
 The EDID binary is regenerated with
 `modules/nixos/capabilities/sunshine-fake-edid.py` (validate with
-`edid-decode`). The EDID keeps its 4K preferred timing as a dormant
-option, but every consumer pins the fake output at 1080p — the same
-mode the real monitor runs — so the desk screen and the streamed
-picture are the same logical desktop. The greeter session has no idle
-daemon, so nothing ever DPMS-blanks it — the pre-login stream stays
-live indefinitely.
+`edid-decode`). The EDID keeps a 4K preferred timing as alignment
+headroom; the greeter pins the fake output at 1080p (pre-login only),
+and the daily session's alignment is computed at stream time (see
+below), so a monitor swap needs no config change. The greeter session
+has no idle daemon, so nothing ever DPMS-blanks it — the pre-login
+stream stays live indefinitely.
 
-`fake-screen-toggle` is the session handover button between the two:
+`stream-mode` and `desk-mode` are the handover entry points
+(fake-screen-toggle is a state-aware alternator between them). Both
+move workspaces explicitly: `niri msg output off` does NOT migrate
+them — only a physical disconnect does — so neither relies on
+auto-migration.
 
-- **Going remote**: enables the fake output, then moves every workspace
-  from the real monitor onto it — Moonlight picks up exactly what was
-  on the desk screen.
-- **Back at the desk**: disables the fake output; niri migrates its
-  workspaces onto the remaining output automatically.
+- **stream-mode (going remote)**: enables the fake output, dynamically
+  aligns its logical size to the real monitor's current logical size
+  (real 1080p -> 4K @ scale 2; real 4K -> 4K @ scale 1; computed at
+  stream time, so swapping monitors needs no config change), moves
+  every workspace onto it, then disables the desk screen — one active
+  output, so the cursor cannot escape the streamed picture.
+- **desk-mode (back at the desk)**: re-enables the connected real
+  outputs (discovered via sysfs), moves every workspace back onto the
+  first one, then disables the fake canvas. No real monitor connected
+  is a hard no-op.
 
-The toggle records its last state under
-`~/.local/state/sunshine/fake-screen`; a session-start hook
-(`fake-screen-init`, spawned by niri) restores "off" after a relogin,
-since the config pin re-enables the output on every session start.
+The mode is recorded under `~/.local/state/sunshine/fake-screen`; a
+session-start hook (`fake-screen-init`, spawned by niri) restores
+"off" after a relogin, since the config pin re-enables the output on
+every session start.
+
+**Recovery if the stream dies while in stream-mode** (the desk screen
+is session-disabled in that state). In order of preference:
+
+1. **Plug the monitor into a different free port**: a never-disabled
+   connector lights up immediately — run `desk-mode` from a terminal or
+   spotlight on it to finish the handback.
+2. **SSH over Tailscale** (works from a phone): point `niri msg` at
+   the session socket — `export XDG_RUNTIME_DIR=/run/user/1000;
+   NIRI_SOCKET=$(ls /run/user/1000/niri.*.sock | head -1)` then
+   `niri msg output HDMI-A-1 on`.
+3. **Reboot**: a fresh boot always comes up with every output on —
+   the disabled state is session-scoped and never persisted.
+
+The desk monitor's disabled state is session-scoped by construction:
+nothing persists it, and nothing except stream-mode ever disables a
+real output.
 
 After changing GPU, re-verify the connector name — the
 `modules.capabilities.sunshine.fakeOutputName` option is the single
