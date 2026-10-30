@@ -15,8 +15,11 @@
 // Widget state (on/off, hue/sat/val, brightness, scope) persists as one
 // line in ~/.local/state/argb-fans/ and is re-applied on shell start —
 // plugin settings are read-only inside widgets, so the widget owns this
-// file. "@enefanctl@" is substituted with the absolute store path at
-// build time (see dms-shell.nix).
+// file. The bar instantiates this widget once per screen and the copies
+// share only that file: it doubles as the cross-instance bus, where the
+// last writer drives the hardware (keep-alive strokes, animation daemon)
+// and the others adopt it as display state. "@enefanctl@" is substituted
+// with the absolute store path at build time (see dms-shell.nix).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -199,6 +202,21 @@ PluginComponent {
     // reaped the current daemon: "" | "off" | "restore" | a pattern key.
     property string pendingAfterKill: ""
 
+    // Cross-instance sync. The bar spawns one widget copy per screen and
+    // they share only the state file; its last writer becomes the driver
+    // and the others adopt it as display-only. Without this, an Off on
+    // one bar left the sibling's keep-alive stroking — the LEDs came
+    // back on their own up to keepAliveMs later. Self-writes are exempt
+    // by content equality (lastWrittenState), so no writer identity is
+    // needed. deathCheckPending marks an unexpected anim-daemon exit
+    // awaiting the state-file re-read that decides toast vs adoption.
+    property bool iDrive: false
+    property string lastWrittenState: ""
+    property string lastAdoptedState: ""
+    property bool stateLoaded: false
+    property bool saveQueued: false
+    property bool deathCheckPending: false
+
     function animCommand() {
         var hz = Math.max(5, Math.round(20 * animSpeedPct / 100));
         var mhz = Math.max(10, Math.round(60 * animSpeedPct / 100));
@@ -273,33 +291,76 @@ PluginComponent {
                 applyColor();
             return;
         }
-        if (animProc.running) {
-            stopAnim(pattern);
-        } else {
-            animProc.command = animCommand();
-            animProc.running = true;
-        }
+        // Always route the spawn through stopAnim: its pkill is global
+        // and must also reap a sibling instance's daemon before ours
+        // starts, or two daemons with different parameters would fight
+        // over the LED RAM with nobody left to arbitrate. The last frame
+        // freezes (no-park patch) until our daemon's first frame lands.
+        stopAnim(pattern);
     }
 
     function lightsOff() {
         lightsOn = false;
-        if (animProc.running) {
-            stopAnim("off");
-        } else if (!offProc.running) {
-            offProc.command = ["sh", "-c", "'" + fanctlBin + "' off all 2>&1"];
-            offProc.running = true;
-        }
+        // Always route through killProc: the pkill inside is global and
+        // takes down a sibling instance's daemon too, so the black
+        // stroke in dispatchAfterKill lands after every painter is dead.
+        // The old else-branch wrote black while a sibling's daemon was
+        // still painting, and its next frame undid the off.
+        stopAnim("off");
         saveState();
     }
 
-    function saveState() {
-        if (saveProc.running)
-            return;
-        var line = (lightsOn ? "on" : "off") + " "
+    // The persisted line sans the fan token: the exact payload the
+    // watcher compares against, and what saveState writes.
+    function stateSignature() {
+        return (lightsOn ? "on" : "off") + " "
             + hue.toFixed(3) + " " + sat.toFixed(3) + " " + val.toFixed(3) + " "
             + brightness + " " + scope + " " + pattern + " " + animSpeedPct;
+    }
+
+    // Shared parser for the one-line state file (boot load and the
+    // cross-instance watcher). Returns null for malformed lines.
+    function parseStateLine(line) {
+        var p = line.trim().split(/\s+/);
+        if (p.length < 6 || (p[0] !== "on" && p[0] !== "off"))
+            return null;
+        var sp = p.length >= 8 ? parseInt(p[7]) : 100;
+        var t9 = p.length >= 9 ? p[8] : "";
+        var md = parseInt(t9.replace("m", ""));
+        return {
+            on: p[0] === "on",
+            hue: parseFloat(p[1]),
+            sat: parseFloat(p[2]),
+            val: parseFloat(p[3]),
+            brightness: parseInt(p[4]),
+            scope: parseInt(p[5]),
+            // Unknown pattern keys (older file) fall back to static.
+            pattern: p.length >= 7 && root.patterns.some(pp => pp.key === p[6])
+                ? p[6]
+                : "static",
+            animSpeedPct: sp >= 50 && sp <= 200 ? sp : 100,
+            // Token 9 "m<pct>" = manual fan mode at pct; absent = board
+            // control (a bare number from the older format maps to
+            // manual as well).
+            fanManual: t9 !== "",
+            manualDuty: md >= 25 && md <= 100 ? md : 61
+        };
+    }
+
+    // The old guard dropped the write when one was in flight, so an Off
+    // racing a slider-commit save never hit the disk and the lights came
+    // back on the next shell start. Queue instead. lastWrittenState
+    // records the exact line for the watcher's self-write exemption.
+    function saveState() {
+        deathCheckPending = false;
+        if (saveProc.running) {
+            saveQueued = true;
+            return;
+        }
+        var line = stateSignature();
         if (fanManual)
             line += " m" + manualDuty;
+        lastWrittenState = line;
         saveProc.command = [
             "sh", "-c",
             "mkdir -p '" + stateDir + "' && echo '" + line + "' > '" + stateDir + "/state'"
@@ -336,11 +397,9 @@ PluginComponent {
     function doRestore() {
         restoreArmed = false;
         lightsOn = false;
-        if (animProc.running) {
-            stopAnim("restore");
-        } else {
-            runRestore();
-        }
+        // Unconditional, like lightsOff: also takes down a sibling
+        // instance's daemon before the vendor RAM write lands.
+        stopAnim("restore");
         saveState();
     }
 
@@ -348,6 +407,63 @@ PluginComponent {
         if (loadProc.running)
             return;
         loadProc.running = true;
+    }
+
+    // Adopt a state written by a sibling instance: display fields only.
+    // The writing instance is the driver and already stroked/spawned
+    // what the line describes, so re-applying here would double-paint or
+    // spawn a rival daemon. Fan duty is chip-global and already applied
+    // by the writer, so adoption rewrites the slider state only. No pkill
+    // here either: a surviving daemon of ours was already reaped by the
+    // writer's global pkill, and killing "ours" from here is a global
+    // pkill that would take the new driver's daemon down with it.
+    function adoptState(f) {
+        root.hue = f.hue;
+        root.sat = f.sat;
+        root.val = f.val;
+        root.brightness = f.brightness;
+        root.scope = f.scope;
+        root.pattern = f.pattern;
+        root.animSpeedPct = f.animSpeedPct;
+        root.fanManual = f.fanManual;
+        root.manualDuty = f.manualDuty;
+        root.lightsOn = f.on;
+        root.iDrive = false;
+    }
+
+    // Watcher intake: adopt sibling writes, exempt our own by content
+    // equality (no writer identity needed). Re-reading an already
+    // adopted line is a no-op, so polls are idempotent.
+    function considerExternalState(line) {
+        var content = line.trim();
+        if (root.deathCheckPending) {
+            root.deathCheckPending = false;
+            var f = content !== root.lastAdoptedState
+                && content !== root.lastWrittenState
+                ? root.parseStateLine(content)
+                : null;
+            if (f)
+                root.adoptState(f);
+            else if (root.lightsOn && root.iDrive)
+                ToastService.showError("ARGB animation stopped unexpectedly");
+            return;
+        }
+        if (content === "" || content === root.lastWrittenState || content === root.lastAdoptedState)
+            return;
+        var g = root.parseStateLine(content);
+        if (!g)
+            return;
+        root.lastAdoptedState = content;
+        root.adoptState(g);
+    }
+
+    function readExternalState() {
+        // Busy means a poll tick is mid-read; its completion runs the
+        // same intake, so a death check deferred to the next tick still
+        // resolves (≤2s late, same verdict).
+        if (extStateProc.running)
+            return;
+        extStateProc.running = true;
     }
 
     // Fan control model: the slider expresses DESIRE only and is enabled
@@ -439,11 +555,16 @@ PluginComponent {
         id: animProc
 
         onExited: {
-            // Our own kills route through killProc (pendingAfterKill set);
-            // only silent deaths — USB drop, crash — land here.
+            // Our own kills route through killProc (pendingAfterKill set).
+            // Everything else is ambiguous: a genuine crash or USB drop,
+            // or a sibling instance's global pkill landing before our
+            // poll adopts its write. Settle it against the state file —
+            // a fresh external line means we were demoted (adoption is
+            // silent); an unchanged line means we really lost the engine.
             if (!root.lightsOn || root.pendingAfterKill !== "")
                 return;
-            ToastService.showError("ARGB animation stopped unexpectedly");
+            root.deathCheckPending = true;
+            root.readExternalState();
         }
     }
 
@@ -459,6 +580,13 @@ PluginComponent {
 
     Process {
         id: saveProc
+
+        onExited: {
+            if (root.saveQueued) {
+                root.saveQueued = false;
+                root.saveState();
+            }
+        }
     }
 
     // One-time LED RAM snapshot; state restore chains off its exit.
@@ -486,27 +614,20 @@ PluginComponent {
 
         stdout: SplitParser {
             onRead: line => {
-                var p = line.trim().split(/\s+/);
-                if (p.length < 6 || (p[0] !== "on" && p[0] !== "off"))
+                var f = root.parseStateLine(line);
+                if (!f)
                     return;
-                root.hue = parseFloat(p[1]);
-                root.sat = parseFloat(p[2]);
-                root.val = parseFloat(p[3]);
-                root.brightness = parseInt(p[4]);
-                root.scope = parseInt(p[5]);
-                root.pattern = p.length >= 7 && root.patterns.some(pp => pp.key === p[6])
-                    ? p[6]
-                    : "static";
-                var sp = p.length >= 8 ? parseInt(p[7]) : 100;
-                root.animSpeedPct = sp >= 50 && sp <= 200 ? sp : 100;
-                // Token 9 "m<pct>" = manual fan mode at pct; absent =
-                // board control (a bare number from the older format
-                // maps to manual as well).
-                var t9 = p.length >= 9 ? p[8] : "";
-                var md = parseInt(t9.replace("m", ""));
-                root.fanManual = t9 !== "";
-                root.manualDuty = md >= 25 && md <= 100 ? md : 61;
-                root.lightsOn = (p[0] === "on");
+                root.hue = f.hue;
+                root.sat = f.sat;
+                root.val = f.val;
+                root.brightness = f.brightness;
+                root.scope = f.scope;
+                root.pattern = f.pattern;
+                root.animSpeedPct = f.animSpeedPct;
+                root.fanManual = f.fanManual;
+                root.manualDuty = f.manualDuty;
+                root.lightsOn = f.on;
+                root.lastAdoptedState = line.trim();
             }
         }
 
@@ -516,11 +637,39 @@ PluginComponent {
             // static fills faded, pwm resets to the BIOS curve on boot.
             // A power cycle restores lights and duty within seconds of
             // the shell starting; the pill never lies because it tracks
-            // what we actively drive, not a probe snapshot.
+            // what we actively drive, not a probe snapshot. Boot re-apply
+            // is a driver claim — both copies claim, matching the old
+            // dual-instance behavior; the first user action anywhere
+            // demotes the other through adoption.
+            root.stateLoaded = true;
+            root.iDrive = true;
             if (root.lightsOn)
                 root.applyPattern();
             if (root.fanManual)
                 root.setFanDutyPct(root.manualDuty);
+        }
+    }
+
+    Timer {
+        // Cross-instance bus read. Polling a 2s cat instead of a
+        // FileView watchChanges on purpose: the writer's `echo > file`
+        // truncates before writing, and an inotify reload racing that
+        // window reads a half line — a missed adoption with no further
+        // event to recover by. A poll re-reads until the line parses,
+        // so it self-heals.
+        interval: 2000
+        running: root.stateLoaded
+        repeat: true
+        onTriggered: root.readExternalState()
+    }
+
+    Process {
+        id: extStateProc
+
+        command: ["sh", "-c", "cat '" + root.stateDir + "/state' 2>/dev/null"]
+
+        stdout: SplitParser {
+            onRead: line => root.considerExternalState(line)
         }
     }
 
@@ -572,9 +721,11 @@ PluginComponent {
         // ~1-2 min sleep. Also self-heals after suspend (controller
         // drops off USB; the next tick re-fills once it re-enumerates).
         // Animations keep themselves alive (they strobe every frame),
-        // so this only runs for the static pattern.
+        // so this only runs for the static pattern. Driver-gated: a
+        // demoted copy stroking here would resurrect the LEDs with a
+        // stale color after a sibling's Off — the original relight bug.
         interval: root.keepAliveMs
-        running: root.lightsOn && root.pattern === "static"
+        running: root.lightsOn && root.pattern === "static" && root.iDrive
         repeat: true
         onTriggered: root.applyColor()
     }
@@ -583,7 +734,7 @@ PluginComponent {
     // keep-alive (well inside the ~1-2 min LED sleep window).
     Timer {
         interval: 2000
-        running: root.lightsOn && root.pattern === "thermal"
+        running: root.lightsOn && root.pattern === "thermal" && root.iDrive
         repeat: true
         onTriggered: root.applyColor()
     }
