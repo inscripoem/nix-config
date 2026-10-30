@@ -8,15 +8,12 @@ let
   # it registers as an fcitx5 Module, not an input method). The package
   # carries the addon library, vinput / vinput-gui CLIs and the daemon.
   #
-  # TEMPORARY local verification patch: emit the final text as client-side
-  # preedit right before commitString, so the commit rides an active IME
-  # composition. Chromium terminals that gate IME handling on composition
-  # state (orca's xterm.js terminal) drop bare commit_string events with no
-  # preceding preedit. Drop this override once upstream picks a fix.
-  vinputBase = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
-  vinput = vinputBase.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ../../../pkgs/fcitx5-vinput-client-preedit.patch ];
-  });
+  # Stock upstream build. orca's terminal dropping bare commit_string
+  # (fcitx5-vinput#464) is fixed client-side: the Electron IME flags on the
+  # orca wrapper (pkgs/orca.nix) make stock vinput dictation land — verified
+  # on niri 2026-10-30. The former local clientPreedit patch is retired;
+  # recoverable from git history (c586889) if the wrapper approach regresses.
+  vinput = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
   # USER-SPACE provider patch (lives outside nix): the active cloud provider
   # `wetype-stream` strips sentence-final punctuation before commit via a
   # one-line rstrip at the final emit in
