@@ -35,7 +35,7 @@ import struct
 import sys
 
 GATE = b"process.env.ORCA_SILENT_START||"
-ANCHOR = b"c(),!t.Rn()&&(i&&n.maximize(),t.zn(n))"
+ANCHOR = b"c(),!t.ha()&&(i&&n.maximize(),t.ga(n))"
 PREFIX = b"c(),"
 TARGET = "/out/main/index.js"
 

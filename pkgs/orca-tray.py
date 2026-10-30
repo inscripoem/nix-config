@@ -57,21 +57,21 @@ PATCHES = [
     ),
     # Close-handler platform gate — let Linux reach the hide branch.
     (
-        b"process.platform!==`win32`||n.isRendererProcessGone()",
-        b"process.platform!==`linux`||n.isRendererProcessGone()",
+        b"process.platform!==`win32`||t.isRendererProcessGone()",
+        b"process.platform!==`linux`||t.isRendererProcessGone()",
     ),
     # Persisted-setting read — always falsy (see docstring point 3).
     (
-        b"s?.getSettings().minimizeToTrayOnClose!==!0",
-        b"!!0&&s?.getSettings().minimizeToTrayOnClose",
+        b"o?.getSettings().minimizeToTrayOnClose!==!0",
+        b"!!0&&o?.getSettings().minimizeToTrayOnClose",
     ),
     # Tray click/tooltip line — attach click handler on Linux too, so a
     # left-click on the tray icon (SNI Activate) restores the window.
     # Semantically this removes tooltip+click from win32, which never runs
     # this Linux-only build; darwin takes the mCe() branch either way.
     (
-        b"process.platform===`win32`?(Zd.setToolTip(rf())",
-        b"process.platform===`linux`?(Zd.setToolTip(rf())",
+        b"process.platform===`win32`?(gf.setToolTip(Sf())",
+        b"process.platform===`linux`?(gf.setToolTip(Sf())",
     ),
 ]
 
