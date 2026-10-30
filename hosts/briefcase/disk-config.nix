@@ -3,12 +3,12 @@
     disk = {
       main = {
         type = "disk";
-        device = "/dev/disk/by-id/nvme-KIOXIA-EXCERIA_SSD_Y03A617IK2V2"; 
+        device = "/dev/disk/by-id/nvme-KIOXIA-EXCERIA_G2_SSD_84SA10FWKQJP";
         content = {
           type = "gpt";
           partitions = {
             ESP = {
-              size = "512M";
+              size = "1G";
               type = "EF00";
               priority = 1;
               content = {
