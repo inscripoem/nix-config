@@ -103,8 +103,7 @@ below), so a monitor swap needs no config change. The greeter session
 has no idle daemon, so nothing ever DPMS-blanks it — the pre-login
 stream stays live indefinitely.
 
-`stream-mode` and `desk-mode` are the handover entry points
-(fake-screen-toggle is a state-aware alternator between them). Both
+`stream-mode` and `desk-mode` are the handover entry points. Both
 move workspaces explicitly: `niri msg output off` does NOT migrate
 them — only a physical disconnect does — so neither relies on
 auto-migration.

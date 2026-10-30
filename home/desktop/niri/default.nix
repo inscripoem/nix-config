@@ -30,11 +30,11 @@ let
     cp "$configBodyPath" $out
   '';
 
-  # State file (under XDG_STATE_HOME) shared by fake-screen-toggle and the
-  # session-start restore script below.
+  # State file (under XDG_STATE_HOME) written by stream-mode / desk-mode
+  # and read by the session-start restore script below.
   fakeScreenStateFile = "sunshine/fake-screen";
 
-  # Shared handover logic for stream-mode / desk-mode / fake-screen-toggle.
+  # Shared handover logic for stream-mode / desk-mode.
   # Both directions move workspaces EXPLICITLY: `niri msg output off` does
   # NOT migrate them (verified 2026-10-30 — they stay on the disabled
   # output; only a physical disconnect triggers niri's auto-migration), so
@@ -482,7 +482,6 @@ in
   #   desk-mode: back at the desk — real outputs re-enabled via sysfs,
   #     workspaces moved back, fake canvas off. No real monitor is a
   #     hard no-op.
-  #   fake-screen-toggle: state-aware alternator between the two.
   # Recovery if the stream dies in stream-mode (desk screen dark):
   # plug the monitor into ANY other free port (a never-disabled connector
   # lights up immediately), re-login (the greeter always enables every
@@ -497,14 +496,6 @@ in
     (pkgs.writeShellScriptBin "desk-mode" ''
       . ${fakeScreenLib}
       do_desk
-    '')
-    (pkgs.writeShellScriptBin "fake-screen-toggle" ''
-      . ${fakeScreenLib}
-      if [ "$(cat "$state_file" 2>/dev/null)" = "on" ] || { [ ! -f "$state_file" ] && fake_enabled; }; then
-        do_desk
-      else
-        do_stream
-      fi
     '')
   ];
 
