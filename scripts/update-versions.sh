@@ -658,7 +658,7 @@ if should_update "zcode-cli"; then
     zc_deps_hash=$(
       nix build --no-link --impure --expr \
         "(((builtins.getFlake \"$REPO_ROOT\").inputs.nixpkgs.legacyPackages.x86_64-linux).extend (import $REPO_ROOT/pkgs/default.nix)).zcode-cli.pnpmDeps" 2>&1 \
-        | grep -oP 'got:\s+\Ksha256-[^=]+=' | head -1)
+        | grep -oP 'got:\s+\Ksha256-[^=]+=' | head -1) || true
     if [[ -z "$zc_deps_hash" ]]; then
       die "could not resolve pnpmDeps hash; pkgs/zcode-cli.nix left at version $zc_version with a fakeHash sentinel."
     fi
