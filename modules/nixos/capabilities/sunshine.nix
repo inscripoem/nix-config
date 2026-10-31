@@ -94,6 +94,49 @@ let
 
     exec ${pkgs.sunshine}/bin/sunshine "output_name=$output" "$@"
   '';
+# Watchdog for the portal-race startup hang: Sunshine occasionally
+# hangs mid-init (port 47984 never binds) without exiting, so
+# Restart=on-failure never fires and the host is unreachable from
+# Moonlight until manual intervention (observed 2026-10-30/31). A
+# timer-driven health check restarts whichever service is active,
+# portless past 120s (normal init ~33s). Inactive services are left
+# alone — auto-restarting cannot fix a broken unit, and upstream's
+# startLimit (5 per 500s) bounds the restart loop; after it trips the
+# watchdog sees a failed unit and stands down.
+sunshineWatchdog = pkgs.writeShellScript "sunshine-watchdog" ''
+  set -u
+
+  port_open() { (exec 3<>/dev/tcp/127.0.0.1/47984) 2>/dev/null; }
+
+  # $1 = unit name; 0 when it is active, portless, and stale (>120s
+  # since activation — normal init finishes well inside that).
+  service_hung() {
+    systemctl is-active --quiet "$1" || return 1
+    port_open && return 1
+    local enter now age
+    enter=$(systemctl show "$1" -p ActiveEnterTimestampMonotonicUSec --value)
+    [ -n "$enter" ] && [ "$enter" -gt 0 ] || return 1
+    now=$(awk '{print int($1 * 1000000)}' /proc/uptime)
+    age=$((now - enter))
+    [ "$age" -gt 120000000 ]
+  }
+
+  # The user service wins any ambiguity: restarting it also re-runs
+  # its ExecStartPre, which stops a stray greeter.
+  if systemctl --user is-active --quiet sunshine.service; then
+    if service_hung sunshine.service; then
+      echo "watchdog: sunshine hung portless past 120s, restarting"
+      systemctl --user restart sunshine.service
+    fi
+    exit 0
+  fi
+  if service_hung sunshine-greeter.service; then
+    echo "watchdog: sunshine-greeter hung portless past 120s, restarting"
+    # Allowed without a password by the polkit rule above.
+    systemctl restart sunshine-greeter.service
+  fi
+'';
+
 in {
   options.modules.capabilities.sunshine = {
     enable = lib.mkEnableOption "Moonlight/Sunshine game streaming";
@@ -269,6 +312,23 @@ in {
           "${pkgs.systemd}/bin/systemctl start sunshine-greeter.service"
         ];
       };
+    };
+
+    systemd.user.services.sunshine-watchdog = {
+      unitConfig.Description = "Health check for the Sunshine user/greeter services";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = sunshineWatchdog;
+      };
+    };
+    systemd.user.timers.sunshine-watchdog = {
+      unitConfig.Description = "Periodic Sunshine health check";
+      timerConfig = {
+        OnBootSec = "3min";
+        OnUnitActiveSec = "2min";
+        Unit = "sunshine-watchdog.service";
+      };
+      wantedBy = [ "timers.target" ];
     };
   };
 }

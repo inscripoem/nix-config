@@ -190,6 +190,18 @@ to a real monitor is how you stream the local screen from the desk instead.
 
 ## 5. Troubleshooting and validation
 
+**Startup race hang**: Sunshine occasionally hangs mid-init during
+login (the RemoteDesktop-portal error in its log is the fingerprint) —
+the process stays alive but port 47984 never binds, so Moonlight
+cannot connect. A timer-driven watchdog (`sunshine-watchdog.timer`,
+every 2 min) restarts whichever service — user or greeter — is active,
+portless, and older than 120 s (normal init ~33 s). Recovery is
+automatic within ~4 min; the journal line to look for is
+`watchdog: ... hung portless past 120s, restarting`. Manual recovery:
+`systemctl --user start sunshine`. A service that is *inactive* is
+left alone by design — auto-restarting cannot fix a broken unit; check
+the unit file and the last evaluation instead.
+
 At the greeter, inspect the system service; inside the desktop, inspect the
 user service:
 
