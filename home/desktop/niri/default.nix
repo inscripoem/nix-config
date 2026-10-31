@@ -45,6 +45,16 @@ let
     niri="${cfg.package}/bin/niri"
     jq="${pkgs.jq}/bin/jq"
 
+    # Fail loudly when the niri IPC socket is unreachable (e.g. SSH
+    # without the session env): the jq calls below would otherwise
+    # iterate over empty input and report a cryptic null error.
+    if ! "$niri" msg --json outputs >/dev/null 2>&1; then
+      uid="$(id -u)"
+      echo "stream/desk: cannot reach niri. In an SSH shell run:" >&2
+      echo "  export XDG_RUNTIME_DIR=/run/user/$uid NIRI_SOCKET=\$(ls /run/user/$uid/niri.*.sock | head -1)" >&2
+      exit 1
+    fi
+
     fake_enabled() {
       "$niri" msg --json outputs 2>/dev/null | "$jq" -e --arg f "$fake" 'has($f)' >/dev/null 2>&1
     }
