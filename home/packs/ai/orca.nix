@@ -6,8 +6,8 @@ let
 
   # Single-copy rule (same as workbuddyPkg): home.packages and the
   # autostart desktop file must resolve to one derivation. The build
-  # logic — both asar patches, the autostart wrapper and its desktop
-  # template — lives in pkgs/orca-patched.nix; version bumps ride
+  # logic — the asar patches, the autostart wrapper and its desktop
+  # template — lives in pkgs/orca.nix; version bumps ride
   # llm-agents flake updates, no update-versions.sh section needed.
   orcaPkg = pkgs.callPackage ../../../pkgs/orca.nix { orca = agentPkgs.orca; };
 in
@@ -19,10 +19,10 @@ in
     # above, so it belongs in this pack rather than desktop.editors-gui.
     # Taken from the llm-agents input (deb-based build); version bumps ride
     # flake updates instead of update-versions.sh. The Linux build carries
-    # two local asar patches (upstream gates all tray plumbing on
-    # win32/darwin): close-to-tray and the silent-start env gate; their
-    # anchors live in pkgs/orca-tray.py and pkgs/orca-silent-start.py and
-    # fail the build when an llm-agents update reshuffles the asar.
+    # local asar patches (upstream gates all tray plumbing on win32/darwin):
+    # close-to-tray and the silent-start env gate; their regex anchors live
+    # in pkgs/orca-patch.py and fail the build when an llm-agents update
+    # refactors one of the patched sites.
     enable = lib.mkOption {
       type = lib.types.bool;
       default = false;

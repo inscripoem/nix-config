@@ -1,16 +1,19 @@
-# Linux-patched build of orca from the llm-agents input: close-to-tray
-# (./orca-tray.py, four byte-length-neutral asar edits) plus a
-# silent-start env gate (./orca-silent-start.py, one 31-byte insert via
-# full asar re-layout), an ORCA_SILENT_START wrapper twin of bin/orca-ide
+# Linux-patched build of orca from the llm-agents input: close-to-tray,
+# silent-start env gate, an ORCA_SILENT_START wrapper twin of bin/orca-ide
 # for XDG autostart, the matching autostart desktop template, and a
 # Wayland IME flag wrapper of bin/orca-ide (fcitx5-vinput#464).
+#
+# The asar edits live in ./orca-patch.py: five regex patches whose anchors
+# wildcard the minified identifiers, so routine per-release identifier
+# reshuffles don't break the build; a genuine upstream refactor of one of
+# the five sites still fails the build loudly (context dump). The archive
+# is re-laid out after patching, so replacements may change length.
 #
 # This is a function over the upstream derivation, not a package of its
 # own: the flake wiring (which orca to feed in) lives in home/packs/ai/orca.nix
 # and version bumps ride llm-agents flake updates, so there is no
 # update-versions.sh section (same exemption class as the workbuddy
-# autostart twin). Both patch scripts assert their anchors; an upstream
-# release that reshuffles app.asar fails this build loudly.
+# autostart twin).
 {
   orca,
   python3,
@@ -22,8 +25,7 @@ else
   orca.overrideAttrs (old: {
     nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ python3 ];
     postInstall = (old.postInstall or "") + ''
-      python3 ${./orca-tray.py} $out/lib/Orca/resources/app.asar
-      python3 ${./orca-silent-start.py} $out/lib/Orca/resources/app.asar
+      python3 ${./orca-patch.py} $out/lib/Orca/resources/app.asar
 
       # Autostart twin of bin/orca-ide: identical entry point plus the
       # ORCA_SILENT_START env gate consumed by the asar patch above
