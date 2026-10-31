@@ -109,7 +109,7 @@ let
       [ -n "$lw" ] && [ "$lw" -gt 0 ] 2>/dev/null || return 0
 
       local mode_arg scale
-      read -r mode_arg scale < <("$niri" msg --json outputs 2>/dev/null | "$jq" -rn \
+      read -r mode_arg scale < <("$niri" msg --json outputs 2>/dev/null | "$jq" -r \
         --arg f "$fake" --argjson lw "$lw" --argjson lh "$lh" '
         .[$f].modes | max_by(.width * .height) |
         "\(.width)x\(.height) " +
