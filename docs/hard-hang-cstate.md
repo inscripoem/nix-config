@@ -83,9 +83,14 @@ Consequences in this repo:
 - `pcie_port_pm=off` was removed from the Arc GPU profile.
 - `RuntimeWatchdogSec=30s` is kept as a recovery-only net; iTCO_wdt was
   verified to own `watchdog0` on the new board.
-- ASPM is now enabled via `pcie_aspm.policy=powersave` in the Arc profile.
-  The old "do not force ASPM" guidance above was specific to the H410
-  freeze investigation and does not apply to the B760M.
+- ASPM is disabled at every layer as a hard-freeze diagnostic (2026-10-31,
+  after nine freezes): `pcie_aspm=off` in the Arc profile plus all BIOS ASPM
+  options Disabled. This supersedes the 2026-10-26 configuration
+  (`pcie_aspm.policy=powersave`) and its "consumer-desktop firmware does not
+  program ASPM" rationale — the firmware was later found with every ASPM
+  option Enabled, `_OSC` does not grant the OS the PCIe power-management
+  control bit, and the r8169 driver manages RTL8125B ASPM outside the kernel
+  policy scope.
 
 ## Reusing the H410 + i3-10105F hardware
 

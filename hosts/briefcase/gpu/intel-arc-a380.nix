@@ -17,13 +17,18 @@
   boot.initrd.kernelModules = [ "i915" ];
   boot.kernelParams = [
     "i915.enable_guc=2"  # HuC only (disable GuC submission to avoid GPU hangs)
-    # Consumer-desktop firmware does not program ASPM at boot and the kernel
-    # "default" policy copies firmware, so every link would stay at ASPM
-    # Disabled. Verified live on the MAXSUN B760M 2026-10-26: with this
-    # policy all three links (root port, card switch, GPU endpoint) report
-    # "ASPM L1 Enabled". If hard-freezes ever recur on this machine, revert
-    # this line first — ~1 W is all it buys.
-    "pcie_aspm.policy=powersave"
+    # Hard-freeze diagnostic (nine silent freezes 2026-07..2026-10-31, see
+    # docs/hard-hang-cstate.md): disable PCIe ASPM at every layer. BIOS-side,
+    # all ASPM options are set to Disabled by hand. The 2026-10-26 reading
+    # "consumer-desktop firmware does not program ASPM" is superseded — the
+    # firmware was found with every ASPM option Enabled (2026-10-31) and _OSC
+    # does not hand the OS the PCIe power-management control bit, so kernel
+    # policy alone could not zero ASPM here. This parameter kills the kernel
+    # ASPM subsystem and refuses driver-initiated enables, which covers
+    # r8169: it manages RTL8125B ASPM outside the pcie_aspm.policy scope.
+    # Acceptance: root lspci -vv must show ASPM Disabled on 08:00.0, 03:00.0
+    # and their root ports. Keeping it costs ~2-4 W idle.
+    "pcie_aspm=off"
   ];
 
   # Hardware decode/encode (VA-API iHD), QSV (oneVPL), OpenCL/Level Zero.
