@@ -114,8 +114,18 @@ let
     }
 
     # Going remote: fake canvas on, aligned to the desk's logical size,
-    # every workspace moved onto it, real outputs off. One active output
-    # means the cursor cannot escape the streamed picture.
+    # every workspace moved onto it, real outputs off, fake anchored at
+    # the logical origin. One active output means the cursor cannot
+    # escape the streamed picture.
+    #
+    # The origin anchor is NOT cosmetic: Sunshine's absolute mouse maps
+    # against the desktop span it enumerates (offset + logical size of
+    # every advertised output), while niri maps the ABS device over the
+    # ACTIVE layout span. The two only agree when the captured output
+    # sits at (0,0) — verified live 2026-10-31: a fake parked at x=1920
+    # with the real output disabled kept the stream cursor mis-mapped
+    # even across a Sunshine restart; anchoring it at the origin fixed
+    # it after a client reconnect.
     do_stream() {
       "$niri" msg output "$fake" on
       sleep 0.3
@@ -125,11 +135,13 @@ let
       for out in $(enabled_real_outputs); do
         "$niri" msg output "$out" off
       done
+      "$niri" msg output "$fake" position set 0 0
       save_state on
     }
 
-    # Back at the desk: real outputs on (from sysfs), every workspace
-    # moved onto the first real one, fake canvas off. No real monitor
+    # Back at the desk: real outputs on (from sysfs), the first one
+    # anchored at the origin (the fake held that slot while streaming),
+    # every workspace moved onto it, fake canvas off. No real monitor
     # connected is a hard no-op — never strand the only screen.
     do_desk() {
       reals=$(connected_real_outputs)
@@ -140,6 +152,8 @@ let
       for out in $reals; do
         "$niri" msg output "$out" on
       done
+      sleep 0.3
+      "$niri" msg output "$(printf '%s\n' $reals | head -1)" position set 0 0
       sleep 0.3
       move_all_to "$(printf '%s\n' $reals | head -1)"
       fake_enabled && "$niri" msg output "$fake" off
