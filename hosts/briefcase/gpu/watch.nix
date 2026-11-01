@@ -1,6 +1,6 @@
 { pkgs, ... }:
 
-# Forensics for the silent hard freezes: one TSV row every 10 s with the
+# Forensics for the silent hard freezes: one TSV row every 2 s with the
 # CPU/GPU power state at that instant. Rows are fsynced, so when the machine
 # stops dead the last row is the last observation before it stopped. See
 # docs/hard-hang-cstate.md.
@@ -13,7 +13,7 @@ let
     import time
 
     LOG = "${logDir}/last.log"
-    INTERVAL = 10
+    INTERVAL = 2
     MAX_BYTES = 2 * 1024 * 1024
 
     HEADER = (
