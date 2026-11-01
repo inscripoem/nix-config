@@ -24,6 +24,12 @@
     # Keep display power wells out of DC3/5/6 so DMC power-well handshakes
     # cannot stall GT forcewake during concurrent encode + compute.
     "i915.enable_dc=0"
+    # Freeze isolation (2026-11-01): hold display power wells on and stop
+    # SAGV so the GPU does not cycle through those low-power states while we
+    # isolate the silent hard freeze. RC6 has no module parameter on this
+    # kernel and is not covered by this experiment.
+    "i915.disable_power_well=0"
+    "i915.enable_sagv=0"
     # Hard-freeze diagnostic (nine silent freezes 2026-07..2026-10-31, see
     # docs/hard-hang-cstate.md): disable PCIe ASPM at every layer. BIOS-side,
     # all ASPM options are set to Disabled by hand. The 2026-10-26 reading
