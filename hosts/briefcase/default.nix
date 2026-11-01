@@ -23,6 +23,21 @@
   # iTCO_wdt owns /sys/class/watchdog/watchdog0.
   systemd.settings.Manager.RuntimeWatchdogSec = "30s";
 
+  # Silent hard-freeze isolation (2026-11-01). Community reports of the same
+  # logless freeze (journal cut mid-write, no panic, watchdog not firing) list
+  # these: keep the CPU in C1, stop using MWAIT, offload RCU callbacks, and
+  # disable DMA remapping. intel_idle is the active driver on this CPU, so the
+  # intel_idle cap is the one that takes effect; the processor cap covers the
+  # ACPI fallback. Remove entries one at a time to attribute a fix. Costs idle
+  # power and drops IOMMU isolation.
+  boot.kernelParams = [
+    "intel_idle.max_cstate=1"
+    "processor.max_cstate=1"
+    "idle=nomwait"
+    "rcu_nocbs=0-15"
+    "iommu=disable"
+  ];
+
   networking.hostName = "briefcase";
 
   # Palworld dedicated server — game port (UDP only; RCON/REST API would

@@ -161,6 +161,35 @@ both NVMe drives, including the new one. An aborted self-test caused by an
 unclean reboot also produces such an entry, so this needs `smartctl -a` to
 separate a real media failure from an artifact of the freezes.
 
+## Mitigation parameters (as of 2026-11-01)
+
+Every kernel parameter currently applied against the hard freeze, and the file
+that sets it:
+
+| Parameter | Set in | Purpose |
+|---|---|---|
+| `pcie_aspm=off` | `hosts/briefcase/gpu/intel-arc-a380.nix` | Kernel ASPM subsystem off; BIOS ASPM is disabled by hand as well and does not appear in `/proc/cmdline` |
+| `intel_idle.max_cstate=1` | `hosts/briefcase/default.nix` | Cap CPU idle at C1; `intel_idle` is the active driver, so this is the effective cap |
+| `processor.max_cstate=1` | `hosts/briefcase/default.nix` | ACPI `processor` idle cap for the fallback path |
+| `idle=nomwait` | `hosts/briefcase/default.nix` | Avoid MONITOR/MWAIT idle, the mechanism blamed in the July 2026 H410 diagnosis |
+| `rcu_nocbs=0-15` | `hosts/briefcase/default.nix` | Offload RCU callbacks from all 16 CPUs |
+| `iommu=disable` | `hosts/briefcase/default.nix` | Disable DMA remapping |
+| `i915.enable_guc=3` | `hosts/briefcase/gpu/intel-arc-a380.nix` | GuC submission + HuC; also enables SLPC and context-level reset |
+| `i915.enable_dc=0` | `hosts/briefcase/gpu/intel-arc-a380.nix` | Keep the display out of DC3/5/6 |
+| `i915.disable_power_well=0` | `hosts/briefcase/gpu/intel-arc-a380.nix` | Keep display power wells powered |
+| `i915.enable_sagv=0` | `hosts/briefcase/gpu/intel-arc-a380.nix` | Disable SAGV |
+
+The `i915.*` entries only exist on Arc hosts. The `intel_idle`, `processor`,
+`idle`, `rcu_nocbs` and `iommu` entries live in the host module and survive a
+GPU swap.
+
+Why they were stacked: the freeze is intermittent (roughly hourly under load,
+one or two per day otherwise), so a stable run has to last several multiples
+of that interval before it means anything. The set was applied together to
+reach a stable machine quickly. If the freezes stop, remove entries one at a
+time to attribute the effect; a reversal test (remove the whole set and watch
+for a return within a few hours) is the strongest single check.
+
 ## Reusing the H410 + i3-10105F hardware
 
 If the retired board and CPU are pressed into service elsewhere, apply all
