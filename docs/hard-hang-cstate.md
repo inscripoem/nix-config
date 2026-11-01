@@ -92,6 +92,75 @@ Consequences in this repo:
   control bit, and the r8169 driver manages RTL8125B ASPM outside the kernel
   policy scope.
 
+## Recurrence on B760M (2026-11-01)
+
+One silent freeze occurred with the platform in its current configuration:
+the boot started 18:21:15, the journal stopped mid-write at 19:16:23 after
+2h55m of uptime, and the machine was power-cycled at 19:18:22. The last entry
+was a telemetry POST from a desktop application; no shutdown sequence
+followed.
+
+Recorded state:
+
+| Item | Value |
+|---|---|
+| Kernel parameters | `pcie_aspm=off`, `i915.enable_guc=2` |
+| BIOS ASPM | all options Disabled |
+| Workload | Sunshine stream connected 18:21:54 and still connected; no local GPU inference (OCR ran on Colab) |
+| GPU errors | none — no `GPU HANG`, no reset, no forcewake timeout for the whole boot |
+| Fault messages | no panic, soft lockup, RCU stall, OOM, MCE, or EDAC |
+| Memory pressure | earlyoom never crossed its threshold (last report at boot: 99.7% available) |
+
+Two i915 engine wedges occurred earlier the same day (`rcs0` at 17:51:57 and
+`vcs1` at 18:13:18) during concurrent Sunshine encode and OpenVINO inference.
+Those logged `GPU HANG`, a heartbeat reset, and `Failed to reset chip`; they
+are a different signature from this freeze.
+
+The historical investigation recorded that every earlier freeze happened
+during idle or shortly after screen lock, and that active sessions never
+crashed. This freeze happened during an active Sunshine stream with
+continuous desktop activity, so it does not match that pattern and may be the
+i915 path above escalating into a kernel-level hang before i915 could log a
+reset.
+
+This was the first recorded recurrence after the 2026-10-31 `pcie_aspm=off`
+change, so disabling ASPM at every layer did not prevent it. B760 provides no
+ECC path and the platform exposes no EDAC interface, so DRAM errors would not
+appear in the journal.
+
+A second freeze followed 66 minutes later, on the corrected GPU parameters.
+The boot started 19:21:08 with `i915.enable_guc=3` and `i915.enable_dc=0`
+(log shows `GUC: submission enabled`, `SLPC enabled`, `RC enabled`), the
+journal stopped mid-write at 20:27:03, and the machine was power-cycled; the
+next boot started 20:35:26. A Sunshine stream had been connected since
+19:22:29 and no local inference was running.
+
+Diagnostics were again empty: no i915 error, no hung task (the 120 s detector
+never fired), no hard lockup, no panic, and no iTCO watchdog reset despite a
+30 s timeout. Enabling GuC submission and disabling display DC states did not
+change the outcome, which is expected if these freezes are a separate failure
+mode from the i915 engine wedges.
+
+Reachability was tested during the wait before the power cycle and failed:
+neither Tailscale nor ICMP got a reply for 120 s. The kernel itself stopped
+rather than just the compositor, and the machine could not recover on its own
+even though the iTCO watchdog was armed.
+
+An overnight Memtest86+ run passed (owner report, 2026-11-01). Memtest
+exercises DRAM in isolation; it does not cover load-dependent timing, power
+delivery, or bus/DMA faults, so DRAM is deprioritised rather than eliminated.
+
+Storage is deprioritised as well: the system disk was replaced before this
+recurrence. The current root btrfs subvolume `@root` on `nvme1n1p2` (KIOXIA
+EXCERIA G2 2 TB, firmware ECFA17.3) was created 2026-10-30 19:10, and the
+19:16 freeze happened on that installation, so the old system disk cannot be
+the common cause.
+
+smartd still reports `Self-Test Log error count increased from 0 to 1` for
+both NVMe drives, including the new one. An aborted self-test caused by an
+unclean reboot also produces such an entry, so this needs `smartctl -a` to
+separate a real media failure from an artifact of the freezes.
+
 ## Reusing the H410 + i3-10105F hardware
 
 If the retired board and CPU are pressed into service elsewhere, apply all
