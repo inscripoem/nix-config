@@ -16,7 +16,14 @@
   # Arc A380 is DG2; load i915 early and force-bind it.
   boot.initrd.kernelModules = [ "i915" ];
   boot.kernelParams = [
-    "i915.enable_guc=2"  # HuC only (disable GuC submission to avoid GPU hangs)
+    # DG2 default: GuC submission + HuC. GuC submission also enables SLPC
+    # and context-level hang recovery; the execlists fallback only supports
+    # a full-chip reset, which failed and wedged the device during
+    # concurrent encode + compute on 2026-11-01.
+    "i915.enable_guc=3"
+    # Keep display power wells out of DC3/5/6 so DMC power-well handshakes
+    # cannot stall GT forcewake during concurrent encode + compute.
+    "i915.enable_dc=0"
     # Hard-freeze diagnostic (nine silent freezes 2026-07..2026-10-31, see
     # docs/hard-hang-cstate.md): disable PCIe ASPM at every layer. BIOS-side,
     # all ASPM options are set to Disabled by hand. The 2026-10-26 reading

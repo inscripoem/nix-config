@@ -11,8 +11,9 @@ available for hardware changes.
 |---|---|
 | Xorg `modesetting` driver | Mesa-based X11 display stack |
 | `i915` in initrd | Early kernel graphics initialization |
-| `i915.enable_guc=2` | Retained HuC-only setting after recorded GuC submission hangs |
-| `pcie_port_pm=off` | Idle stability mitigation on this H410 platform |
+| `i915.enable_guc=3` | GuC submission + HuC (DG2 default); keeps SLPC and context-level reset available |
+| `i915.enable_dc=0` | Disable display DC states; avoids DMC power-well handshakes interfering with GT forcewake |
+| `pcie_aspm=off` | Kernel ASPM disabled on every link (RTL8125B workaround, ~2-4 W idle) |
 | `intel-media-driver`, `LIBVA_DRIVER_NAME=iHD` | VA-API decode/encode |
 | `vpl-gpu-rt` | oneVPL media runtime |
 | `intel-compute-runtime` | OpenCL and Level Zero |
