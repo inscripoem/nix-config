@@ -11,7 +11,9 @@ files. The module's `owner`, `mode`, and optional `path` control access.
   editing.
 - **Recovery key:** derived from a personal Ed25519 key stored in 1Password.
   Recovery requires access to the private key bytes; the SSH agent alone
-  cannot decrypt SOPS files.
+  cannot decrypt SOPS files. It is the same key whose public half is
+  [keys/ssh-ed25519.pub](../keys/ssh-ed25519.pub); verify a local copy against
+  it as described in [SSH agent recovery](ssh-agent.md#7-temporary-recovery).
 - **Host keys:** each registered machine decrypts using its SSH Ed25519 host
   key. Preserve that key across reinstalls or update the SOPS recipients.
 

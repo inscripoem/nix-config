@@ -114,17 +114,39 @@ private key must be available to the native app.
 
 ## 7. Temporary recovery
 
-If a trusted local copy of the private key is available, restrict it to mode
-0600 and bypass agent selection for one SSH command:
+Temporary recovery needs the private half of the key whose public half is
+[keys/ssh-ed25519.pub](../keys/ssh-ed25519.pub). The same key signs Git commits
+and decrypts SOPS files, so recovering it restores both
+([Git signing](#6-git-signing), [Secrets](secrets.md)).
+
+A filename proves nothing: verify a candidate copy against the tracked public
+key before trusting it. Compare the two fingerprints and stop if they differ.
 
 ```sh
-ssh -o IdentityAgent=none -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 example
+ssh-keygen -lf "$candidate"            # private key or its .pub
+ssh-keygen -lf keys/ssh-ed25519.pub    # expected identity
+```
+
+A key that sits at a conventional path such as `~/.ssh/id_ed25519` is not
+necessarily this key, because another purpose can write a different key to the
+same name.
+
+Keep the trusted copy offline or on encrypted media at mode 0600. A plaintext
+copy in a workstation home directory is one more place the key can leak, not a
+backup. With a verified copy in place, bypass agent selection for one SSH
+command:
+
+```sh
+key=~/.ssh/recovery_id_ed25519   # wherever the verified copy lives
+chmod 600 "$key"
+ssh -o IdentityAgent=none -o IdentitiesOnly=yes -i "$key" example
 ```
 
 This retains host routing from SSH configuration. It does not repair Git
 signing: a local signing fallback also needs an OpenSSH signer and the local
 key path. Do not assume another agent starts automatically when 1Password is
-unavailable.
+unavailable. To export the key from 1Password in the first place, see
+[Recovering a lost editor key](secrets.md#recovering-a-lost-editor-key).
 
 ## 8. Troubleshooting
 
@@ -134,6 +156,7 @@ unavailable.
 | Cannot connect to agent | Effective `SSH_AUTH_SOCK`; start a fresh login shell |
 | Unexpected keys | Socket selection and stale GCR process on Linux |
 | No identities | Configured vault/items and account access |
+| Recovery key rejected | Fingerprint differs from `keys/ssh-ed25519.pub`; agent not running or vault locked |
 | Too many authentication failures | Select a specific public key with `IdentityFile` and `IdentitiesOnly` |
 | Signing fails | Effective `gpg.ssh.program`, public signing key, app access to its private half |
 | Browser stays locked | Native app integration and browser allowlist |
