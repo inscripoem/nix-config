@@ -16,6 +16,9 @@
 //      of items.sqlite3 and never touches the singleton lock, so it is safe
 //      alongside the running monitor. On 2.5.11 it can crash on nameless
 //      delta tombstones (upstream bug) — rendered as the "error" state.
+//   4. `journalctl --user -u onedrive` — info-level transfer lines, parsed
+//      into the "This cycle" and "Last transfer" rows. The client has no
+//      per-file byte progress; only large-upload sessions log a percentage.
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -48,6 +51,12 @@ PluginComponent {
     // Set while the JSON source is live; probe-only counters below.
     property bool statusFileAlive: false
     property int lastCycleFailures: 0
+    // Current monitor cycle start (from the status file); scopes the journal
+    // lines to this cycle so counts from an earlier cycle are not reused.
+    property var cycleStart: null
+    // Journal-derived transfer detail. Null until a matching line is seen.
+    property var cycleCounts: null
+    property var transferInfo: null
 
     readonly property string iconName: {
         if (checking || syncState === "syncing")
@@ -140,6 +149,29 @@ PluginComponent {
                 value: lastCheckedText
             }
         ];
+        if (cycleCounts) {
+            var counts = [];
+            if (cycleCounts.down !== null)
+                counts.push("↓ " + cycleCounts.down);
+            if (cycleCounts.up !== null)
+                counts.push("↑ " + cycleCounts.up);
+            if (counts.length > 0)
+                rows.push({
+                    label: "This cycle",
+                    value: counts.join(" · ")
+                });
+        }
+        if (transferInfo) {
+            var transfer = transferInfo.dir + " " + shortenPath(transferInfo.path);
+            if (transferInfo.percent !== undefined)
+                transfer += " · " + transferInfo.percent + "%";
+            else if (transferInfo.failed)
+                transfer += " · failed";
+            rows.push({
+                label: transferInfo.percent !== undefined ? "Transferring" : "Last transfer",
+                value: transfer
+            });
+        }
         if (statusFileAlive)
             rows.push({
                 label: "Status source",
@@ -168,6 +200,87 @@ PluginComponent {
         var normalized = s.replace(/\.\d+/, "");
         var d = new Date(normalized);
         return isNaN(d.getTime()) ? null : d;
+    }
+
+    // The detail row elides on the right, which would hide the file name.
+    // Keep the tail of long paths instead.
+    function shortenPath(p) {
+        if (p.length <= 46)
+            return p;
+        return "…" + p.slice(p.length - 45);
+    }
+
+    // The client publishes no per-file state beyond the monitor-status
+    // document, so transfer detail comes from its info-level journal lines.
+    // Only events are logged (start/end and large-upload percentages); the
+    // HTTP progress callback discards byte counts, so per-file percentage
+    // exists only for upload sessions.
+    function applyJournalLines(lines) {
+        var down = null;
+        var upNew = null;
+        var upMod = null;
+        var event = null;
+        var progress = null;
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            var match;
+            match = /^Number of items to download from Microsoft OneDrive: (\d+)/.exec(line);
+            if (match) {
+                down = parseInt(match[1]);
+                continue;
+            }
+            match = /^New items to upload to Microsoft OneDrive: (\d+)/.exec(line);
+            if (match) {
+                upNew = parseInt(match[1]);
+                continue;
+            }
+            match = /^Changed local items to upload to Microsoft OneDrive: (\d+)/.exec(line);
+            if (match) {
+                upMod = parseInt(match[1]);
+                continue;
+            }
+            match = /^Downloading file: (.*?) \.\.\. (done|failed!)$/.exec(line);
+            if (match) {
+                event = { dir: "↓", path: match[1], failed: match[2] !== "done" };
+                progress = null;
+                continue;
+            }
+            match = /^Uploading (?:new|modified) file: (.*?) \.\.\. (done|failed!)$/.exec(line);
+            if (match) {
+                event = { dir: "↑", path: match[1], failed: match[2] !== "done" };
+                progress = null;
+                continue;
+            }
+            match = /^Uploading: (.*?) \.\.\.\s+(\d+)%/.exec(line);
+            if (match) {
+                progress = { dir: "↑", path: match[1], percent: parseInt(match[2]) };
+                event = null;
+            }
+        }
+        cycleCounts = (down !== null || upNew !== null || upMod !== null)
+            ? {
+                down: down,
+                up: (upNew === null && upMod === null)
+                    ? null
+                    : (upNew || 0) + (upMod || 0)
+            }
+            : null;
+        transferInfo = progress !== null ? progress : event;
+    }
+
+    function runJournal() {
+        if (journalProc.running)
+            return;
+        var since = "";
+        if (cycleStart && cycleStart.getTime() > 0)
+            since = " --since '@" + Math.floor(cycleStart.getTime() / 1000) + "'";
+        journalProc.lines = [];
+        journalProc.command = ["sh", "-c",
+            "journalctl --user -u onedrive" + since
+            + " -n 4000 -o cat --no-pager 2>/dev/null"
+            + " | grep -E '^(Downloading file:|Uploading new file:|Uploading modified file:|Uploading:|Number of items to download|New items to upload|Changed local items to upload)'"
+            + " | tail -n 400"];
+        journalProc.running = true;
     }
 
     function runLiveness() {
@@ -254,6 +367,7 @@ PluginComponent {
                 root.runStatusCheck();
             }
             root.checkStatusFile();
+            root.runJournal();
         }
     }
 
@@ -277,6 +391,7 @@ PluginComponent {
             try {
                 const data = JSON.parse(out);
                 root.statusFileAlive = true;
+                root.cycleStart = root.parseTs(data.process && data.process.current_cycle_started_at);
                 // The file is removed on an orderly shutdown but can be
                 // left behind by an abnormal exit; never let a stale
                 // document override the liveness probe's stopped state.
@@ -289,6 +404,20 @@ PluginComponent {
             } catch (e) {
                 root.statusFileAlive = false;
             }
+        }
+    }
+
+    Process {
+        id: journalProc
+
+        property var lines: []
+
+        stdout: SplitParser {
+            onRead: line => journalProc.lines.push(line)
+        }
+
+        onExited: exitCode => {
+            root.applyJournalLines(journalProc.lines);
         }
     }
 
@@ -354,7 +483,7 @@ PluginComponent {
     }
 
     popoutWidth: 340
-    popoutHeight: 280
+    popoutHeight: 368
 
     popoutContent: Component {
         PopoutComponent {
@@ -368,11 +497,11 @@ PluginComponent {
                 width: parent.width
                 implicitHeight: root.popoutHeight - popoutRoot.headerHeight - popoutRoot.detailsHeight - Theme.spacingXL
 
-                // Scrollable body: only the long error-state message
-                // overflows the fixed 280px popout; the Flickable is inert
-                // otherwise. Content children must use x/y positioning —
-                // anchors would defeat contentY and freeze the scroll
-                // (same pattern as the argb-fans popout).
+                // Scrollable body: the long error-state message overflows the
+                // fixed 368px popout; the Flickable is inert otherwise.
+                // Content children must use x/y positioning — anchors would
+                // defeat contentY and freeze the scroll (same pattern as
+                // the argb-fans popout).
                 Flickable {
                     id: bodyFlick
 
