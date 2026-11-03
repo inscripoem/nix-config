@@ -162,14 +162,18 @@ PluginComponent {
                 });
         }
         if (transferInfo) {
-            var transfer = transferInfo.dir + " " + shortenPath(transferInfo.path);
+            var slash = transferInfo.path.lastIndexOf("/");
+            var name = transferInfo.path.slice(slash + 1);
+            var dir = transferInfo.path.slice(0, slash + 1);
+            var suffix = "";
             if (transferInfo.percent !== undefined)
-                transfer += " · " + transferInfo.percent + "%";
+                suffix = " · " + transferInfo.percent + "%";
             else if (transferInfo.failed)
-                transfer += " · failed";
+                suffix = " · failed";
             rows.push({
                 label: transferInfo.percent !== undefined ? "Transferring" : "Last transfer",
-                value: transfer
+                value: dir,
+                detail: transferInfo.dir + " " + name + suffix
             });
         }
         if (statusFileAlive)
@@ -200,14 +204,6 @@ PluginComponent {
         var normalized = s.replace(/\.\d+/, "");
         var d = new Date(normalized);
         return isNaN(d.getTime()) ? null : d;
-    }
-
-    // The detail row elides on the right, which would hide the file name.
-    // Keep the tail of long paths instead.
-    function shortenPath(p) {
-        if (p.length <= 46)
-            return p;
-        return "…" + p.slice(p.length - 45);
     }
 
     // The client publishes no per-file state beyond the monitor-status
@@ -482,8 +478,8 @@ PluginComponent {
         }
     }
 
-    popoutWidth: 340
-    popoutHeight: 368
+    popoutWidth: 400
+    popoutHeight: 400
 
     popoutContent: Component {
         PopoutComponent {
@@ -498,7 +494,7 @@ PluginComponent {
                 implicitHeight: root.popoutHeight - popoutRoot.headerHeight - popoutRoot.detailsHeight - Theme.spacingXL
 
                 // Scrollable body: the long error-state message overflows the
-                // fixed 368px popout; the Flickable is inert otherwise.
+                // fixed 400px popout; the Flickable is inert otherwise.
                 // Content children must use x/y positioning — anchors would
                 // defeat contentY and freeze the scroll (same pattern as
                 // the argb-fans popout).
@@ -573,12 +569,29 @@ PluginComponent {
                                 color: Theme.surfaceVariantText
                             }
 
-                            StyledText {
+                            Column {
                                 width: parent.width - 150 - Theme.spacingM
-                                text: modelData.value
-                                font.pixelSize: Theme.fontSizeSmall
-                                color: Theme.surfaceText
-                                elide: Text.ElideRight
+                                spacing: 0
+
+                                StyledText {
+                                    width: parent.width
+                                    text: modelData.value
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    color: modelData.detail !== undefined ? Theme.surfaceVariantText : Theme.surfaceText
+                                    wrapMode: Text.NoWrap
+                                    elide: modelData.detail !== undefined ? Text.ElideMiddle : Text.ElideRight
+                                    visible: text.length > 0
+                                }
+
+                                StyledText {
+                                    width: parent.width
+                                    text: modelData.detail || ""
+                                    font.pixelSize: Theme.fontSizeSmall
+                                    color: Theme.surfaceText
+                                    wrapMode: Text.NoWrap
+                                    elide: Text.ElideMiddle
+                                    visible: (modelData.detail || "").length > 0
+                                }
                             }
                         }
                     }
