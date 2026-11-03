@@ -181,6 +181,10 @@ PluginComponent {
         // the status and the probe never runs.
         if (statusFileAlive)
             return;
+        // Startup race: systemctl can exit before the status-file read
+        // completes. Wait for that read instead of running a full probe.
+        if (statusFileProc.running)
+            return;
         if (!serviceActive || statusProc.running)
             return;
         checking = true;
