@@ -24,6 +24,22 @@
   systemd.services.flatpak-managed-install = {
     wants = [ "network-online.target" ];
     after = [ "network-online.target" ];
+    # network-online.target only means "was reached once": switching restarts
+    # NetworkManager, so this unit can start while DNS/TLS is still down. Any
+    # failed unit makes switch-to-configuration exit 4, which aborts the whole
+    # switch before the profile is written (seen 2026-11-03). Probe the real
+    # endpoint instead: DNS alone does not prove HTTPS works. A timeout fails
+    # the unit so Restart=on-failure retries in a minute rather than hanging
+    # the switch. Online, the first probe succeeds and costs nothing.
+    serviceConfig.ExecStartPre = pkgs.writeShellScript "wait-flathub" ''
+      deadline=$((SECONDS + 15))
+      while (( SECONDS < deadline )); do
+        ${pkgs.curl}/bin/curl -fsS --connect-timeout 1 --max-time 2 -o /dev/null \
+          https://dl.flathub.org/repo/flathub.flatpakrepo && exit 0
+        ${pkgs.coreutils}/bin/sleep 1
+      done
+      exit 1
+    '';
   };
 
   # NixOS does not automatically refresh the desktop entry / MIME cache for
