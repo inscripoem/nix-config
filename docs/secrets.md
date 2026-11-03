@@ -148,10 +148,17 @@ example of a `sops.templates` environment file consumed by a service.
 | File | Keys | Consumer |
 |---|---|---|
 | `secrets/wifi.yaml` | `wifi_HKHomeNet_5G_ssid`, `wifi_HKHomeNet_5G_psk`, `wifi_HKHomeNet_ssid`, `wifi_HKHomeNet_psk` | [WiFi profiles capability](../modules/nixos/capabilities/wifi-profiles.nix) |
+| `secrets/nixbuild.yaml` | `nixbuildnet_builder_ed25519` | [nixbuild.net capability](../modules/nixos/capabilities/nixbuild-net.nix) |
 
 `secrets/builder.yaml` is kept as an archive. Its `wyse3040_builder_ed25519`
 key lost its consumer when the wyse3040 host left the flake on 2026-10-29;
 the orphan entry is harmless and no module reads the file anymore.
+
+`secrets/nixbuild.yaml` holds the passwordless SSH key whose public half is
+registered with the nixbuild.net account. It is the first secret consumed by
+a system daemon rather than by an activation-stage service: sops-nix writes it
+to `/run/secrets` with `root:root` and mode `0400`, and rotating it restarts
+nix-daemon.
 
 WiFi profiles are opt-in through `modules.capabilities.wifi-profiles.enable`.
 They use a root-only environment template with NetworkManager system
@@ -162,5 +169,6 @@ A remote-build client's public key belongs in `keys/` and
 `vars.builderClientKeys`; its private half belongs in the encrypted builder
 file. Deploy both the client secret and builder authorization.
 
-SOPS is used here because grouped YAML keys and runtime templates fit the WiFi
-and builder configuration. Keep plaintext keys and decrypted files out of Git.
+SOPS is used here because grouped YAML keys and runtime templates fit the WiFi,
+builder and remote-builder key material. Keep plaintext keys and decrypted
+files out of Git.

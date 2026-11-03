@@ -59,6 +59,7 @@ let
         modules.capabilities.smart.enable = true;
         modules.capabilities.deploy-tools.enable = true;
         modules.capabilities.remote-builder.enable = true;
+        modules.capabilities.nixbuild-net.enable = true;
         modules.capabilities.tailscale.enable = true;
         modules.capabilities.wifi-profiles.enable = true;
         modules.capabilities.docker.enable = true;

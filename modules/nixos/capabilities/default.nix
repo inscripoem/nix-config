@@ -4,6 +4,7 @@
     ./sunshine.nix
     ./1password.nix
     ./remote-builder.nix
+    ./nixbuild-net.nix
     ./tailscale.nix
     ./sdcard.nix
     ./oom-guard.nix
