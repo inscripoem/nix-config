@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 # Update workbuddy, cc-switch, magpie, siyuan, ww-manager, notion-electron,
 # zcode-cli, dsh-tui-launcher and ene-fanctl to their latest upstream
-# versions, update wechat, and align the qq version pin with the
-# linuxqq-wayland-fix input.
+# versions, and align the qq version pin with the linuxqq-wayland-fix input.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--verbose]
 # Options:
 #   --dry-run       Show what would change without modifying files.
 #   --only=<names>  Comma-separated subset of {workbuddy,cc-switch,magpie,
 #                   siyuan,ww-manager,notion-electron,zcode-cli,
-#                   dsh-tui-launcher,ene-fanctl,wechat,qq}. `notion` is
-#                   accepted as an alias for notion-electron. Defaults to
-#                   all eleven; unknown names are an error.
+#                   dsh-tui-launcher,ene-fanctl,qq}. `notion` is accepted
+#                   as an alias for notion-electron. Defaults to all ten;
+#                   unknown names are an error.
 #   --verbose       Full per-package detail (the old multi-line format).
 #   -h, --help      Show this help.
 # Output: one compact status line per package by default —
@@ -177,7 +176,7 @@ done
 # Normalize aliases: `notion` → `notion-electron` (the package's pname),
 # and reject unknown names so a typo cannot silently check nothing.
 KNOWN_PKGS=(workbuddy cc-switch magpie siyuan ww-manager notion-electron
-            zcode-cli dsh-tui-launcher ene-fanctl wechat qq)
+            zcode-cli dsh-tui-launcher ene-fanctl qq)
 if [[ -n "$ONLY" ]]; then
   IFS=, read -ra items <<< "$ONLY"
   normalized=""
@@ -232,26 +231,6 @@ update_nix_field() {
   local file="$1" field="$2" new_value="$3"
   # Matches:   field = "..."
   sed -i "s|${field} = \".*\"|${field} = \"${new_value}\"|" "$file"
-}
-
-# Latest release tag of a GitHub repo, leading `v` stripped. Prefers `gh`;
-# falls back to the REST API with optional GITHUB_TOKEN. Exits 1 on failure.
-github_latest_version() {
-  local repo="$1" version=""
-  if command -v gh &>/dev/null; then
-    version=$(gh api "repos/${repo}/releases/latest" --jq '.tag_name' 2>/dev/null | sed 's/^v//') || true
-  else
-    local auth=() json
-    [[ -n "${GITHUB_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
-    json=$(curl -sf --max-time 10 "${auth[@]}" "https://api.github.com/repos/${repo}/releases/latest") || true
-    if [[ -n "$json" ]] && ! echo "$json" | jq -e '.message' >/dev/null 2>&1; then
-      version=$(echo "$json" | jq -r '.tag_name' | sed 's/^v//')
-    fi
-  fi
-  if [[ -z "$version" || "$version" == "null" ]]; then
-    die "GitHub API lookup failed for ${repo}. Check your network, set GITHUB_TOKEN, or install gh CLI."
-  fi
-  echo "$version"
 }
 
 # ── workbuddy ────────────────────────────────────────────────────────
@@ -908,42 +887,6 @@ if should_update "ene-fanctl"; then
     update_nix_field "$ef_nix" "hash" "$ef_hash"
     [[ -n "$ef_date" ]] && update_nix_field "$ef_nix" "version" "0-unstable-${ef_date}"
     note "if the next build fails, refresh pkgs/ene-fanctl-{scale,no-park}.patch against the new source."
-  fi
-fi
-
-# ── wechat ───────────────────────────────────────────────────────────
-
-if should_update "wechat"; then
-  status_begin "wechat"
-  # Tencent ships no version API and keeps no history on the official CDN;
-  # the mirror archive is also the URL pkgs/default.nix actually fetches,
-  # so its latest release tag is the single source of truth here.
-  wechat_version=$(github_latest_version "Rodert/wechat-linux-versions")
-
-  wechat_nix="$REPO_ROOT/pkgs/default.nix"
-  # Invariant: pkgs/default.nix pins exactly one version/hash pair (the
-  # wechat overlay), so the global substitutions in update_nix_field and
-  # the URL rewrite below touch only wechat's lines.
-  wechat_current=$(grep 'version = ' "$wechat_nix" | head -1 | grep -oP '[\d.]+')
-
-  vnote "current : $wechat_current"
-  vnote "latest  : $wechat_version"
-
-  if [[ "$wechat_version" == "$wechat_current" ]]; then
-    pkg_up "wechat" "$wechat_current"
-  elif [[ "$DRY_RUN" == true ]]; then
-    pkg_dry "wechat" "$wechat_current → $wechat_version"
-  else
-    pkg_bump "wechat" "$wechat_current → $wechat_version"
-    wechat_url="https://github.com/Rodert/wechat-linux-versions/releases/download/v${wechat_version}/WeChatLinux_x86_64.AppImage"
-
-    note "prefetching (~300 MB AppImage) ..."
-    wechat_hash=$(prefetch_hash "$wechat_url")
-
-    update_nix_field "$wechat_nix" "version" "$wechat_version"
-    update_nix_field "$wechat_nix" "hash" "$wechat_hash"
-    # The download URL embeds the version separately from `version = `.
-    sed -i "s|/download/v${wechat_current}/|/download/v${wechat_version}/|" "$wechat_nix"
   fi
 fi
 

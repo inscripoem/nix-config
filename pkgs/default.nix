@@ -29,70 +29,17 @@ final: prev: {
     else
       prev.atuin;
 
-
-  # nixpkgs fetches wechat's x86_64 AppImage from web.archive.org (Tencent
-  # does not keep history versions); that fetch failed through this
-  # network's proxy at pin time (TLS resets, possibly a dirty exit node),
-  # and upstream still packages 4.1.1.8 while the official site ships
-  # 4.1.13.x. Re-invoke upstream's linux.nix with the current version from
-  # the mirror archive adopted by nixpkgs#565201;
-  # the hash was computed from a direct official-CDN download and matches
-  # the mirror's checksum file. (The by-name package.nix wrapper is not
-  # arg-overridable, hence the direct call.) To bump: `just update wechat`
-  # rewrites version, mirror URL and hash from the mirror's latest release.
-  # Drop this override entirely once nixpkgs#560225 (wechat 4.1.13.x)
-  # lands in unstable.
-  wechat =
+  # nixpkgs marks gtk2 broken as part of its removal, but Lutris 0.5.22
+  # still lists it in the FHS multiPkgs for legacy games. Rebuild the same
+  # FHS arguments without that single dependency instead of globally
+  # unbreaking gtk2. Remove this override once Lutris drops gtk2.
+  lutris =
     let
-      wechatFhs = prev.callPackage (prev.path + "/pkgs/by-name/we/wechat/linux.nix") {
-        pname = "wechat";
-        version = "4.1.13.26";
-        src = final.fetchurl {
-          url = "https://github.com/Rodert/wechat-linux-versions/releases/download/v4.1.13.26/WeChatLinux_x86_64.AppImage";
-          hash = "sha256-RSYYC8qYASh5FZmvEi/0eVACpXFaUQ9qZUgOK+aHQkQ=";
-        };
-        meta = prev.wechat.meta;
-      };
+      args = prev.lutris.passthru.args;
+      withoutGtk2 = packageSet:
+        builtins.filter (p: (p.pname or "") != "gtk+") (args.multiPkgs packageSet);
     in
-    if prev.stdenv.hostPlatform.system == "x86_64-linux" then
-      prev.symlinkJoin {
-        name = wechatFhs.name;
-        paths = [ wechatFhs ];
-        nativeBuildInputs = [ prev.makeWrapper ];
-        passthru = { inherit (wechatFhs) version; };
-        # WeChat's UI toolkit is neither Qt nor GTK (the main binary only
-        # links glib/dbus): it implements the fcitx5 D-Bus input context
-        # protocol itself, but only activates it when QT_IM_MODULE=fcitx
-        # (value must be "fcitx", not "fcitx5"). fcitx5.waylandFrontend
-        # deliberately leaves QT_IM_MODULE unset system-wide, so export it
-        # here, gated on XMODIFIERS the same way the Flathub repack does.
-        #
-        # NOTE: do NOT try to expose the host's /etc/xdg (fcitx5
-        # classicui.conf for theming) inside this sandbox: replacing the
-        # rootfs's copy breaks WeChat login outright (login webview hangs).
-        # Theming rides the user-level
-        # ~/.config/fcitx5/conf/classicui.conf (/home is bound wholesale).
-        #
-        # QT_IM_MODULE=text-input-unstable-v3 instead of the Flathub-style
-        # QT_IM_MODULE=fcitx: the latter activates WeChat's built-in fcitx
-        # D-Bus frontend, whose candidate panel is drawn in-process in a
-        # hardcoded default style — the binary's minimal classicui reader
-        # parses theme.conf but has no SVG rasterizer (links neither
-        # Qt/GTK nor librsvg), so every SVG-based theme (catppuccin,
-        # mellow) falls back to the built-in look, and feeding theme data
-        # through /usr/share or XDG data paths does not change that (all
-        # four lookup locations were supplied and the panel stayed gray).
-        # text-input-v3 routes composition through the compositor to
-        # fcitx5's input-method frontend, so the candidate panel is
-        # fcitx5's own classic UI and follows the configured theme like in
-        # every other application.
-        postBuild = ''
-          wrapProgram $out/bin/wechat \
-            --run 'case "$XMODIFIERS" in *fcitx*) export QT_IM_MODULE=text-input-unstable-v3 ;; esac'
-        '';
-      }
-    else
-      prev.wechat;
+    prev.buildFHSEnv (args // { multiPkgs = withoutGtk2; });
 
   ww-manager = final.callPackage ./ww-manager.nix { };
 }

@@ -57,8 +57,8 @@ evaluable.
   ./tool.AppImage`.
 - Not a substitute for packaging. Repo policy is to package AppImages properly
   (`appimageTools.extract` + `appimageTools.wrapType2`, see
-  [notion-electron.nix](../pkgs/notion-electron.nix) and the WeChat package);
-  use that route when an app becomes a daily driver.
+  [notion-electron.nix](../pkgs/notion-electron.nix)); use that route when an
+  app becomes a daily driver.
 - Some AppImages still fail (bundled binaries with unusual needs); those need
   proper packaging with explicit dependencies.
 - The `boot.binfmt` integration (`programs.appimage.binfmt`, executes

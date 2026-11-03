@@ -6,7 +6,7 @@ spec:
   inputs.home-manager.darwinModules.home-manager
   # Shared package overlay (pkgs/); NixOS hosts get it via
   # lib/nixosModules.nix. Entries are lazy, so unreferenced packages
-  # (e.g. the linux-only wechat wrapper) never evaluate on darwin.
+  # (e.g. Linux-only packages) never evaluate on darwin.
   { nixpkgs.overlays = [ (import ../pkgs) ]; }
   {
     users.users.${vars.username}.home = "/Users/${vars.username}";
