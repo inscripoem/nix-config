@@ -4,8 +4,10 @@
 // breakdown. Data sources:
 //   1. `~/.config/onedrive/monitor-status.json` — the official machine-
 //      readable interface published by monitor mode (onedrive >= 2.5.12).
-//      Probed at runtime; when present it is the sole status source and
-//      the probe below never runs. Re-read on the liveness cadence.
+//      Read with `cat` via Process: Qt disables file:// XMLHttpRequest GET
+//      unless QML_XHR_ALLOW_FILE_READ is set, which the DMS service does
+//      not set. When present it is the sole status source and the probe
+//      below never runs. Re-read on the liveness cadence.
 //   2. `systemctl --user is-active onedrive` — liveness, cheap, fast cadence.
 //   3. `onedrive --display-sync-status` — convergence probe for clients
 //      without monitor-status.json (2.5.11): one API call and a full
@@ -188,28 +190,10 @@ PluginComponent {
     }
 
     function checkStatusFile() {
-        var xhr = new XMLHttpRequest();
-        xhr.open("GET", "file://" + statusFilePath);
-        xhr.onreadystatechange = function() {
-            if (xhr.readyState !== 4)
-                return;
-            if (!xhr.responseText) {
-                statusFileAlive = false;
-                return;
-            }
-            try {
-                const data = JSON.parse(xhr.responseText);
-                statusFileAlive = true;
-                serviceActive = true;
-                syncState = jsonToState(data);
-                const ok = parseTs(data.sync && data.sync.last_successful_sync_at);
-                if (ok)
-                    lastCheck = ok;
-            } catch (e) {
-                statusFileAlive = false;
-            }
-        };
-        xhr.send();
+        if (statusFileProc.running)
+            return;
+        statusFileProc.lines = [];
+        statusFileProc.running = true;
     }
 
     // Map the 2.5.12 monitor-status document onto this widget's states.
@@ -266,6 +250,41 @@ PluginComponent {
                 root.runStatusCheck();
             }
             root.checkStatusFile();
+        }
+    }
+
+    Process {
+        id: statusFileProc
+
+        property var lines: []
+
+        command: ["sh", "-c", "cat '" + root.statusFilePath + "' 2>/dev/null"]
+
+        stdout: SplitParser {
+            onRead: line => statusFileProc.lines.push(line)
+        }
+
+        onExited: exitCode => {
+            const out = statusFileProc.lines.join("\n");
+            if (exitCode !== 0 || !out) {
+                root.statusFileAlive = false;
+                return;
+            }
+            try {
+                const data = JSON.parse(out);
+                root.statusFileAlive = true;
+                // The file is removed on an orderly shutdown but can be
+                // left behind by an abnormal exit; never let a stale
+                // document override the liveness probe's stopped state.
+                if (!root.serviceActive)
+                    return;
+                root.syncState = root.jsonToState(data);
+                const ok = root.parseTs(data.sync && data.sync.last_successful_sync_at);
+                if (ok)
+                    root.lastCheck = ok;
+            } catch (e) {
+                root.statusFileAlive = false;
+            }
         }
     }
 
