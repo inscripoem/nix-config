@@ -10,7 +10,11 @@ let
     "nh os switch -- --show-trace";
   shellAliases = lib.mapAttrs (_: value: lib.mkDefault value) ({
     nhs = switchCommand;
+    # Force local-only or remote-only builds for one switch. `nhs` itself
+    # keeps Nix's normal remote-first local-fallback scheduling.
     nhsc = "${switchCommand} --max-jobs 0";
+    nhsl = "${switchCommand} --builders \"\"";
+    nhsr = "${switchCommand} --max-jobs 0";
     ze = if isDarwin then "zed ." else "zeditor .";
   } // lib.optionalAttrs isDarwin {
     bs = "brew search";
