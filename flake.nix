@@ -65,7 +65,12 @@
     # macOS/Windows only), NixOS/HM modules. NOT following our nixpkgs:
     # upstream pins nixpkgs-unstable and publishes prebuilt results to
     # deepseek-harness-nix.cachix.org keyed on that pin.
-    deepseek-harness.url = "github:moraxyc/deepseek-harness.nix";
+    #
+    # Pin the last 0.2.1-rc.3 revision: the current upstream kernel is
+    # 0.2.2-alpha.2, but no published @deepseek-harness-tui/dsh-tui release
+    # accepts it (0.18.0 stops at 0.2.1-rc.5). Update this pin once a stable
+    # TUI release includes 0.2.2 in its peer range.
+    deepseek-harness.url = "github:moraxyc/deepseek-harness.nix/29f45376c7200a3869b4a8e1525307b6e26fb240";
 
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
