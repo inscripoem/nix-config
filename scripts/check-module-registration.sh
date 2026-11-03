@@ -9,11 +9,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-json=$(nix eval --json --no-warn-dirty .#moduleRegistration 2>&1) || {
+if ! json=$(nix eval --json --no-warn-dirty .#moduleRegistration); then
   echo "lint-modules: moduleRegistration failed to evaluate:" >&2
-  echo "$json" >&2
   exit 1
-}
+fi
 
 jq -r '
   "module registration:",
