@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regex-based asar patcher for orca (Linux), five semantic edits.
+r"""Regex-based asar patcher for orca (Linux), five semantic edits.
 
 Upstream gates every piece of tray plumbing on win32/darwin, so the Linux
 build quits outright on window close, and there is no headless/silent
@@ -67,6 +67,10 @@ import sys
 
 GATE = b"process.env.ORCA_SILENT_START||"
 
+# Minified identifiers may start with "$": 1.4.246 renamed the tray
+# tooltip helper to `$i`, which \w does not match.
+ID = rb"[\w$]+"
+
 # (name, pattern, replacement): replacement is a function over the match
 # bytes. win32->linux swaps are byte-length neutral; the P3/P5 edits are
 # not, which is fine under the re-layout below.
@@ -78,22 +82,23 @@ PATCHES = [
     ),
     (
         "close-handler-platform-gate",
-        rb"process\.platform!==`win32`\|\|(\w+)\.isRendererProcessGone\(\)",
+        rb"process\.platform!==`win32`\|\|(" + ID + rb")\.isRendererProcessGone\(\)",
         lambda m: m.group(0).replace(b"win32", b"linux"),
     ),
     (
         "close-handler-setting-read",
-        rb"(\w+)\?\.getSettings\(\)\.minimizeToTrayOnClose!==!0",
+        rb"(" + ID + rb")\?\.getSettings\(\)\.minimizeToTrayOnClose!==!0",
         lambda m: b"!!0&&" + m.group(0)[: -len(b"!==!0")],
     ),
     (
         "tray-click-tooltip-gate",
-        rb"process\.platform===`win32`\?\(\w+\.setToolTip\(\w+\(\)\)",
+        rb"process\.platform===`win32`\?\(" + ID + rb"\.setToolTip\(" + ID + rb"\(\)\)",
         lambda m: m.group(0).replace(b"win32", b"linux"),
     ),
     (
         "boot-show-silent-gate",
-        rb"!\w+\.\w+\(\)&&\(\w+&&\w+\.maximize\(\),\w+\.\w+\(\w+\)\)",
+        rb"!" + ID + rb"\." + ID + rb"\(\)&&\(" + ID + rb"&&" + ID
+        + rb"\.maximize\(\)," + ID + rb"\." + ID + rb"\(" + ID + rb"\)\)",
         lambda m: GATE + m.group(0),
     ),
 ]
