@@ -40,16 +40,25 @@ grow with the number of clients.
 
 ## Key handling
 
-nix-daemon runs as root, cannot answer a passphrase prompt, and cannot reach a
-user SSH agent, so the key is passwordless and stored in SOPS. It decrypts to
-`/run/secrets` at activation as `root:root` with mode `0400`; a changed value
-restarts `nix-daemon.service` (see [secrets](secrets.md)).
+nixbuild.net is used with two independent Ed25519 keys; the account holds both.
 
-The same key is the interactive identity for the admin shell, so keep it on the
-workstation (`~/.ssh/nixbuild_ed25519`) as well. Rotate by generating a new
-Ed25519 key, adding the public half with `ssh-keys add` in the admin shell,
-updating `secrets/nixbuild.yaml`, rebuilding, and removing the old key from the
-account.
+- **Daemon key** — passwordless, stored in `secrets/nixbuild.yaml` and
+  decrypted to `/run/secrets` at activation as `root:root`, mode `0400`.
+  nix-daemon reads it through the system SSH config, and a changed value
+  restarts `nix-daemon.service` (see [secrets](secrets.md)). It is never
+  readable by the interactive user.
+- **Admin key** — used only for `ssh eu.nixbuild.net`. It lives in the
+  1Password vault `加密密钥` and is served by the 1Password SSH agent, which
+  is the session-wide `IdentityAgent` (see [ssh-agent](ssh-agent.md)). No
+  private key is stored in `$HOME`.
+
+Do not share one file between root and the user: OpenSSH rejects a key with
+group/other permission bits when the reader owns it, so a group-readable copy
+breaks the daemon, while a `0400` root copy is unreadable by the user.
+
+Rotate either key by adding the new public half first (`ssh-keys add` in the
+admin shell), verifying a login, then replacing the SOPS value or the
+1Password item, and finally removing the old key from the account.
 
 ## Boundaries
 
