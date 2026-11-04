@@ -205,7 +205,7 @@ just check
 # Preview build requirements without building or activating (either platform).
 just dry-run air
 
-# Custom package updates remain explicit; this is separate from flake.lock.
+# Custom package updates are explicit; dsh/qq also move their flake pins.
 just update siyuan --dry-run
 ```
 

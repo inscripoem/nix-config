@@ -81,3 +81,16 @@ build would keep all CPU cores saturated for a long time. Builds with a
 large input closure (Electron apps, node_modules-heavy packages) are faster
 locally — uploading the inputs to the remote builder costs more than the
 build itself.
+
+## 7. Updates
+
+- `just update` runs `scripts/update-versions.sh`: the custom `pkgs/` targets
+  plus the pinned flake inputs those targets own (`dsh` for
+  deepseek-harness, `qq` for linuxqq-wayland-fix + nixpkgs-qq).
+- Branch/ref flake inputs are updated with plain `nix flake update`; they are
+  not part of `just update`.
+- `update-versions.sh` edits flake pins only for targets that own one. The
+  `dsh` target checks the candidate kernel against the upstream TUI peer
+  range and runs a turn smoke test before moving the pin; an incompatible
+  candidate is skipped and the current pin is kept. Never hand-edit the
+  deepseek-harness pin.

@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Update workbuddy, cc-switch, magpie, siyuan, ww-manager, notion-electron,
-# zcode-cli, dsh-orca-hooks and ene-fanctl to their latest upstream
+# zcode-cli, dsh, dsh-orca-hooks and ene-fanctl to their latest upstream
 # versions, and align the qq version pin with the linuxqq-wayland-fix input.
+# `dsh` also moves the pinned deepseek-harness flake input, gated on the
+# upstream TUI's peer range and a turn smoke test.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--verbose]
 # Options:
 #   --dry-run       Show what would change without modifying files.
 #   --only=<names>  Comma-separated subset of {workbuddy,cc-switch,magpie,
-#                   siyuan,ww-manager,notion-electron,zcode-cli,
+#                   siyuan,ww-manager,notion-electron,zcode-cli,dsh,
 #                   dsh-orca-hooks,ene-fanctl,qq}. `notion` is accepted
-#                   as an alias for notion-electron. Defaults to all ten;
+#                   as an alias for notion-electron. Defaults to all eleven;
 #                   unknown names are an error.
 #   --verbose       Full per-package detail (the old multi-line format).
 #   -h, --help      Show this help.
@@ -20,7 +22,8 @@
 # Hack, which renders thin and misaligned — do not reintroduce it.
 #   followed by a one-line tally. Colors and the transient in-place
 #   "checking" label are TTY-only; piped output is plain lines.
-# Requirements: curl, jq, git, nix (flakes), nix-prefetch-url, npm, sed
+# Requirements: curl, jq, git, nix (flakes), nix-prefetch-url, npm, sed,
+# python3
 
 set -euo pipefail
 
@@ -28,6 +31,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DRY_RUN=false
 ONLY=""
 VERBOSE=false
+dsh_hooks_forced=false
 
 # ── output layer ─────────────────────────────────────────────────────
 # One compact status line per package; `--verbose` restores the old
@@ -176,7 +180,7 @@ done
 # Normalize aliases: `notion` → `notion-electron` (the package's pname),
 # and reject unknown names so a typo cannot silently check nothing.
 KNOWN_PKGS=(workbuddy cc-switch magpie siyuan ww-manager notion-electron
-            zcode-cli dsh-orca-hooks ene-fanctl qq)
+            zcode-cli dsh dsh-orca-hooks ene-fanctl qq)
 if [[ -n "$ONLY" ]]; then
   IFS=, read -ra items <<< "$ONLY"
   normalized=""
@@ -202,6 +206,11 @@ fi
 
 should_update() {
   local name="$1"
+  # A dsh pin bump must also refresh the hook bridge bundle, even for
+  # `--only=dsh`; the dsh section sets this after a successful move.
+  if [[ "${dsh_hooks_forced:-false}" == true && "$name" == "dsh-orca-hooks" ]]; then
+    return 0
+  fi
   if [[ -z "$ONLY" ]]; then
     return 0
   fi
@@ -211,6 +220,24 @@ should_update() {
   done
   return 1
 }
+
+# One updater at a time: flake.lock is a single-writer file, and both the
+# dsh and qq sections edit flake.nix. The lock lives in the shared git dir
+# so worktrees of this repo serialize against each other too.
+git_common=$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || true)
+if [[ -n "$git_common" ]]; then
+  case "$git_common" in
+    /*) ;;
+    *) git_common="$REPO_ROOT/$git_common" ;;
+  esac
+else
+  git_common="$REPO_ROOT"
+fi
+exec 9>"$git_common/update-versions.lock"
+if ! flock -n 9; then
+  echo "ERROR: another update-versions.sh run is in progress." >&2
+  exit 2
+fi
 
 SECONDS=0
 header="update-versions"
@@ -646,6 +673,128 @@ if should_update "zcode-cli"; then
     vnote "src ${zc_hash:0:14}... deps ${zc_deps_hash:0:14}..."
     note "run nix build on the package once to verify the full build."
   fi
+fi
+
+# ── dsh (deepseek-harness flake input) ───────────────────────────────
+# The only pinned input that needs compatibility logic. The candidate is
+# the flake's HEAD (or DSH_REV); it is accepted only when the candidate
+# kernel appears in the candidate TUI's upstream peer range, the hook
+# bridge packages exist for it, and a turn smoke test passes. On success
+# the flake.nix rev moves and flake.lock is updated; the dsh-orca-hooks
+# section below then follows the new kernel (forced even for --only=dsh).
+# The flake's dshEngines override is deliberately not used as evidence:
+# it only lowers the Nix load gate, not the TUI runtime contract.
+
+update_dsh() {
+  status_begin "dsh"
+  local flake="$REPO_ROOT/flake.nix"
+  local current_rev target_rev target_kernel current_kernel tui_bundle tui_pkg
+  local tui_peer tui_version preset tmp p
+
+  current_rev=$(grep -oP 'deepseek-harness\.url = "github:moraxyc/deepseek-harness\.nix/\K[0-9a-f]{40}' "$flake" || true)
+  if [[ -z "$current_rev" ]]; then
+    die "could not read the pinned deepseek-harness rev from flake.nix."
+  fi
+
+  target_rev="${DSH_REV:-}"
+  if [[ -z "$target_rev" ]]; then
+    target_rev=$(git ls-remote https://github.com/moraxyc/deepseek-harness.nix HEAD 2>/dev/null |
+      awk 'NR == 1 { print $1 }')
+  fi
+  if [[ ! "$target_rev" =~ ^[0-9a-f]{40}$ ]]; then
+    pkg_skip "dsh" "could not resolve upstream HEAD (set DSH_REV=<full rev>)"
+    return 0
+  fi
+
+  vnote "current : $current_rev"
+  vnote "target  : $target_rev"
+
+  if [[ "$target_rev" == "$current_rev" ]]; then
+    pkg_up "dsh" "$current_rev"
+    return 0
+  fi
+
+  target_kernel=$(nix --extra-experimental-features 'nix-command flakes' eval \
+    --raw "github:moraxyc/deepseek-harness.nix/${target_rev}#packages.x86_64-linux.dsh.version" 2>/dev/null) || true
+  if [[ -z "$target_kernel" ]]; then
+    pkg_skip "dsh" "could not resolve the candidate kernel ($target_rev)"
+    return 0
+  fi
+
+  current_kernel=$(nix --extra-experimental-features 'nix-command flakes' eval \
+    --raw "github:moraxyc/deepseek-harness.nix/${current_rev}#packages.x86_64-linux.dsh.version" 2>/dev/null) || true
+  if [[ -z "$current_kernel" ]]; then
+    pkg_skip "dsh" "could not resolve the current kernel ($current_rev)"
+    return 0
+  fi
+  if [[ "$target_kernel" != "$current_kernel" ]] &&
+    [[ "$(printf '%s\n%s\n' "$current_kernel" "$target_kernel" | sort -V | head -1)" == "$target_kernel" ]]; then
+    pkg_skip "dsh" "candidate kernel $target_kernel is older than current $current_kernel"
+    return 0
+  fi
+  vnote "kernels : $current_kernel -> $target_kernel"
+
+  tui_bundle=$(nix build --no-link --print-out-paths --extra-experimental-features 'nix-command flakes' \
+    "github:moraxyc/deepseek-harness.nix/${target_rev}#legacyPackages.x86_64-linux.bundles.tui" 2>/dev/null | tail -1) || true
+  if [[ -z "$tui_bundle" ]]; then
+    pkg_skip "dsh" "could not build the candidate TUI bundle"
+    return 0
+  fi
+  tui_pkg="$tui_bundle/lib/node_modules/@deepseek-harness-tui/dsh-tui/package.json"
+  tui_version=$(jq -r '.version // "?"' "$tui_pkg" 2>/dev/null) || true
+  tui_peer=$(jq -r '.peerDependencies["@deepseek-ai/dsh-agent"] // empty' "$tui_pkg" 2>/dev/null) || true
+  if [[ -z "$tui_peer" ]]; then
+    pkg_skip "dsh" "TUI $tui_version does not declare a dsh-agent peer range"
+    return 0
+  fi
+  if ! printf '%s' "$tui_peer" |
+    sed 's/||/\n/g; s/^[[:space:]]*//; s/[[:space:]]*$//' |
+    grep -Fxq -- "$target_kernel"; then
+    pkg_skip "dsh" "TUI $tui_version does not validate kernel $target_kernel"
+    return 0
+  fi
+
+  for p in dsh-hooks-claude-code dsh-hook-protocol; do
+    if ! npm view "@deepseek-ai/$p@${target_kernel}" version >/dev/null 2>&1; then
+      pkg_skip "dsh" "$p@$target_kernel is not published"
+      return 0
+    fi
+  done
+
+  if [[ "$DRY_RUN" == true ]]; then
+    pkg_dry "dsh" "$current_rev → $target_rev (kernel $target_kernel)"
+    return 0
+  fi
+
+  preset=$(nix build --no-link --print-out-paths --extra-experimental-features 'nix-command flakes' \
+    "github:moraxyc/deepseek-harness.nix/${target_rev}#legacyPackages.x86_64-linux.presets.tui" 2>/dev/null | tail -1) || true
+  if [[ -z "$preset" ]]; then
+    pkg_skip "dsh" "could not build the candidate TUI preset"
+    return 0
+  fi
+  note "checking candidate TUI turn ..."
+  if ! "$REPO_ROOT/scripts/check-dsh-tui.py" "$preset"; then
+    pkg_skip "dsh" "candidate TUI turn smoke failed"
+    return 0
+  fi
+
+  pkg_bump "dsh" "$current_rev → $target_rev (kernel $target_kernel)"
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/dsh-pin.XXXXXX")
+  cp "$flake" "$REPO_ROOT/flake.lock" "$tmp/"
+  sed -i "s|deepseek-harness.url = \"github:moraxyc/deepseek-harness.nix/${current_rev}\"|deepseek-harness.url = \"github:moraxyc/deepseek-harness.nix/${target_rev}\"|" "$flake"
+  if ! nix --extra-experimental-features 'nix-command flakes' \
+    flake update --flake "$REPO_ROOT" deepseek-harness; then
+    cp "$tmp/flake.nix" "$flake"
+    cp "$tmp/flake.lock" "$REPO_ROOT/flake.lock"
+    rm -rf "$tmp"
+    die "failed to lock deepseek-harness at $target_rev; pin restored."
+  fi
+  rm -rf "$tmp"
+  dsh_hooks_forced=true
+}
+
+if should_update "dsh"; then
+  update_dsh
 fi
 
 # ── dsh-orca-hooks ───────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 default:
     @{{quote(just_executable())}} --list
 
-# Update custom package versions (optional package, --dry-run, --verbose).
+# Update custom packages and their pinned flake inputs (dsh, qq).
 update *args:
     #!/usr/bin/env bash
     set -euo pipefail
