@@ -53,6 +53,33 @@ in {
     (lib.mkIf cfg.steam.enable {
       programs.steam = {
         enable = true;
+
+        # Steam's UI is an X11/CEF client. xwayland-satellite runs the
+        # whole Xwayland at the smallest output scale, so on an output
+        # with niri scale 2 the UI renders at half size. Steam has no
+        # per-window DPI handling and cannot rescale a running client,
+        # so read the focused output's scale at launch and force it:
+        # Steam's documented STEAM_FORCE_DESKTOPUI_SCALING override.
+        # Moving the window across outputs needs a Steam restart; games
+        # are unaffected because they carry their own resolution.
+        package = pkgs.steam.override {
+          extraPreBwrapCmds = ''
+            # niri sessions only: KWin scales Xwayland itself, and applying
+            # a second factor there would double-scale.
+            case "''${XDG_CURRENT_DESKTOP:-}" in
+              *niri*)
+                if [ -z "''${STEAM_FORCE_DESKTOPUI_SCALING:-}" ] && [ -n "''${NIRI_SOCKET:-}" ]; then
+                  scale="$(${pkgs.niri-unstable}/bin/niri msg --json focused-output 2>/dev/null \
+                    | ${pkgs.jq}/bin/jq -r '.logical.scale // empty' 2>/dev/null || true)"
+                  if [ -n "$scale" ]; then
+                    export STEAM_FORCE_DESKTOPUI_SCALING="$scale"
+                  fi
+                fi
+                ;;
+            esac
+          '';
+        };
+
         extraCompatPackages = [
           pkgs.proton-ge-bin
           pkgs.dwproton-bin
