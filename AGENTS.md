@@ -73,3 +73,11 @@ and commands stay English.
   - `installer: add headless ISO builder and centralize SSH public key`
   - `home/creative: add zrythm`
   - `toolchain/node: add node, pnpm and yarn`
+
+## 6. Build location
+
+Prefer local builds. Use a configured remote builder only when the local
+build would keep all CPU cores saturated for a long time. Builds with a
+large input closure (Electron apps, node_modules-heavy packages) are faster
+locally — uploading the inputs to the remote builder costs more than the
+build itself.
