@@ -2,16 +2,18 @@
 
 let
   cfg = config.packs.ai;
+  dshPkgs = deepseek-harness.packages.${pkgs.stdenv.hostPlatform.system};
+  dshLegacyPkgs = deepseek-harness.legacyPackages.${pkgs.stdenv.hostPlatform.system};
 
   # dsh-desktop-official: DeepSeek Harness desktop app, source-built for
   # Linux by the community deepseek-harness flake (dataelement's own
   # releases ship macOS/Windows only). It bundles the official runtime and
   # Web UI, so version bumps ride flake updates of that input.
-  dshUpstream = deepseek-harness.packages.${pkgs.stdenv.hostPlatform.system}.dsh-desktop-official;
+  dshUpstream = dshPkgs.dsh-desktop-official;
 
   # Tray icon for the Linux patch applied in dshPkg below: upstream ships
   # tray.ico for Windows only and no icon at all in the Linux build, so reuse
-  # the mark the launcher already uses and rasterize it at build time.
+  # the desktop-entry mark and rasterize it at build time.
   dshTrayIcon = pkgs.runCommand "dsh-tray-icon" {
     nativeBuildInputs = [ pkgs.librsvg ];
   } ''
@@ -46,36 +48,37 @@ let
         '';
       });
 
-  # Bare official dsh CLI (kernel) from the same deepseek-harness flake,
-  # version-matched with the desktop app's bundled runtime. Plain official
-  # semantics: `dsh <name>` boots profile <name> under $DSH_HOME/profiles
-  # (dsh web / dsh headless / dsh tui / dsh plugin, no default-profile
-  # injection). It is also what the dsh-tui launcher bootstraps through
-  # (`dsh plugin --profile dsh-tui add ...`) and what orca's dsh agent
-  # requires on PATH (detectRequiredCommands).
-  dshCliPkg = deepseek-harness.packages.${pkgs.stdenv.hostPlatform.system}.dsh;
+  # Bare official dsh CLI (kernel). Kept out of home.packages on purpose:
+  # the frozen TUI preset below also ships bin/dsh, and two packages
+  # providing bin/dsh collide in the Home Manager profile. The preset is the
+  # PATH dsh; this bare CLI is what services.dsh serves the user-state web
+  # profile with, so the service closure stays free of the TUI bundle.
+  dshCliPkg = dshPkgs.dsh;
 
-  # Official @deepseek-harness-tui/dsh-tui launcher — orca's recognized
-  # interactive interface for agent kind "dsh" (detectCmd `dsh-tui`,
-  # launchCmd `dsh-tui .`, so no per-agent command override). The nix
-  # package carries only the zero-dependency thin shell; the full TUI is
-  # bootstrapped into ~/.dsh/profiles/dsh-tui on first run through the
-  # kernel above and then updates itself in place via the TUI's own
-  # /update — this pin gates fresh bootstraps only. The pin must be a
-  # version whose declared @deepseek-ai/* requirements accept the kernel
-  # above: the flake's own bundle pairing does not extend to npm (e.g.
-  # 0.15.0 targets kernel 0.2.0-rc.2 and dsh plugin add rejects it on
-  # 0.2.1-rc.2). Update track: update-versions.sh, which resolves the
-  # kernel from flake.lock and picks the newest release accepting it. The
-  # updater also realigns this rolling profile's @deepseek-ai/* family to
-  # the kernel (and the TUI copy to the pin) once the running system is on
-  # the target kernel — guarded, because `dsh plugin add` checks its peer
-  # contract against the running kernel; before an nhs it only prints the
-  # commands. Third-party profile plugins and the Electron-managed desktop
-  # profile stay user-state and are never touched by it.
-  dshTuiLauncherPkg = pkgs.dsh-tui-launcher;
+  # Frozen TUI composition — kernel and TUI bundle assembled in one hoisted
+  # node_modules tree, so the two-copy structure behind the live TUI crash
+  # (store kernel + npm TUI copy) is gone by construction. Decision record
+  # (2026-11-04): the former npm delegating launcher (dsh-tui-launcher) is
+  # removed; the TUI now follows flake updates instead of its own /update.
+  # Accepted costs: no claude-agent-sdk peer in the frozen tree, and
+  # hand-installed plugins in the managed nix-tui profile are restored by
+  # the preset's seed wrapper on every launch — experimental plugins belong
+  # to the user-state desktop/web profiles, never to nix-tui.
+  dshTuiPkg = dshLegacyPkgs.presets.tui;
+
+  # Orca's dsh contract is hardcoded in its agent table (detectCmd
+  # `dsh-tui`, required `dsh`, launchCmd `dsh-tui .`) and a command override
+  # only changes the launch line, not detection. This three-line adapter
+  # exposes the frozen preset under the name Orca probes and maps
+  # `dsh-tui .` to `dsh nix-tui .`; it carries no bootstrap or update logic,
+  # so the old launcher's profile layers are not reintroduced.
+  dshTuiEntry = pkgs.writeShellScriptBin "dsh-tui" ''
+    exec ${dshTuiPkg}/bin/dsh nix-tui "$@"
+  '';
 in
 {
+  imports = [ deepseek-harness.homeModules.default ];
+
   options.packs.ai.dsh = {
     # Opt-in extra: DeepSeek Harness (dsh) desktop app — Electron shell over
     # the official Harness Web UI (tray, notifications, phone pairing, PPT
@@ -100,23 +103,29 @@ in
 
   config = lib.mkMerge [
     (lib.mkIf cfg.dsh.enable {
-      # dsh-desktop (Electron shell), the bare kernel CLI, and the official
-      # dsh-tui launcher — one TUI copy, self-managed in the launcher's
-      # profile. Decision record (2026-10-18): presets.tui (the nix-managed
-      # nix-tui profile) was dropped because orca's dsh contract is shaped
-      # around the official launcher (detectCmd `dsh-tui`, launchCmd
-      # `dsh-tui .`, npm-package realpath), which presets could only serve
-      # through a manual per-agent override — and keeping both meant two
-      # TUI copies on diverging update tracks. Accepted cost: the TUI is
-      # no longer store-frozen — no generation rollback for it, and updates
-      # ride its explicit /update from npm; the nix pin gates fresh
-      # bootstraps only. presets.tui is one line away if the frozen route
-      # is ever wanted back; the two coexist conflict-free.
+      # One TUI copy, store-frozen in the preset (kernel + TUI + headless
+      # bundles share one node_modules tree). The preset's managed profile
+      # is nix-tui; the old user-state dsh-tui profile is left in place,
+      # unused.
       home.packages = [
         dshPkg
-        dshCliPkg
-        dshTuiLauncherPkg
+        dshTuiPkg
+        dshTuiEntry
       ];
+
+      # Local web entry for remote access: a Home Manager user service so
+      # DSH_HOME stays ~/.dsh and the existing web profile (including its
+      # magpie patch) is served as-is. The NixOS services.dsh module is not
+      # used here: it runs from /var/lib/dsh as a DynamicUser with
+      # ProtectHome=true, which cannot read ~/.dsh. Bound to loopback;
+      # remote exposure rides the CF tunnel (step 2), never openFirewall.
+      services.dsh = {
+        enable = true;
+        package = dshCliPkg;
+        profile = "web";
+        listenAddress = "127.0.0.1";
+        port = 3080;
+      };
     })
   ];
 }

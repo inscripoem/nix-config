@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Update workbuddy, cc-switch, magpie, siyuan, ww-manager, notion-electron,
-# zcode-cli, dsh-tui-launcher and ene-fanctl to their latest upstream
+# zcode-cli and ene-fanctl to their latest upstream
 # versions, and align the qq version pin with the linuxqq-wayland-fix input.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--verbose]
@@ -8,8 +8,8 @@
 #   --dry-run       Show what would change without modifying files.
 #   --only=<names>  Comma-separated subset of {workbuddy,cc-switch,magpie,
 #                   siyuan,ww-manager,notion-electron,zcode-cli,
-#                   dsh-tui-launcher,ene-fanctl,qq}. `notion` is accepted
-#                   as an alias for notion-electron. Defaults to all ten;
+#                   ene-fanctl,qq}. `notion` is accepted
+#                   as an alias for notion-electron. Defaults to all nine;
 #                   unknown names are an error.
 #   --verbose       Full per-package detail (the old multi-line format).
 #   -h, --help      Show this help.
@@ -176,7 +176,7 @@ done
 # Normalize aliases: `notion` → `notion-electron` (the package's pname),
 # and reject unknown names so a typo cannot silently check nothing.
 KNOWN_PKGS=(workbuddy cc-switch magpie siyuan ww-manager notion-electron
-            zcode-cli dsh-tui-launcher ene-fanctl qq)
+            zcode-cli ene-fanctl qq)
 if [[ -n "$ONLY" ]]; then
   IFS=, read -ra items <<< "$ONLY"
   normalized=""
@@ -645,190 +645,6 @@ if should_update "zcode-cli"; then
 
     vnote "src ${zc_hash:0:14}... deps ${zc_deps_hash:0:14}..."
     note "run nix build on the package once to verify the full build."
-  fi
-fi
-
-# ── dsh-tui-launcher ─────────────────────────────────────────────────
-
-if should_update "dsh-tui-launcher"; then
-  status_begin "dsh-tui-launcher"
-  # The launcher pin pairs with the KERNEL through the plugin's declared
-  # @deepseek-ai/* peerDependencies: `dsh plugin add` hard-gates on them,
-  # and the flake's own bundle pairing does not extend to npm (0.15.0
-  # targets kernel 0.2.0-rc.2 and is rejected by 0.2.1-rc.2). So resolve
-  # the kernel version from the flake.lock rev, then pick the NEWEST
-  # stable launcher release whose requirements accept it — blind "latest"
-  # would break first bootstraps. Constraint match is exact-term over the
-  # "||" branches (the registry enumerates allowed workspace versions
-  # explicitly); a caret branch merely spanning the kernel counts as
-  # no-match, which errs toward the older, safe pin.
-  dt_lock_rev=$(jq -r '.nodes["deepseek-harness"].locked.rev // empty' "$REPO_ROOT/flake.lock")
-  if [[ -z "$dt_lock_rev" ]]; then
-    die "deepseek-harness missing from flake.lock (run: nix flake lock)."
-  fi
-  dt_kernel=$(nix --extra-experimental-features 'nix-command flakes' eval \
-    --raw "github:moraxyc/deepseek-harness.nix/${dt_lock_rev}#packages.x86_64-linux.dsh.version" 2>/dev/null) || true
-  if [[ -z "$dt_kernel" ]]; then
-    die "could not resolve the kernel version from the locked deepseek-harness rev ${dt_lock_rev:0:7}."
-  fi
-
-  # The full packument is off-limits here: npm serves it with unescaped
-  # control characters in the readme, which jq refuses to parse (and the
-  # cache makes that intermittent). Version list comes from `npm view`,
-  # and each candidate's contract from its clean per-version document.
-  dt_versions=$(npm view @deepseek-harness-tui/dsh-tui versions --json 2>/dev/null \
-    | jq -r 'if type == "array" then .[] else . end' 2>/dev/null)
-  if [[ -z "$dt_versions" ]]; then
-    die "could not list dsh-tui versions from the npm registry."
-  fi
-
-  dt_nix="$REPO_ROOT/pkgs/dsh-tui-launcher.nix"
-  dt_current=$(grep 'version = ' "$dt_nix" | head -1 | grep -oP '[\d.]+')
-
-  # Newest-first stable releases; accept the first whose @deepseek-ai/*
-  # peerDependencies all take the pinned kernel. The scan is bounded so a
-  # long incompatible tail cannot turn into an unbounded request series.
-  dt_target=""
-  dt_scanned=0
-  for dt_v in $(echo "$dt_versions" | grep -v -- '-' | sort -rV); do
-    dt_scanned=$((dt_scanned + 1))
-    [[ $dt_scanned -gt 20 ]] && break
-    if curl -sf --max-time 10 "https://registry.npmjs.org/@deepseek-harness-tui/dsh-tui/$dt_v" \
-      | jq -e --arg kernel "$dt_kernel" '
-          [.peerDependencies // {} | to_entries[]
-            | select(.key | startswith("@deepseek-ai/dsh-"))
-            | .value] as $reqs
-          | ($reqs | length) > 0
-          and ([$reqs[]
-            | select((split(" || ") | index($kernel)) != null)] | length)
-            == ($reqs | length)' >/dev/null 2>&1; then
-      dt_target=$dt_v
-      break
-    fi
-  done
-
-  if [[ -z "$dt_target" ]]; then
-    dt_latest=$(npm view @deepseek-harness-tui/dsh-tui dist-tags.latest 2>/dev/null || echo unknown)
-    die "no dsh-tui release accepts the pinned kernel $dt_kernel (npm latest: $dt_latest)." \
-      "Update the deepseek-harness flake input to a kernel the newer" \
-      "launchers accept, then re-run this updater."
-  fi
-
-  vnote "kernel  : $dt_kernel (from flake.lock)"
-  vnote "current : $dt_current"
-  vnote "target  : $dt_target (newest release accepting this kernel)"
-
-  if [[ "$dt_target" == "$dt_current" ]]; then
-    pkg_up "dsh-tui-launcher" "$dt_current"
-  else
-    older=$(printf '%s\n%s\n' "$dt_target" "$dt_current" | sort -V | head -1)
-    if [[ "$older" == "$dt_target" ]]; then
-      pkg_skip "dsh-tui-launcher" "newest compatible ($dt_target) is older than local ($dt_current)"
-    elif [[ "$DRY_RUN" == true ]]; then
-      pkg_dry "dsh-tui-launcher" "$dt_current → $dt_target"
-    else
-      pkg_bump "dsh-tui-launcher" "$dt_current → $dt_target"
-      dt_url="https://registry.npmjs.org/@deepseek-harness-tui/dsh-tui/-/dsh-tui-${dt_target}.tgz"
-
-      note "prefetching launcher tarball ..."
-      dt_hash=$(prefetch_hash "$dt_url")
-
-      update_nix_field "$dt_nix" "version" "$dt_target"
-      update_nix_field "$dt_nix" "hash" "$dt_hash"
-    fi
-  fi
-
-  # ── dsh-tui profile alignment (self-guarded) ─────────────────────────
-  # The rolling TUI profile lives outside nix and does not follow kernel
-  # bumps: its @deepseek-ai/* plugins pin the bootstrap-time kernel and
-  # its dsh-tui copy advances only via the TUI's own /update. A kernel
-  # family bump strands it, and the launcher's gate — hard-refuses when
-  # the profile's TUI copy is older at major.minor (bin/dsh-tui.js
-  # checkProfileAlignment) — then locks the only self-repair path; the
-  # 2026-10-28 rc.2→rc.3 deadlock is exactly that shape. `dsh plugin
-  # add` gates its peer contract against the RUNNING kernel, so
-  # realignment only succeeds once the system generation is already on
-  # dt_kernel (i.e. after nhs). Guard accordingly: while the running
-  # kernel lags the lock, print the commands and touch nothing; on match,
-  # realign in place. A profile TUI NEWER than the pin is soft-allowed by
-  # the gate and must not be downgraded. Third-party profile plugins are
-  # user-state by decision — reported, never touched. The Electron-managed
-  # desktop profile is only compared (its single @deepseek-ai/* dep vs
-  # the kernel) and pointed at its own repair path. All mutation is
-  # failure-isolated so a pnpm/network error cannot abort the later
-  # sections, and package.json/pnpm-lock.yaml are backed up next to
-  # themselves (.pre-align, one rolling copy) before any change.
-  dt_profile="$HOME/.dsh/profiles/dsh-tui"
-  dt_tui_ver=$(jq -r '.version // empty' \
-    "$dt_profile/node_modules/@deepseek-harness-tui/dsh-tui/package.json" 2>/dev/null) || true
-  if [[ -n "$dt_tui_ver" ]]; then
-    dt_run_kernel=$(dsh --version 2>/dev/null | head -1) || true
-    dt_family_skew=$(jq -r --arg k "$dt_kernel" \
-      '.dependencies | to_entries[]
-       | select(.key | startswith("@deepseek-ai/dsh-"))
-       | select(.value != $k) | .key + " " + .value' \
-      "$dt_profile/package.json" 2>/dev/null) || true
-    # Mirror the launcher's own gate: compare major.minor with any
-    # prerelease suffix stripped.
-    dt_tui_mm="${dt_tui_ver%%-*}"
-    dt_tui_mm="${dt_tui_mm%.*}"
-    dt_tgt_mm="${dt_target%%-*}"
-    dt_tgt_mm="${dt_tgt_mm%.*}"
-    dt_tui_older=false
-    if [[ "$dt_tui_mm" != "$dt_tgt_mm" ]]; then
-      if [[ "$(printf '%s\n%s\n' "$dt_tui_mm" "$dt_tgt_mm" | sort -V | head -1)" \
-        == "$dt_tui_mm" ]]; then
-        dt_tui_older=true
-      fi
-    fi
-    dt_add_args=()
-    if [[ "$dt_tui_older" == true ]]; then
-      dt_add_args+=("@deepseek-harness-tui/dsh-tui@$dt_target")
-    fi
-    if [[ -n "$dt_family_skew" ]]; then
-      while IFS= read -r dt_dep; do
-        if [[ -n "$dt_dep" ]]; then
-          dt_add_args+=("${dt_dep%% *}@$dt_kernel")
-        fi
-      done <<< "$dt_family_skew"
-    fi
-    if [[ -z "${dt_add_args[*]}" ]]; then
-      vnote "profile: aligned (tui $dt_tui_ver, family $dt_kernel)"
-    elif [[ "$dt_run_kernel" != "$dt_kernel" ]]; then
-      note "dsh-tui profile behind (tui $dt_tui_ver) and running kernel ${dt_run_kernel:-missing} != target $dt_kernel — after switching, run:"
-      note "  dsh plugin --profile dsh-tui add ${dt_add_args[*]}"
-    elif [[ "$DRY_RUN" == true ]]; then
-      note "[dry-run] would realign dsh-tui profile: dsh plugin --profile dsh-tui add ${dt_add_args[*]}"
-    else
-      note "realigning dsh-tui profile (tui $dt_tui_ver, family skew) to kernel $dt_kernel ..."
-      cp "$dt_profile/package.json" "$dt_profile/package.json.pre-align"
-      cp "$dt_profile/pnpm-lock.yaml" "$dt_profile/pnpm-lock.yaml.pre-align" 2>/dev/null || true
-      if timeout 300 dsh plugin --profile dsh-tui add "${dt_add_args[@]}" >/dev/null 2>&1; then
-        dt_new_tui=$(jq -r '.dependencies["@deepseek-harness-tui/dsh-tui"] // "?"' \
-          "$dt_profile/package.json" 2>/dev/null) || true
-        note "dsh-tui profile realigned (tui now $dt_new_tui, family $dt_kernel)"
-      else
-        note "dsh-tui profile realignment FAILED — run manually to see the error:"
-        note "  dsh plugin --profile dsh-tui add ${dt_add_args[*]}"
-      fi
-    fi
-    if [[ "$VERBOSE" == true ]]; then
-      dt_third=$(jq -r '[.dependencies | to_entries[]
-                  | select((.key | startswith("@deepseek-ai/dsh-")) | not)
-                  | select(.key != "@deepseek-harness-tui/dsh-tui")
-                  | "\(.key) \(.value)"] | join("; ")' \
-        "$dt_profile/package.json" 2>/dev/null) || true
-      if [[ -n "$dt_third" ]]; then
-        vnote "third-party profile plugins (untouched): $dt_third"
-      fi
-    fi
-  else
-    vnote "profile: not installed (the launcher bootstraps it on first run)"
-  fi
-  dt_desk_sub=$(jq -r '.dependencies["@deepseek-ai/dsh-subagent-codex"] // empty' \
-    "$HOME/.dsh/profiles/desktop/package.json" 2>/dev/null) || true
-  if [[ -n "$dt_desk_sub" && "$dt_desk_sub" != "$dt_kernel" ]]; then
-    note "desktop profile pins dsh-subagent-codex $dt_desk_sub (kernel $dt_kernel) — realign via the desktop app's plugin manager"
   fi
 fi
 
