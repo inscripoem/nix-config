@@ -85,12 +85,19 @@ let
 
   # Orca's dsh contract is hardcoded in its agent table (detectCmd
   # `dsh-tui`, required `dsh`, launchCmd `dsh-tui .`) and a command override
-  # only changes the launch line, not detection. This three-line adapter
-  # exposes the frozen preset under the name Orca probes and maps
-  # `dsh-tui .` to `dsh nix-tui .`; it carries no bootstrap or update logic,
-  # so the old launcher's profile layers are not reintroduced.
+  # only changes the launch line, not detection. This adapter exposes the
+  # frozen preset under the name Orca probes and maps `dsh-tui` to
+  # `dsh nix-tui`. The trailing "." is Orca's workspace marker from the old
+  # npm launcher; the preset's TUI treats a positional "." as the initial
+  # prompt, so it is dropped here — Orca already sets the terminal cwd and
+  # injects the real task over stdin after startup. No bootstrap or update
+  # logic is reintroduced.
   dshTuiEntry = pkgs.writeShellScriptBin "dsh-tui" ''
-    exec ${dshTuiPkg}/bin/dsh nix-tui "$@"
+    args=()
+    for arg in "$@"; do
+      [ "$arg" = "." ] || args+=("$arg")
+    done
+    exec ${dshTuiPkg}/bin/dsh nix-tui "''${args[@]}"
   '';
 in
 {
