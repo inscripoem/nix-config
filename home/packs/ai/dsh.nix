@@ -64,7 +64,24 @@ let
   # hand-installed plugins in the managed nix-tui profile are restored by
   # the preset's seed wrapper on every launch — experimental plugins belong
   # to the user-state desktop/web profiles, never to nix-tui.
-  dshTuiPkg = dshLegacyPkgs.presets.tui;
+  #
+  # Orca's global hook patch inserts @deepseek-ai/dsh-hooks-claude-code into
+  # every profile; the managed nix-tui profile has no profile-level
+  # node_modules, so the bridge is added to the preset's composed tree via a
+  # minimal bundle instead of a hand-installed profile plugin.
+  dshScope = pkgs.extend deepseek-harness.overlays.default;
+  dshOrcaHooksBundle = dshScope.dsh.callPackage ../../../pkgs/dsh-orca-hooks.nix { };
+  dshTuiPkg = dshPkgs.dsh.override {
+    pname = "dsh-tui";
+    defaultBundles = [ dshLegacyPkgs.bundles.headless ];
+    defaultProfile = "nix-tui";
+    profiles = {
+      tui = {
+        requiresTui = true;
+        bundles = [ dshOrcaHooksBundle ];
+      };
+    };
+  };
 
   # Orca's dsh contract is hardcoded in its agent table (detectCmd
   # `dsh-tui`, required `dsh`, launchCmd `dsh-tui .`) and a command override

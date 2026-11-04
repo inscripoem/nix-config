@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Update workbuddy, cc-switch, magpie, siyuan, ww-manager, notion-electron,
-# zcode-cli and ene-fanctl to their latest upstream
+# zcode-cli, dsh-orca-hooks and ene-fanctl to their latest upstream
 # versions, and align the qq version pin with the linuxqq-wayland-fix input.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--verbose]
@@ -8,8 +8,8 @@
 #   --dry-run       Show what would change without modifying files.
 #   --only=<names>  Comma-separated subset of {workbuddy,cc-switch,magpie,
 #                   siyuan,ww-manager,notion-electron,zcode-cli,
-#                   ene-fanctl,qq}. `notion` is accepted
-#                   as an alias for notion-electron. Defaults to all nine;
+#                   dsh-orca-hooks,ene-fanctl,qq}. `notion` is accepted
+#                   as an alias for notion-electron. Defaults to all ten;
 #                   unknown names are an error.
 #   --verbose       Full per-package detail (the old multi-line format).
 #   -h, --help      Show this help.
@@ -176,7 +176,7 @@ done
 # Normalize aliases: `notion` → `notion-electron` (the package's pname),
 # and reject unknown names so a typo cannot silently check nothing.
 KNOWN_PKGS=(workbuddy cc-switch magpie siyuan ww-manager notion-electron
-            zcode-cli ene-fanctl qq)
+            zcode-cli dsh-orca-hooks ene-fanctl qq)
 if [[ -n "$ONLY" ]]; then
   IFS=, read -ra items <<< "$ONLY"
   normalized=""
@@ -645,6 +645,50 @@ if should_update "zcode-cli"; then
 
     vnote "src ${zc_hash:0:14}... deps ${zc_deps_hash:0:14}..."
     note "run nix build on the package once to verify the full build."
+  fi
+fi
+
+# ── dsh-orca-hooks ───────────────────────────────────────────────────
+# Minimal dsh bundle carrying Orca's Claude Code hook bridge packages
+# (pkgs/dsh-orca-hooks.nix). The bridge's @deepseek-ai/* peers must equal
+# the pinned kernel version, so the version is resolved from flake.lock
+# and both npm tarballs are re-prefetched. A kernel bump whose bridge
+# packages are not on npm fails here, loudly, instead of shipping a bundle
+# the kernel would reject at load time.
+
+if should_update "dsh-orca-hooks"; then
+  status_begin "dsh-orca-hooks"
+  doh_nix="$REPO_ROOT/pkgs/dsh-orca-hooks.nix"
+  doh_current=$(grep 'version = ' "$doh_nix" | head -1 | grep -oP '"[^"]+"' | tr -d '"')
+  doh_lock_rev=$(jq -r '.nodes["deepseek-harness"].locked.rev // empty' "$REPO_ROOT/flake.lock")
+  if [[ -z "$doh_lock_rev" ]]; then
+    die "deepseek-harness missing from flake.lock (run: nix flake lock)."
+  fi
+  doh_kernel=$(nix --extra-experimental-features 'nix-command flakes' eval \
+    --raw "github:moraxyc/deepseek-harness.nix/${doh_lock_rev}#packages.x86_64-linux.dsh.version" 2>/dev/null) || true
+  if [[ -z "$doh_kernel" ]]; then
+    die "could not resolve the kernel version from the locked deepseek-harness rev ${doh_lock_rev:0:7}."
+  fi
+
+  vnote "current : $doh_current"
+  vnote "kernel  : $doh_kernel"
+
+  if [[ "$doh_kernel" == "$doh_current" ]]; then
+    pkg_up "dsh-orca-hooks" "$doh_current"
+  elif [[ "$DRY_RUN" == true ]]; then
+    pkg_dry "dsh-orca-hooks" "$doh_current → $doh_kernel"
+  else
+    pkg_bump "dsh-orca-hooks" "$doh_current → $doh_kernel"
+    doh_hooks_url="https://registry.npmjs.org/@deepseek-ai/dsh-hooks-claude-code/-/dsh-hooks-claude-code-${doh_kernel}.tgz"
+    doh_proto_url="https://registry.npmjs.org/@deepseek-ai/dsh-hook-protocol/-/dsh-hook-protocol-${doh_kernel}.tgz"
+
+    note "prefetching hook bridge tarballs ..."
+    doh_hooks_hash=$(prefetch_hash "$doh_hooks_url")
+    doh_proto_hash=$(prefetch_hash "$doh_proto_url")
+
+    update_nix_field "$doh_nix" "version" "$doh_kernel"
+    update_nix_field "$doh_nix" "hooksHash" "$doh_hooks_hash"
+    update_nix_field "$doh_nix" "protocolHash" "$doh_proto_hash"
   fi
 fi
 
