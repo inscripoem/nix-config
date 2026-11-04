@@ -79,6 +79,14 @@ let
       tui = {
         requiresTui = true;
         bundles = [ dshOrcaHooksBundle ];
+        # Magpie manages this profile's model providers and edits it at
+        # runtime. Managed mode would restore the declared patch on every
+        # launch, so the TUI profile is mutable: Nix seeds it once, then
+        # Magpie's edits persist. Provider/model settings are user state
+        # under ~/.dsh/profiles/nix-tui; back that directory up before
+        # reseeding. The cost is that later preset changes no longer
+        # auto-apply; re-seed by removing the profile.
+        mode = "mutable";
       };
     };
   };
