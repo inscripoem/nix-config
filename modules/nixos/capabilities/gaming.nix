@@ -56,23 +56,33 @@ in {
 
         # Steam's UI is an X11/CEF client. xwayland-satellite runs the
         # whole Xwayland at the smallest output scale, so on an output
-        # with niri scale 2 the UI renders at half size. Steam has no
-        # per-window DPI handling and cannot rescale a running client,
-        # so read the focused output's scale at launch and force it:
-        # Steam's documented STEAM_FORCE_DESKTOPUI_SCALING override.
-        # Moving the window across outputs needs a Steam restart; games
-        # are unaffected because they carry their own resolution.
+        # with niri scale 2 the UI renders at half size. This client
+        # ignores STEAM_FORCE_DESKTOPUI_SCALING, and its Chromium switches
+        # never reach the UI process; the knob that works is
+        # Accessibility/DesktopUIScale in config.vdf (the Settings >
+        # Accessibility slider), read at client startup. Rewrite it
+        # before a fresh launch from the focused output's scale. The
+        # setting's range is 0.5-2.0, so a future output above 2.0 is
+        # clamped there. Steam cannot rescale a running client, so
+        # moving the window across outputs needs a restart; games are
+        # unaffected. The slider is wrapper-managed in niri sessions.
         package = pkgs.steam.override {
           extraPreBwrapCmds = ''
             # niri sessions only: KWin scales Xwayland itself, and applying
             # a second factor there would double-scale.
             case "''${XDG_CURRENT_DESKTOP:-}" in
               *niri*)
-                if [ -z "''${STEAM_FORCE_DESKTOPUI_SCALING:-}" ] && [ -n "''${NIRI_SOCKET:-}" ]; then
+                if [ -n "''${NIRI_SOCKET:-}" ] && ! ${pkgs.procps}/bin/pgrep -x steam >/dev/null 2>&1; then
                   scale="$(${pkgs.niri-unstable}/bin/niri msg --json focused-output 2>/dev/null \
-                    | ${pkgs.jq}/bin/jq -r '.logical.scale // empty' 2>/dev/null || true)"
-                  if [ -n "$scale" ]; then
-                    export STEAM_FORCE_DESKTOPUI_SCALING="$scale"
+                    | ${pkgs.jq}/bin/jq -r '.logical.scale // empty | if . < 0.5 then 0.5 elif . > 2 then 2 else . end' 2>/dev/null || true)"
+                  cfg="$HOME/.local/share/Steam/config/config.vdf"
+                  if [ -n "$scale" ] && [ -f "$cfg" ] \
+                    && ${pkgs.gnugrep}/bin/grep -q '"DesktopUIScale"' "$cfg" \
+                    && ! ${pkgs.gnugrep}/bin/grep -qE "\"DesktopUIScale\"[[:space:]]*\"$scale\"" "$cfg"; then
+                    tmp="$(${pkgs.coreutils}/bin/mktemp "$cfg.XXXXXX")"
+                    ${pkgs.coreutils}/bin/cp -p "$cfg" "$tmp"
+                    ${pkgs.gnused}/bin/sed -i 's/\("DesktopUIScale"[[:space:]]*"\)[^"]*"/\1'"$scale"'"/' "$tmp"
+                    ${pkgs.coreutils}/bin/mv "$tmp" "$cfg"
                   fi
                 fi
                 ;;
