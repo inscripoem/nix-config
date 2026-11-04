@@ -15,6 +15,54 @@ let
   # exposes that same venv as passthru.hermesVenv, so it can be referenced
   # at evaluation time without reading the wrapper (no IFD).
   hermesPython = hermesPkg.passthru.hermesVenv;
+
+  # `hermes gateway start|restart` aborts with EROFS under Nix before it
+  # reaches systemctl (see the unit comment below). This wrapper performs
+  # the sequence upstream's restart uses after that check: SIGUSR1 drain via
+  # ExecReload, wait for the exit-75 relaunch, fall back to a systemd restart
+  # when the graceful path stalls or the gateway is down.
+  gatewayRestart = "${pkgs.writeShellScript "hermes-gateway-restart" ''
+    set -u
+
+    svc=hermes-gateway.service
+    systemctl="${pkgs.systemd}/bin/systemctl"
+
+    main_pid() {
+      "$systemctl" --user show -p MainPID --value "$svc" 2>/dev/null || true
+    }
+
+    old_pid="$(main_pid)"
+    if [ -z "$old_pid" ] || [ "$old_pid" -eq 0 ]; then
+      echo "Gateway is not running; starting it."
+      "$systemctl" --user reset-failed "$svc" >/dev/null 2>&1 || true
+      exec "$systemctl" --user restart "$svc"
+    fi
+
+    echo "Restarting $svc gracefully (PID $old_pid); waiting for in-flight turns to drain..."
+    if ! "$systemctl" --user reload "$svc"; then
+      echo "Could not send SIGUSR1; falling back to a full restart."
+      "$systemctl" --user reset-failed "$svc" >/dev/null 2>&1 || true
+      exec "$systemctl" --user restart "$svc"
+    fi
+
+    # SIGUSR1 drains active turns, exits 75, and lets Restart=always relaunch
+    # the gateway. Wait for a new MainPID; 240s covers the unit's 210s drain
+    # envelope plus headroom. A wedged event loop never exits, hence the bound.
+    remaining=240
+    while [ "$remaining" -gt 0 ]; do
+      new_pid="$(main_pid)"
+      if [ -n "$new_pid" ] && [ "$new_pid" -ne 0 ] && [ "$new_pid" != "$old_pid" ]; then
+        echo "Gateway restarted (new PID $new_pid)."
+        exit 0
+      fi
+      remaining=$((remaining - 1))
+      sleep 1
+    done
+
+    echo "Graceful restart stalled after 240s; forcing a systemd restart."
+    "$systemctl" --user reset-failed "$svc" >/dev/null 2>&1 || true
+    exec "$systemctl" --user restart "$svc"
+  ''}";
 in
 {
   options.packs.ai.hermes-agent = {
@@ -167,6 +215,12 @@ in
           StandardError = "journal";
         };
       };
+
+      # Homogeneous across the three enabled shells; `core/shell.nix` marks
+      # its own alias map as mkDefault, so these take precedence there.
+      programs.zsh.shellAliases.hgr = gatewayRestart;
+      programs.bash.shellAliases.hgr = gatewayRestart;
+      programs.fish.shellAliases.hgr = gatewayRestart;
     })
   ];
 }
