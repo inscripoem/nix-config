@@ -20,9 +20,9 @@
   dsh-kernel,
 }:
 let
-  version = "0.2.2-alpha.3";
-  hooksHash = "sha256-qAiAPWKAYrwl5atNCqaO534kS1iNXpIyA6SUP61Jn5E=";
-  protocolHash = "sha256-5AhH/24UdrIDpCxOHt1HkzxNJmXgGnsQc47eZ/MsMN8=";
+  version = "0.2.1-rc.3";
+  hooksHash = "sha256-TN7cC9MR+R3osU2HdhLoKkc2cVJYGqO4qBcI+gU2wbg=";
+  protocolHash = "sha256-q6XB5Qv/qsPdigXtVO9pr2AADcR5QF80XX0qVOIrvH0=";
 
   hooksSrc = fetchurl {
     url = "https://registry.npmjs.org/@deepseek-ai/dsh-hooks-claude-code/-/dsh-hooks-claude-code-${version}.tgz";

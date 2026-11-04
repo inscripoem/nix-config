@@ -66,13 +66,14 @@
     # upstream pins nixpkgs-unstable and publishes prebuilt results to
     # deepseek-harness-nix.cachix.org keyed on that pin.
     #
-    # Tracks the flake's default branch; flake.lock pins the revision. The
-    # TUI comes from the flake's presets.tui (kernel + TUI in one composed
-    # tree), so the old npm @deepseek-harness-tui/dsh-tui peer-range pin no
-    # longer constrains this input. After `nix flake update deepseek-harness`,
-    # run `just update dsh-orca-hooks` to align the Orca hook bridge bundle
-    # with the new kernel.
-    deepseek-harness.url = "github:moraxyc/deepseek-harness.nix";
+    # Pin the last 0.2.1-rc.3 revision: the TUI (0.18.0) still validates
+    # against 0.2.1-rc.5, and the flake's alpha.3 override only raises the
+    # bundle's dshEngines gate ("upstream peer ranges still stop at
+    # 0.2.1-rc.5"), not the TUI runtime. Running the TUI against alpha.3
+    # hits a turn error ("Cannot read properties of undefined"), reproduced
+    # without the Orca hook. Update this pin once the upstream TUI peer
+    # range and runtime cover 0.2.2.
+    deepseek-harness.url = "github:moraxyc/deepseek-harness.nix/29f45376c7200a3869b4a8e1525307b6e26fb240";
 
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
