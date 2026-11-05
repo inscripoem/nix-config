@@ -48,12 +48,36 @@ let
         '';
       });
 
-  # Bare official dsh CLI (kernel). Kept out of home.packages on purpose:
-  # the frozen TUI preset below also ships bin/dsh, and two packages
-  # providing bin/dsh collide in the Home Manager profile. The preset is the
-  # PATH dsh; this bare CLI is what services.dsh serves the user-state web
-  # profile with, so the service closure stays free of the TUI bundle.
-  dshCliPkg = dshPkgs.dsh;
+  # Profile seed YAML: nixpkgs writers.writeYAML emits a "%YAML 1.1"
+  # directive. pnpm 11 rejects that header in pnpm-workspace.yaml with
+  # ERR_PNPM_INVALID_WORKSPACE_CONFIGURATION, even though the package
+  # install itself succeeds. The seed generator uses writers.writeYAML for
+  # every profile YAML; strip the directive only from the workspace file,
+  # leaving cordis.patch.yml and home patches on the original writer.
+  dshWriters = pkgs.writers // {
+    writeYAML = name: value:
+      if name == "dsh-profile-pnpm-workspace.yaml" then
+        pkgs.runCommand name { nativeBuildInputs = [ pkgs.gnused ]; } ''
+          cp ${pkgs.writers.writeYAML name value} $out
+          sed -i '/^%YAML /d' $out
+          sed -i '1{/^---$/d}' $out
+        ''
+      else
+        pkgs.writers.writeYAML name value;
+  };
+
+  # Base dsh package for both the web service and the TUI preset. The
+  # workspace-writer fix must be part of the package that generates the
+  # profile templates; an explicit services.dsh.package would bypass it.
+  dshBase = dshPkgs.dsh.override { writers = dshWriters; };
+
+  # Bare dsh CLI (kernel), with the profile-workspace writer fix. Kept out
+  # of home.packages on purpose: the frozen TUI preset below also ships
+  # bin/dsh, and two packages providing bin/dsh collide in the Home Manager
+  # profile. The preset is the PATH dsh; this bare CLI is what services.dsh
+  # serves the user-state web profile with, so the service closure stays
+  # free of the TUI bundle.
+  dshCliPkg = dshBase;
 
   # Frozen TUI composition — kernel and TUI bundle assembled in one hoisted
   # node_modules tree, so the two-copy structure behind the live TUI crash
@@ -71,7 +95,8 @@ let
   # minimal bundle instead of a hand-installed profile plugin.
   dshScope = pkgs.extend deepseek-harness.overlays.default;
   dshOrcaHooksBundle = dshScope.dsh.callPackage ../../../pkgs/dsh-orca-hooks.nix { };
-  dshTuiPkg = dshPkgs.dsh.override {
+  dshTuiPkg = dshBase.override {
+    writers = dshWriters;
     pname = "dsh-tui";
     defaultBundles = [ dshLegacyPkgs.bundles.headless ];
     defaultProfile = "nix-tui";
@@ -145,16 +170,55 @@ in
         dshTuiEntry
       ];
 
-      # Local web entry for remote access: a Home Manager user service so
-      # DSH_HOME stays ~/.dsh and the existing web profile (including its
-      # magpie patch) is served as-is. The NixOS services.dsh module is not
+      # Composed web service package: services.dsh.package defaults to a
+      # package composed from this bare kernel plus the declared profiles.
+      # Setting services.dsh.package explicitly would bypass that
+      # composition and serve the bare CLI without the profile bundles.
+      programs.dsh.package = dshCliPkg;
+
+      # Local web entry: a Home Manager user service so DSH_HOME stays
+      # ~/.dsh. The served profile is the mutable nix-web skeleton below;
+      # its provider settings and dshmarket installs live under
+      # ~/.dsh/profiles/nix-web, outside git. The old user-state web profile
+      # is left untouched for rollback. The NixOS services.dsh module is not
       # used here: it runs from /var/lib/dsh as a DynamicUser with
       # ProtectHome=true, which cannot read ~/.dsh. Bound to loopback;
-      # remote exposure rides the CF tunnel (step 2), never openFirewall.
+      # remote access stays off until an ingress/auth decision is made.
       services.dsh = {
         enable = true;
-        package = dshCliPkg;
-        profile = "web";
+        profile = "nix-web";
+        profiles.web = {
+          # Every compatible bundle that desktop and the flake both ship
+          # under the same package (11 declared; base is added by the
+          # module, making 12 same-package entries, and the bare dsh
+          # default adds headless). The flake's billion-context 0.2.27
+          # requires dsh <0.2.1 and is skipped by the rc.3 kernel, so the
+          # desktop-compatible 0.1.208 is installed as user state instead.
+          # The flake's experimental market bundle is intentionally absent:
+          # upstream ships an empty index client, while the desktop uses
+          # dshmarket's community catalog. dshmarket is installed as user
+          # state after the first seed. Orca's hook bundle is absent too:
+          # this profile is never launched by Orca, and the hook warning
+          # is harmless.
+          #
+          # Mutable: Nix seeds the profile once; runtime provider settings
+          # and plugin installs persist. Later bundle-list changes require
+          # backing up and removing ~/.dsh/profiles/nix-web.
+          bundles = [
+            dshLegacyPkgs.bundles.web-app
+            dshLegacyPkgs.bundles.experimental-auto-review
+            dshLegacyPkgs.bundles.experimental-agent-team-profile
+            dshLegacyPkgs.bundles.experimental-tool-worktree
+            dshLegacyPkgs.bundles.experimental-terminal-bundle
+            dshLegacyPkgs.bundles.experimental-session-search
+            dshLegacyPkgs.bundles.experimental-session-titles-bundle
+            dshLegacyPkgs.bundles.experimental-ralph-bundle
+            dshLegacyPkgs.bundles.subagent-codex
+            dshLegacyPkgs.bundles.better-sidebar
+            dshLegacyPkgs.bundles.context
+          ];
+          mode = "mutable";
+        };
         listenAddress = "127.0.0.1";
         port = 3080;
       };
