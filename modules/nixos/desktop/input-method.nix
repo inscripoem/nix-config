@@ -14,15 +14,26 @@ let
   # on niri 2026-10-30. The former local clientPreedit patch is retired;
   # recoverable from git history (c586889) if the wrapper approach regresses.
   vinput = inputs.fcitx5-vinput.packages.${pkgs.stdenv.hostPlatform.system}.default;
-  # USER-SPACE provider patch (lives outside nix): the active cloud provider
-  # `wetype-stream` strips sentence-final punctuation before commit via a
-  # one-line rstrip at the final emit in
-  # ~/.local/share/vinput/providers/wetype/streaming (marked "Local patch"
-  # there). `vinput provider update wetype-stream` restores the registry
-  # version and silently reverts it — reapply via
-  # `vinput provider edit wetype-stream`. Probed 2026-10-28: the WeType
-  # cloud protocol has no punctuation switch (request field 24 only gates
-  # server-side finalization), so the strip must stay client-side.
+  # USER-SPACE provider patches (live outside nix) on the active cloud
+  # provider `wetype-stream` in
+  # ~/.local/share/vinput/providers/wetype/streaming:
+  #
+  # 1. Punctuation strip: sentence-final punctuation is stripped before
+  #    commit via a one-line rstrip at the final emit (marked "Local patch"
+  #    there). Probed 2026-10-28: the WeType cloud protocol has no
+  #    punctuation switch (request field 24 only gates server-side
+  #    finalization), so the strip must stay client-side.
+  #
+  # 2. Stats-line silence (2026-11-06): since fcitx5-vinput v2.4.2 the
+  #    daemon pops every provider stderr line as a desktop notification
+  #    (upstream protocol fix tracked in vinput-registry#91), so the
+  #    script's per-recognition `[wetype] frames=... final=...ms` stats
+  #    print (marked "Local patch (2)" there) is commented out. The error
+  #    path still writes stderr, so genuine ASR failures keep notifying.
+  #
+  # `vinput provider update wetype-stream` restores the registry version
+  # and silently reverts both patches — reapply via
+  # `vinput provider edit wetype-stream`.
 in
 
 {
