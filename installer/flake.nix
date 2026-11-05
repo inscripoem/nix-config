@@ -18,6 +18,27 @@
           # Hostname — reachable as nixseed.local via mDNS
           networking.hostName = "nixseed";
 
+          # `nixos-install` needs the new CLI. The minimal CD profile leaves
+          # experimental features off, so it fails with
+          # "experimental Nix feature 'flakes' is disabled" until they are on.
+          nix.settings.experimental-features = [ "nix-command" "flakes" ];
+
+          # Themed GRUB menu breaks on some 2017-era AMI Aptio firmware
+          # (observed on a Colorful C.Q1900M): the menu draws, but executing
+          # any entry — or pressing `c` or `t` — kills GRUB with no output at
+          # all, and the firmware falls through to its built-in EFI Shell.
+          # Text mode boots that board fine.
+          #
+          # The trigger is not pinned down. A disk-installed NixOS whose GRUB
+          # uses gfxterm with a background image but no theme also boots there,
+          # which points at the theme, but the ISO differs from that config in
+          # several ways. Text mode sidesteps the whole graphical path, which
+          # is why it is used here rather than a narrower fix.
+          #
+          # Only the UEFI menu is affected; the legacy isolinux menu is a
+          # separate config and is untouched.
+          isoImage.forceTextMode = true;
+
           # SSH for headless access
           services.openssh = {
             enable = true;
