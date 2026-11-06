@@ -57,13 +57,28 @@
 let
   cfg = config.modules.capabilities.sunshine;
 
-  # Reserved fake-output port (see the kernelParams block below).
-  # Connector names are driver-enumerated: re-verify after any GPU swap
-  # (hosts/briefcase/gpu sibling-profile workflow). The name also appears
-  # in the greeter customConfig, the wrapper probe, home/desktop/niri/default.nix
-  # (which reads it from the option below), docs/remote-desktop.md, and
-  # the EDID generator header.
-  fakeOutput = cfg.fakeOutputName;
+  # Fake-output settings (see the kernelParams block below). Connector names
+  # are driver-enumerated: re-verify after any GPU swap (hosts/briefcase/gpu
+  # sibling-profile workflow). The name also appears in the greeter
+  # customConfig, the wrapper probe, home/desktop/niri/default.nix (which
+  # reads it from the option below), docs/remote-desktop.md, and the EDID
+  # generator header.
+  fakeOutput = cfg.fakeOutput;
+  fakeOutputEnabled = fakeOutput.enable;
+  fakeOutputName = if fakeOutputEnabled then fakeOutput.name else "";
+  fakeOutputIsVirtual = fakeOutputEnabled && fakeOutput.provider == "virtual";
+
+  # Declarative Sunshine settings. Setting services.sunshine.settings makes
+  # the NixOS module generate a config file and pass it to Sunshine, which
+  # also takes the web UI out of the configuration path.
+  sunshineSettings =
+    {
+      vk_tune = 0;
+    }
+    // lib.optionalAttrs fakeOutputEnabled {
+      output_name = fakeOutputName;
+    };
+  sunshineConfigFile = (pkgs.formats.keyValue { }).generate "sunshine.conf" sunshineSettings;
 
   # The greeter is a Wayland (niri) session under greetd and capture is
   # pure KMS, so no X11 display/auth plumbing is needed here. HOME is
@@ -90,9 +105,12 @@ let
       echo "''${name#*-}"
       break
     done)"
-    output="''${real:-${fakeOutput}}"
+    output="''${real:-${fakeOutputName}}"
 
-    exec ${pkgs.sunshine}/bin/sunshine "output_name=$output" "$@"
+    if [ -n "$output" ]; then
+      exec ${pkgs.sunshine}/bin/sunshine ${sunshineConfigFile} "output_name=$output" "$@"
+    fi
+    exec ${pkgs.sunshine}/bin/sunshine ${sunshineConfigFile} "$@"
   '';
 # Watchdog for the portal-race startup hang: Sunshine occasionally
 # hangs mid-init (port 47984 never binds) without exiting, so
@@ -141,24 +159,67 @@ in {
   options.modules.capabilities.sunshine = {
     enable = lib.mkEnableOption "Moonlight/Sunshine game streaming";
 
-    # Single source of truth for the fake-output connector name. Required
-    # (no default) and set by each enabling host: which port is free is
-    # host-specific physical knowledge — the GPU's connector enumeration
-    # and which ports real monitors occupy. Omitting it fails evaluation
-    # loudly at the point of use instead of silently forcing a port that
-    # may have a real monitor on it. The session layer
-    # (home/desktop/niri/default.nix) reads it through osConfig and gates on
-    # `enable`, so hosts without the capability carry nothing.
-    fakeOutputName = lib.mkOption {
-      type = lib.types.str;
+    # Single source of truth for the fake-output arrangement. `enable` is the
+    # master switch: with it off Sunshine captures the first connected output
+    # and nothing is forced, pinned, or injected. `name` is host-specific
+    # physical knowledge — which connector is free depends on the GPU's
+    # enumeration and on where real monitors sit — so it is required whenever
+    # the fake output is enabled rather than defaulted.
+    fakeOutput = lib.mkOption {
+      default = { };
       description = ''
-        DRM connector name reserved as the fake streaming output. Must
-        match the connector the drm.edid_firmware kernel param forces;
-        re-verify against the actual enumeration after a GPU swap.
+        Fake streaming output for headless capture. `virtual` forces the
+        connector on and injects an EDID through the kernel; `physical`
+        expects a dummy plug to provide its own EDID and adds no kernel
+        parameters. Disable to capture a real monitor instead.
       '';
+      type = lib.types.submodule {
+        options = {
+          enable = lib.mkEnableOption "the fake streaming output";
+
+          name = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = null;
+            description = ''
+              DRM connector name reserved as the fake streaming output.
+              Required when `enable` is true; re-verify against the actual
+              enumeration after a GPU swap.
+            '';
+          };
+
+          provider = lib.mkOption {
+            type = lib.types.enum [ "virtual" "physical" ];
+            default = "virtual";
+            description = ''
+              How the fake output is created. `virtual` uses
+              `video=<name>:e` plus `drm.edid_firmware`; `physical` relies on
+              a dummy plug and adds no kernel parameters.
+            '';
+          };
+
+          edid = lib.mkOption {
+            type = lib.types.nullOr lib.types.path;
+            default = null;
+            description = ''
+              EDID binary used when provider is `virtual`. `null` uses the
+              built-in 4K60 EDID (sunshine-fake-edid.bin).
+            '';
+          };
+        };
+      };
     };
   };
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = !fakeOutputEnabled || fakeOutput.name != null;
+        message = ''
+          modules.capabilities.sunshine.fakeOutput.name must be set when
+          fakeOutput.enable is true.
+        '';
+      }
+    ];
+
     services.sunshine = {
       enable = true;
       openFirewall = true;
@@ -166,6 +227,8 @@ in {
       # cap_sys_admin to the user service binary, mirroring what the
       # root pre-login service already has.
       capSysAdmin = true;
+      # Generated from sunshineSettings; the web UI no longer edits config.
+      settings = sunshineSettings;
     };
 
     # KWin 6.7+ enables DRM overlay planes by default on Intel GPUs,
@@ -180,13 +243,20 @@ in {
     # is required after toggling.
     environment.sessionVariables.KWIN_USE_OVERLAYS = "0";
 
-    # ── Fake streaming output (software dummy plug) ─────────────────────
+    # ── Fake streaming output ───────────────────────────────────────────
+    #
+    # Provider `virtual` forces the connector on and injects an EDID;
+    # provider `physical` expects a dummy plug to supply its own EDID and
+    # adds no kernel parameters. With `fakeOutput.enable = false` the whole
+    # arrangement is removed: no kernel parameters, no niri mode pin, no
+    # stream/desk commands, and Sunshine captures the first connected
+    # monitor at whatever mode that monitor runs.
     #
     # A GPU keeps no CRTC lit when nothing is connected, so a headless
     # machine has no framebuffer to stream at all — every capture backend
-    # needs an active display. Instead of a hardware dummy plug, the
-    # reserved port is force-enabled at the DRM level and fed a generated
-    # EDID (sunshine-fake-edid.bin: preferred 3840x2160@60, the CEA-861
+    # needs an active display. The `virtual` provider reserves a port,
+    # force-enables it at the DRM level and feeds a generated EDID
+    # (sunshine-fake-edid.bin: preferred 3840x2160@60, the CEA-861
     # VIC 97 timing, plus a 1920x1080@60 standard timing). Every
     # compositor and Sunshine see one constant "monitor" no matter what
     # is plugged in on other ports; the streamed picture never drifts
@@ -206,14 +276,17 @@ in {
     #
     # Params take effect at boot; the EDID is delivered through
     # /lib/firmware/edid/ (request_firmware path the kernel param names).
-    boot.kernelParams = [
-      "video=${fakeOutput}:e"
-      "drm.edid_firmware=${fakeOutput}:edid/sunshine-fake.bin"
+    # Only the `virtual` provider touches the kernel. `physical` relies on a
+    # dummy plug for its EDID, and with `enable = false` Sunshine captures a
+    # real monitor, so neither produces kernel parameters or firmware.
+    boot.kernelParams = lib.mkIf fakeOutputIsVirtual [
+      "video=${fakeOutputName}:e"
+      "drm.edid_firmware=${fakeOutputName}:edid/sunshine-fake.bin"
     ];
-    hardware.firmware = [
+    hardware.firmware = lib.mkIf fakeOutputIsVirtual [
       (pkgs.runCommand "sunshine-fake-edid" { } ''
         mkdir -p $out/lib/firmware/edid
-        install -Dm644 ${./sunshine-fake-edid.bin} \
+        install -Dm644 ${if fakeOutput.edid != null then fakeOutput.edid else ./sunshine-fake-edid.bin} \
           $out/lib/firmware/edid/sunshine-fake.bin
       '')
     ];
@@ -258,7 +331,9 @@ in {
       layout {
           background-color "#000000"
       }
-      output "${fakeOutput}" {
+    ''
+    + lib.optionalString fakeOutputEnabled ''
+      output "${fakeOutputName}" {
           mode "1920x1080@60.000"
       }
     '';

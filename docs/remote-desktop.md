@@ -9,7 +9,7 @@ Plasma Wayland alike. Tailscale provides remote connectivity.
 
 | Source | Responsibility |
 |---|---|
-| [Sunshine capability](../modules/nixos/capabilities/sunshine.nix) | System/user service handoff, polkit rule, firewall integration |
+| [Sunshine capability](../modules/nixos/capabilities/sunshine.nix) | System/user service handoff, polkit rule, firewall integration, declarative Sunshine settings (`vk_tune`, `output_name`), fake-output switch |
 | [Display managers](../modules/nixos/desktop/display-managers.nix) | greetd + Dux Greeter (niri greeter session) and default `niri` session |
 | [WiFi profiles](../modules/nixos/capabilities/wifi-profiles.nix) | NetworkManager connections available before login |
 | [Tailscale capability](../modules/nixos/capabilities/tailscale.nix) | Tailnet connectivity |
@@ -48,7 +48,23 @@ A polkit rule allows members of `users` to manage the specific system service.
 
 `capSysAdmin` is enabled so both services share the KMS capture backend.
 
-## 3. Fake streaming output (HDMI-A-1)
+## 3. Fake streaming output
+
+`modules.capabilities.sunshine.fakeOutput` selects the arrangement:
+
+| State | Kernel parameters | niri mode pin | stream/desk commands | Sunshine captures |
+|---|---|---|---|---|
+| `enable = true`, `provider = "virtual"` | `video=<name>:e` + `drm.edid_firmware=<name>:<edid>` | fake output pinned to 1920x1080 | available | the fake connector |
+| `enable = true`, `provider = "physical"` | none — the dummy plug supplies its EDID | fake output pinned to 1920x1080 | available | the connector carrying the plug |
+| `enable = false` | none | none | removed | the first connected output, at its own mode |
+
+`edid` overrides the injected EDID for the `virtual` provider; `null` uses
+the built-in `sunshine-fake-edid.bin`. Sunshine's own settings are
+declarative (`services.sunshine.settings`), so `output_name` follows the
+switch and the web UI no longer edits the configuration file.
+
+The rest of this section describes the `virtual` provider — the default and
+the arrangement the current A380 configuration uses.
 
 Streaming needs a lit CRTC: a GPU with nothing connected keeps no display
 pipeline active, so a headless host has no framebuffer to capture at all.

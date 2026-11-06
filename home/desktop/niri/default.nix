@@ -2,6 +2,13 @@
 let
   cfg = config.programs.niri;
 
+  # Fake streaming output state, read through osConfig. `fakeOutputName` is
+  # empty when the fake output is disabled, so every consumer below also
+  # gates on `fakeOutputEnabled`.
+  sunshine = osConfig.modules.capabilities.sunshine;
+  fakeOutputEnabled = sunshine.fakeOutput.enable;
+  fakeOutputName = if fakeOutputEnabled then sunshine.fakeOutput.name else "";
+
   # Append DMS optional includes so Settings pages detect "initialized"
   # and any GUI-changed values in ~/.config/niri/dms/*.kdl take effect.
   # These files are owned by the DMS GUI and NOT managed by this flake:
@@ -40,7 +47,7 @@ let
   # output; only a physical disconnect triggers niri's auto-migration), so
   # relying on auto-migration strands them on the dark screen.
   fakeScreenLib = pkgs.writeText "fake-screen-lib.sh" ''
-    fake="${osConfig.modules.capabilities.sunshine.fakeOutputName}"
+    fake="${fakeOutputName}"
     state_file="''${XDG_STATE_HOME:-$HOME/.local/state}/${fakeScreenStateFile}"
     niri="${cfg.package}/bin/niri"
     jq="${pkgs.jq}/bin/jq"
@@ -177,7 +184,7 @@ let
   # non-streaming hosts — the binding is only used under the gated
   # spawn-at-startup entry, and Nix never forces unused bindings.
   fakeScreenInit = pkgs.writeShellScript "fake-screen-init" ''
-    fake="${osConfig.modules.capabilities.sunshine.fakeOutputName}"
+    fake="${fakeOutputName}"
     state_file="''${XDG_STATE_HOME:-$HOME/.local/state}/${fakeScreenStateFile}"
     [ -f "$state_file" ] || exit 0
     [ "$(cat "$state_file" 2>/dev/null)" = "off" ] || exit 0
@@ -431,7 +438,7 @@ in
         "Mod+Shift+P".action."power-off-monitors" = [];
       };
 
-      spawn-at-startup = lib.mkAfter (lib.optionals osConfig.modules.capabilities.sunshine.enable [
+      spawn-at-startup = lib.mkAfter (lib.optionals (sunshine.enable && fakeOutputEnabled) [
         # Restore the persisted fake-output on/off state after login (the
         # config pin above re-enables the fake output on every session
         # start); see fakeScreenInit in the let block.
@@ -484,8 +491,8 @@ in
       # a connector with the same name. DMS's GUI-managed include
       # dms/outputs.kdl lands last and wins if the user manages this
       # output through the DMS display settings.
-      outputs = lib.mkIf osConfig.modules.capabilities.sunshine.enable {
-        "${osConfig.modules.capabilities.sunshine.fakeOutputName}" = {
+      outputs = lib.mkIf (sunshine.enable && fakeOutputEnabled) {
+        "${fakeOutputName}" = {
           mode = {
             width = 1920;
             height = 1080;
@@ -512,7 +519,7 @@ in
   # connected output), or SSH: NIRI_SOCKET=$(ls /run/user/1000/niri.*.sock)
   # + niri msg output <name> on. The disabled state is session-scoped and
   # never persisted; only stream-mode ever disables a real output.
-  home.packages = lib.mkIf osConfig.modules.capabilities.sunshine.enable [
+  home.packages = lib.mkIf (sunshine.enable && fakeOutputEnabled) [
     (pkgs.writeShellScriptBin "stream-mode" ''
       . ${fakeScreenLib}
       do_stream

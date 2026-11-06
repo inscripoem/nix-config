@@ -47,13 +47,19 @@ let
         };
         modules.capabilities.sunshine = {
           enable = true;
-          # Reserved fake streaming output port (capabilities/sunshine.nix):
-          # host-specific — this GPU enumerates HDMI-A-1 free of monitors.
-          # Must be an HDMI port: a forced DP connector has no DPCD (no
-          # physical sink), so i915 validates modes against the fallback
-          # link and only 640x480 survives; HDMI mode validation works
-          # from the injected EDID alone.
-          fakeOutputName = "HDMI-A-1";
+          # Reserved fake streaming output (capabilities/sunshine.nix).
+          # Host-specific: this GPU enumerates HDMI-A-1 free of monitors.
+          # `virtual` forces the connector on with an injected EDID; a
+          # forced DP connector has no DPCD (no physical sink), so i915
+          # validates modes against the fallback link and only 640x480
+          # survives, while HDMI validates from the injected EDID alone.
+          # Use `physical` when the connector carries a dummy plug, or set
+          # `fakeOutput.enable = false` to capture a real monitor instead.
+          fakeOutput = {
+            enable = true;
+            name = "HDMI-A-1";
+            provider = "virtual";
+          };
         };
         modules.capabilities."1password".enable = true;
         modules.capabilities.smart.enable = true;
