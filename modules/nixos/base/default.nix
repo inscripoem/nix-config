@@ -10,6 +10,7 @@
     ./kernel.nix
     ./packages.nix
     ./state.nix
+    ./logging.nix
     ./ssh.nix
     ./nix-ld.nix
     ./ca-certs.nix
