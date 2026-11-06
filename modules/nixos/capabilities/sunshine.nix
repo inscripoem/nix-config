@@ -78,7 +78,12 @@ let
     // lib.optionalAttrs fakeOutputEnabled {
       output_name = fakeOutputName;
     };
-  sunshineConfigFile = (pkgs.formats.keyValue { }).generate "sunshine.conf" sunshineSettings;
+  # The greeter is a separate system service, so upstream's internal config
+  # path is unavailable here. Render from the final merged option value,
+  # including defaults such as port, so Nix deduplicates this file with the
+  # one generated for the user service.
+  sunshineConfigFile =
+    (pkgs.formats.keyValue { }).generate "sunshine.conf" config.services.sunshine.settings;
 
   # The greeter is a Wayland (niri) session under greetd and capture is
   # pure KMS, so no X11 display/auth plumbing is needed here. HOME is
