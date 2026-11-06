@@ -13,13 +13,21 @@
 { config, lib, ... }:
 let cfg = config.modules.capabilities.btrfs-scrub;
 in {
-  options.modules.capabilities.btrfs-scrub.enable =
-    lib.mkEnableOption "monthly btrfs autoscrub (filesystem-level bitrot detection)";
+  options.modules.capabilities.btrfs-scrub = {
+    enable = lib.mkEnableOption "monthly btrfs autoscrub (filesystem-level bitrot detection)";
+    # "/" scrubs every subvolume on the root filesystem; additional standalone
+    # data filesystems (e.g. briefcase's /games) are listed explicitly.
+    fileSystems = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "/" ];
+      description = "Mountpoints whose backing filesystems get scrubbed.";
+    };
+  };
   config = lib.mkIf cfg.enable {
     services.btrfs.autoScrub = {
       enable = true;
       interval = "monthly";
-      fileSystems = [ "/" ];
+      inherit (cfg) fileSystems;
     };
   };
 }
