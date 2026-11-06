@@ -66,6 +66,7 @@ let
         modules.capabilities.lan-mouse.enable = true;
         modules.capabilities.bluetooth.enable = true;
         modules.capabilities.oom-guard.enable = true;
+        modules.capabilities.btrfs-scrub.enable = true;
         # NCT6798 fan duty + ENE 6K7750 ARGB (Maxsun B760M D4 hardware).
         modules.capabilities.fan-argb.enable = true;
       };

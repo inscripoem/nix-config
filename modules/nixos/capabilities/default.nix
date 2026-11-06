@@ -11,6 +11,7 @@
     ./impermanence.nix
     ./remote-build-client.nix
     ./smart.nix
+    ./btrfs-scrub.nix
     ./deploy-tools.nix
     ./docker.nix
     ./wifi-profiles.nix
