@@ -101,6 +101,36 @@ let
   # free of the TUI bundle.
   dshCliPkg = dshBase;
 
+  # The web API's Host/Origin fence must admit the MagicDNS authority that
+  # Tailscale Serve forwards, but that name is machine/user state and must
+  # not be recorded in the repo. Resolve it at service start and pass it to
+  # the dsh web command.
+  dshWebEntry = pkgs.writeShellScript "dsh-web-entry" ''
+    set -eu
+    host=
+    i=0
+    while [ "$i" -lt 30 ]; do
+      host=$(${pkgs.tailscale}/bin/tailscale status --json 2>/dev/null \
+        | ${pkgs.jq}/bin/jq -r '.Self.DNSName // empty' 2>/dev/null \
+        | ${pkgs.gnused}/bin/sed 's/\.$//')
+      if [ -n "$host" ]; then
+        break
+      fi
+      i=$((i + 1))
+      ${pkgs.coreutils}/bin/sleep 2
+    done
+    if [ -z "$host" ]; then
+      echo "dsh-web: Tailscale MagicDNS name unavailable" >&2
+      exit 1
+    fi
+    exec ${lib.getExe config.services.dsh.package} \
+      --profile ${config.services.dsh.profile} \
+      --no-open \
+      --host ${config.services.dsh.listenAddress} \
+      --port ${toString config.services.dsh.port} \
+      --trusted-host "$host"
+  '';
+
   # Frozen TUI composition — kernel and TUI bundle assembled in one hoisted
   # node_modules tree, so the two-copy structure behind the live TUI crash
   # (store kernel + npm TUI copy) is gone by construction. Decision record
@@ -218,10 +248,12 @@ in
       # ~/.dsh. The served profile is the mutable nix-web skeleton below;
       # its provider settings and dshmarket installs live under
       # ~/.dsh/profiles/nix-web, outside git. The old user-state web profile
-      # is left untouched for rollback. The NixOS services.dsh module is not
+      # was migrated and removed. The NixOS services.dsh module is not
       # used here: it runs from /var/lib/dsh as a DynamicUser with
       # ProtectHome=true, which cannot read ~/.dsh. Bound to loopback;
-      # remote access stays off until an ingress/auth decision is made.
+      # Tailscale Serve terminates TLS and forwards the MagicDNS authority;
+      # dshWebEntry discovers that authority at runtime and adds it as a
+      # trusted host without recording the address in the repo.
       services.dsh = {
         enable = true;
         profile = "nix-web";
@@ -248,6 +280,11 @@ in
         listenAddress = "127.0.0.1";
         port = 3080;
       };
+
+      # The module generates the web service's ExecStart; replace only the
+      # command so the runtime-resolved Tailscale authority reaches DSH.
+      systemd.user.services.dsh-web.Service.ExecStart =
+        lib.mkForce [ "${dshWebEntry}" ];
     })
   ];
 }
