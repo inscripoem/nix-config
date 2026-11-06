@@ -5,6 +5,28 @@ let
   dshPkgs = deepseek-harness.packages.${pkgs.stdenv.hostPlatform.system};
   dshLegacyPkgs = deepseek-harness.legacyPackages.${pkgs.stdenv.hostPlatform.system};
 
+  # Common bundle baseline for the web and desktop profiles. Keeping it in
+  # one place avoids duplicated version/name fixes; each profile still has
+  # its own list below so the two can diverge without copying the baseline.
+  dshCommonBundles = with dshLegacyPkgs.bundles; [
+    web-app
+    experimental-auto-review
+    experimental-agent-team-profile
+    experimental-tool-worktree
+    experimental-terminal-bundle
+    experimental-session-search
+    experimental-session-titles-bundle
+    experimental-ralph-bundle
+    subagent-codex
+    better-sidebar
+    context
+  ];
+
+  # Per-profile extension points. Currently identical; add or filter here
+  # when the web and desktop bundle sets need to differ.
+  dshWebBundles = dshCommonBundles;
+  dshDesktopBundles = dshCommonBundles;
+
   # dsh-desktop-official: DeepSeek Harness desktop app, source-built for
   # Linux by the community deepseek-harness flake (dataelement's own
   # releases ship macOS/Windows only). It bundles the official runtime and
@@ -165,7 +187,6 @@ in
       # is nix-tui; the old user-state dsh-tui profile is left in place,
       # unused.
       home.packages = [
-        dshPkg
         dshTuiPkg
         dshTuiEntry
       ];
@@ -175,6 +196,23 @@ in
       # Setting services.dsh.package explicitly would bypass that
       # composition and serve the bare CLI without the profile bundles.
       programs.dsh.package = dshCliPkg;
+
+      # Desktop app: keep the official Electron package with the Linux tray
+      # patch, but point it at a declared mutable nix-desktop profile. The
+      # app reads nix-profile.json, runs the profile seeder, and sets
+      # DSH_NIX_DESKTOP_PROFILE/_MODE before startup. The old app-managed
+      # desktop profile is left untouched for rollback; user plugins and
+      # settings live under ~/.dsh/profiles/nix-desktop, outside git.
+      programs.dsh.desktop = {
+        enable = true;
+        package = dshPkg;
+        profile = "nix-desktop";
+      };
+
+      programs.dsh.profiles.desktop = {
+        bundles = dshDesktopBundles;
+        mode = "mutable";
+      };
 
       # Local web entry: a Home Manager user service so DSH_HOME stays
       # ~/.dsh. The served profile is the mutable nix-web skeleton below;
@@ -204,19 +242,7 @@ in
           # Mutable: Nix seeds the profile once; runtime provider settings
           # and plugin installs persist. Later bundle-list changes require
           # backing up and removing ~/.dsh/profiles/nix-web.
-          bundles = [
-            dshLegacyPkgs.bundles.web-app
-            dshLegacyPkgs.bundles.experimental-auto-review
-            dshLegacyPkgs.bundles.experimental-agent-team-profile
-            dshLegacyPkgs.bundles.experimental-tool-worktree
-            dshLegacyPkgs.bundles.experimental-terminal-bundle
-            dshLegacyPkgs.bundles.experimental-session-search
-            dshLegacyPkgs.bundles.experimental-session-titles-bundle
-            dshLegacyPkgs.bundles.experimental-ralph-bundle
-            dshLegacyPkgs.bundles.subagent-codex
-            dshLegacyPkgs.bundles.better-sidebar
-            dshLegacyPkgs.bundles.context
-          ];
+          bundles = dshWebBundles;
           mode = "mutable";
         };
         listenAddress = "127.0.0.1";
