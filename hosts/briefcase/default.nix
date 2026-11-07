@@ -35,7 +35,7 @@
     "processor.max_cstate=1"
     "idle=nomwait"
     "rcu_nocbs=0-15"
-    "iommu=disable"
+    "iommu=off"
   ];
 
   networking.hostName = "briefcase";

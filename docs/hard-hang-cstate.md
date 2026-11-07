@@ -173,7 +173,7 @@ that sets it:
 | `processor.max_cstate=1` | `hosts/briefcase/default.nix` | ACPI `processor` idle cap for the fallback path |
 | `idle=nomwait` | `hosts/briefcase/default.nix` | Avoid MONITOR/MWAIT idle, the mechanism blamed in the July 2026 H410 diagnosis |
 | `rcu_nocbs=0-15` | `hosts/briefcase/default.nix` | Offload RCU callbacks from all 16 CPUs |
-| `iommu=disable` | `hosts/briefcase/default.nix` | Disable DMA remapping |
+| `iommu=off` | `hosts/briefcase/default.nix` | Disable DMA remapping. Renamed from the silently-ignored `iommu=disable` on 2026-11-08 — `disable` is not a valid value, so no IOMMU was ever configured from this entry either way |
 | `i915.enable_guc=3` | `hosts/briefcase/gpu/intel-arc-a380.nix` | GuC submission + HuC; also enables SLPC and context-level reset |
 | `i915.enable_dc=0` | `hosts/briefcase/gpu/intel-arc-a380.nix` | Keep the display out of DC3/5/6 |
 | `i915.disable_power_well=0` | `hosts/briefcase/gpu/intel-arc-a380.nix` | Keep display power wells powered |
