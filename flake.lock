@@ -440,6 +440,26 @@
         "type": "github"
       }
     },
+    "netcatty": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1794055489,
+        "narHash": "sha256-NebmFPFDgc2OKbSSCBnTLRLVOpjY5xL86CrHKxu6Lq4=",
+        "owner": "binaricat",
+        "repo": "Netcatty",
+        "rev": "4a55492c17c3c792fbda4afc08d993f4165ca930",
+        "type": "github"
+      },
+      "original": {
+        "owner": "binaricat",
+        "repo": "Netcatty",
+        "type": "github"
+      }
+    },
     "niri": {
       "inputs": {
         "niri-stable": "niri-stable",
@@ -904,6 +924,7 @@
         "impermanence": "impermanence",
         "linuxqq-wayland-fix": "linuxqq-wayland-fix",
         "llm-agents": "llm-agents",
+        "netcatty": "netcatty",
         "niri": "niri",
         "niri-unstable": "niri-unstable",
         "nix-darwin": "nix-darwin",

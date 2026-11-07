@@ -91,6 +91,24 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # netcatty - Netcatty SSH/SFTP workspace client, packaged by upstream
+    # itself (AppImage extract + FHS wrap; x86_64/aarch64 linux only).
+    # Upstream CI bumps nix/release.nix on every release, so a flake update
+    # tracks the latest version with no per-package update script — version
+    # and hashes stay upstream-owned. Follows our nixpkgs: the package is a
+    # fetchurl + appimageTools wrapper, not a build keyed to a foreign pin.
+    # Their package.nix still calls appimageTools.extractType2 (deprecated
+    # alias in our pin), so the lib/nixosModules.nix overlay aliases it back
+    # to extract to keep host evals warning-free; the shim self-retires once
+    # upstream moves to the new API (callPackage drops unneeded overrides).
+    # Exposed as pkgs.netcatty there too (HM sharedModules can't consume
+    # flake inputs), consumed as an opt-in pack member in
+    # home/packs/remote.nix.
+    netcatty = {
+      url = "github:binaricat/Netcatty";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # niri - scrollable-tiling Wayland compositor
     niri = {
       url = "github:sodiboo/niri-flake";

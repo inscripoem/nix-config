@@ -20,6 +20,7 @@
     ./gaming.nix
     ./office.nix
     ./onedrive.nix
+    ./remote.nix
     ./toolchain.nix
   ];
 }

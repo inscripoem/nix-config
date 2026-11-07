@@ -16,6 +16,8 @@
   packs.gaming.enable = true;
   packs.office.enable = true;
   packs.onedrive.enable = true;
+  # Opt-in member of packs/remote.nix (defaults to false) — this host only.
+  packs.remote.netcatty.enable = true;
   packs.toolchain.enable = true;
 
   desktop.emacs.enable = true;
