@@ -12,21 +12,31 @@
 # defined in ./default.nix, consumed here the same way
 # packs/ai/workbuddy.nix consumes it.
 #
-# The PATH entry is not just convenience — netcatty's mosh flow
-# (electron/bridges/moshHandshake.cjs) bootstraps by spawning the SYSTEM
-# ssh to run `mosh-server new` remotely, and inside the appimageTools FHS
-# env nothing else provides it (desktop launch never carries
-# /run/current-system/sw/bin). The bundled mosh-client
-# (resources/mosh/mosh-client) is a static Rust binary and needs nothing.
+# The openssh PATH prefix is a fallback for hosts whose system profile
+# has no ssh at all: netcatty's mosh flow (electron/bridges/
+# moshHandshake.cjs) bootstraps by spawning the SYSTEM ssh to run
+# `mosh-server new` remotely, resolved via PATH. A standard NixOS desktop
+# already provides it inside the sandbox (systemd --user's PATH carries
+# /run/current-system/sw/bin and buildFHSEnv bind-mounts /run wholesale);
+# the bundled mosh-client (resources/mosh/mosh-client) is a static Rust
+# binary and needs nothing.
 #
-# The fhs-bin/ssh shim exists because that spawned ssh cannot read the
-# home-manager-managed ~/.ssh/config inside the sandbox: unprivileged
-# bwrap necessarily creates a user namespace mapping only the invoking
-# user, so every nix-store file (root-owned) surfaces as the overflowuid
-# 65534 in there — failing openssh's `st_uid != 0 && st_uid != getuid()`
-# check ("Bad owner or permissions") before any connection is attempted.
-# The shim hands openssh a user-owned snapshot (-F) refreshed on mtime;
-# everything else (known_hosts, agent) keeps default resolution.
+# The fhs-bin/ssh shim is the actual fix. That spawned ssh reads the
+# home-manager-managed ~/.ssh/config — a symlink to a root-owned nix
+# store file — and unprivileged bwrap forces a user namespace mapping
+# only the invoking uid (bubblewrap DWIMs unshare-user for non-root;
+# setuid mode was removed upstream), so store files surface as the
+# overflowuid 65534 inside. openssh's default user config always carries
+# the ownership check — `st_uid != 0 && st_uid != getuid()` ||
+# mode & 022 (openssh 10.6p1 readconf.c:2652, applied to ~/.ssh/config
+# via ssh.c:584) — which 65534 fails: "Bad owner or permissions" kills
+# the handshake before any connection. No flag or env skips that check
+# for the default config; -F is the only bypass and is itself not
+# re-checked (ssh.c:574), so the shim hands openssh a user-owned
+# snapshot (-F) refreshed on mtime; everything else (known_hosts, agent)
+# keeps default resolution. Boundary: Include directives are
+# force-checked (readconf.c:2129) and would still hit store paths if the
+# HM config ever gains one; today it has none.
 { config, lib, pkgs, passwordStore, ... }:
 let
   cfg = config.packs.remote;
