@@ -12,6 +12,16 @@
 # resolve to usable credentials). Same mechanism as the passwordStore arg
 # defined in ./default.nix, consumed here the same way
 # packs/ai/workbuddy.nix consumes it.
+#
+# openssh goes on PATH for the same FHS reason: Netcatty's mosh flow
+# (electron/bridges/moshHandshake.cjs) bootstraps by spawning the SYSTEM
+# ssh to run `mosh-server new` remotely — "macOS / Linux have it
+# everywhere" per upstream, but inside the appimageTools FHS env on NixOS
+# there is no ssh on PATH (desktop launch never carries
+# /run/current-system/sw/bin), so the handshake dies before the bundled
+# static mosh-client (resources/mosh/mosh-client, runs fine on NixOS) is
+# ever reached. The bundled client needs nothing else; mosh-server runs on
+# the remote host.
 { config, lib, pkgs, passwordStore, ... }:
 let
   cfg = config.packs.remote;
@@ -28,6 +38,7 @@ in
         nativeBuildInputs = [ pkgs.makeWrapper ];
         postBuild = ''
           wrapProgram $out/bin/netcatty \
+            --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.openssh ]} \
             --add-flags "--password-store=${passwordStore}"
         '';
       })
