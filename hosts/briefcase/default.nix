@@ -44,6 +44,13 @@
   # need extra TCP ports but are disabled by default).
   networking.firewall.allowedUDPPorts = [ 8211 ];
 
+  # magpie gateway LAN sharing (app: home/packs/ai/magpie.nix). The tray
+  # process already binds *:3425 with magpie's own lan=true; non-loopback
+  # callers must present a gateway key (magpie gateway-key), so this only
+  # exposes the auth gate. Unconditional like the class-wide LocalSend
+  # opening in modules/nixos/desktop/display-managers.nix.
+  networking.firewall.allowedTCPPorts = [ 3425 ];
+
   # Pull in linux-firmware so Intel AX210 (and friends) get iwlwifi-*.ucode.
   # Without this the PCIe Wi-Fi half of the card fails to probe even though
   # USB-side Bluetooth keeps working with in-tree btusb.
