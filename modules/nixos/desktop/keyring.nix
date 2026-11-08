@@ -1,10 +1,19 @@
-{ config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 {
   # Use gnome-keyring as the Secret Service provider (org.freedesktop.secrets)
   # so libsecret-based apps (vivaldi, chromium, vscode, git) get an
   # auto-unlocked keyring at login. KWallet stays for KDE-internal use only.
   services.gnome.gnome-keyring.enable = true;
+
+  # Non-graphical sessions must not claim the login keyring. Tailscale SSH
+  # authenticates through /bin/login and can appear before greetd; its
+  # pam_gnome_keyring auto_start previously left the daemon attached to the
+  # TTY session, so greetd could not unlock the same keyring in the graphical
+  # session. Keep the graphical greetd rules below and disable only the
+  # terminal/SSH PAM integrations.
+  security.pam.services.login.enableGnomeKeyring = lib.mkForce false;
+  security.pam.services.sshd.enableGnomeKeyring = lib.mkForce false;
 
   # greetd is the display manager; its PAM service covers both greeter
   # authentication and the user session handoff. The greetd module opts out
