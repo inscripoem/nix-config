@@ -168,7 +168,7 @@ that sets it:
 
 | Parameter | Set in | Purpose |
 |---|---|---|
-| `pcie_aspm=off` | `hosts/briefcase/gpu/intel-arc-a380.nix` | Kernel ASPM subsystem off; BIOS ASPM is disabled by hand as well and does not appear in `/proc/cmdline` |
+| `pcie_aspm=off` | Active GPU profile (`amd-polaris.nix`; retained in `intel-arc-a380.nix`) | Kernel ASPM subsystem off; BIOS ASPM is disabled by hand as well and does not appear in `/proc/cmdline` |
 | `intel_idle.max_cstate=1` | `hosts/briefcase/default.nix` | Cap CPU idle at C1; `intel_idle` is the active driver, so this is the effective cap |
 | `processor.max_cstate=1` | `hosts/briefcase/default.nix` | ACPI `processor` idle cap for the fallback path |
 | `idle=nomwait` | `hosts/briefcase/default.nix` | Avoid MONITOR/MWAIT idle, the mechanism blamed in the July 2026 H410 diagnosis |
@@ -179,9 +179,9 @@ that sets it:
 | `i915.disable_power_well=0` | `hosts/briefcase/gpu/intel-arc-a380.nix` | Keep display power wells powered |
 | `i915.enable_sagv=0` | `hosts/briefcase/gpu/intel-arc-a380.nix` | Disable SAGV |
 
-The `i915.*` entries only exist on Arc hosts. The `intel_idle`, `processor`,
-`idle`, `rcu_nocbs` and `iommu` entries live in the host module and survive a
-GPU swap.
+The `i915.*` entries only exist on Arc hosts. The AMD Polaris profile carries
+only `pcie_aspm=off`; the `intel_idle`, `processor`, `idle`, `rcu_nocbs` and
+`iommu` entries live in the host module and survive a GPU swap.
 
 Why they were stacked: the freeze is intermittent (roughly hourly under load,
 one or two per day otherwise), so a stable run has to last several multiples

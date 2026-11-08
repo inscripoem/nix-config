@@ -1,9 +1,9 @@
 # Intel Arc A380 on briefcase
 
 [The Arc profile](../hosts/briefcase/gpu/intel-arc-a380.nix) configures the
-DG2/Alchemist A380 (`0x56a5`). It is selected by the
-[host module](../hosts/briefcase/default.nix); retained NVIDIA profiles are
-available for hardware changes.
+DG2/Alchemist A380 (`0x56a5`). It is retained for hardware comparison and is
+not selected by the current [host module](../hosts/briefcase/default.nix).
+See [AMD Polaris](amd-polaris.md) for the active profile.
 
 ## Configuration decisions
 

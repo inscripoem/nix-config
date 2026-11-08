@@ -49,7 +49,19 @@ let
 
 
     def gpu_attr(attr, default=""):
-        return first(glob.glob("/sys/class/drm/card[0-9]*/gt/gt0/" + attr), default)
+        value = first(glob.glob("/sys/class/drm/card[0-9]*/gt/gt0/" + attr), "")
+        if value:
+            return value
+
+        # amdgpu exposes the selected DPM level rather than i915's RPS files.
+        # The i915-only rc6/throttle columns stay zero on Polaris, while
+        # temperature, fan, and the selected clock remain observable.
+        if attr in ("rps_cur_freq_mhz", "rps_act_freq_mhz"):
+            for path in glob.glob("/sys/class/drm/card[0-9]*/device/pp_dpm_sclk"):
+                for line in read(path).splitlines():
+                    if line.rstrip().endswith("*"):
+                        return line.split(":", 1)[1].replace("Mhz", "").replace("*", "").strip()
+        return default
 
 
     def gpu_hwmon_attr(attr, default=""):

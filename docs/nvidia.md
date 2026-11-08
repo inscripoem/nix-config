@@ -1,10 +1,10 @@
 # NVIDIA profiles on briefcase
 
-The active GPU is [Intel Arc A380](intel-arc-a380.md). The retained
+The active GPU is [AMD Radeon Pro WX 5100](amd-polaris.md). The retained
 [Turing](../hosts/briefcase/gpu/nvidia-turing.nix) and
 [Pascal](../hosts/briefcase/gpu/nvidia-pascal.nix) profiles support switching
 back to the RTX 2060 SUPER or Quadro P620 by changing the host's GPU import.
-These notes describe the historical NVIDIA setup, not current Arc behavior.
+These notes describe the historical NVIDIA setup, not current AMD behavior.
 
 ## 1. Driver selection
 
