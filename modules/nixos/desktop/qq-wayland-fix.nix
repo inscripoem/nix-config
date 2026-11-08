@@ -14,7 +14,7 @@
 # uses. Scope matches QQ's own: desktop-class hosts only.
 # NOTE: module args must be declared explicitly to be passed at all —
 # `{ inputs, ... }` alone would leave `pkgs` undefined.
-{ inputs, pkgs, ... }:
+{ inputs, pkgs, vars, ... }:
 
 {
   nixpkgs.overlays = [
@@ -65,4 +65,37 @@
           --replace-fail "${base}/bin/linuxqq-wayland-fix" "$out/bin/linuxqq-wayland-fix"
       '';
     };
+
+  # QQ's in-call "sharing" toolbar (floating toplevel, title "屏幕共享";
+  # identity verified 2026-10-28 via `niri msg windows`). Wayland clients
+  # cannot self-position windows, so niri centers floating windows on
+  # screen — pin it to top-center instead, matching QQ on Windows/KDE.
+  # relative-to="top" (side-only anchor) centers the window on that edge
+  # in working-area coordinates, so it lands below the DMS bar at any
+  # resolution/scale — no hardcoded x/y. The rule lives here, next to the
+  # fix that makes the window exist at all, not in home/desktop/niri.
+  # Reaching into home-manager from this NixOS module is safe: every
+  # desktop-class host imports the niri HM module (home/desktop/default.nix
+  # → ./niri). The same-titled fullscreen border window (whose buffer
+  # borderfix detaches) also matches; repositioning a buffer-less window
+  # is a no-op.
+  home-manager.users.${vars.username}.programs.niri.settings.window-rules = [
+    {
+      matches = [ { app-id = "^QQ$"; title = "^屏幕共享$"; } ];
+      # relative-to="top" (side-only anchor) centers the window on that
+      # edge in working-area coordinates, so it lands below the DMS bar
+      # at any resolution/scale. x compensates for QQ committing a
+      # transposed 86px-wide initial size: niri computes the position
+      # once at float-entry with that size (left = W/2 - 86/2) and never
+      # recenters on resize, so the 607px-wide toolbar ends up
+      # (607-86)/2 = 260.5px right of center. Measured 2026-11-09:
+      # left=917 on a 1920 output; with x=-260.5 it lands at 656.5 =
+      # exact center. Re-verify after bumping the qq pin.
+      default-floating-position = {
+        x = -260.5;
+        y = 0;
+        relative-to = "top";
+      };
+    }
+  ];
 }
