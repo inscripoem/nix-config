@@ -18,6 +18,7 @@ selection, module layout, and deployment commands.
 | Remote access before login | [Sunshine and SDDM](remote-desktop.md) |
 | Remote build offloading | [nixbuild.net](nixbuild-net.md) |
 | Desktop integration | [XDG portals](xdg-portal.md), [SDDM display variables](sddm-wayland-display.md) |
+| Mixed-DPI X11 scaling | [Steam, WorkBuddy and xwayland-satellite](xwayland-mixed-dpi.md) |
 | Graphics | [AMD Polaris](amd-polaris.md), [NVIDIA](nvidia.md), [Intel Arc A380](intel-arc-a380.md) |
 | Hardware stability | [H410 hard hangs](hard-hang-cstate.md), [Arc power measurements](intel-arc-a380-power.md) |
 
