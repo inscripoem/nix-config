@@ -47,19 +47,17 @@ let
         };
         modules.capabilities.sunshine = {
           enable = true;
-          # Reserved fake streaming output (capabilities/sunshine.nix).
-          # Host-specific: this GPU enumerates HDMI-A-1 free of monitors.
-          # `virtual` forces the connector on with an injected EDID; a
-          # forced DP connector has no DPCD (no physical sink), so i915
-          # validates modes against the fallback link and only 640x480
-          # survives, while HDMI validates from the injected EDID alone.
-          # Use `physical` when the connector carries a dummy plug, or set
-          # `fakeOutput.enable = false` to capture a real monitor instead.
+          # The WX 5100 has four DisplayPort outputs. A physical monitor or
+          # dummy plug supplies its own EDID, so no connector is reserved or
+          # pinned. With one connected sink, the user service captures that
+          # output at its native mode.
           fakeOutput = {
-            enable = true;
-            name = "HDMI-A-1";
-            provider = "virtual";
+            enable = false;
           };
+          # Dux Greeter runs niri as dms-greeter. Use that session's direct
+          # wlr-screencopy socket because Sunshine's KMS path hits
+          # EGL_BAD_MATCH while importing the root capture frame on this host.
+          greeterWaylandUser = "dms-greeter";
         };
         modules.capabilities."1password".enable = true;
         modules.capabilities.smart.enable = true;

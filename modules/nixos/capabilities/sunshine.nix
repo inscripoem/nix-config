@@ -2,11 +2,12 @@
 #
 # Why Sunshine (and not KRDP / RustDesk / Parsec / krfb):
 #
-#   Sunshine captures through KMS on this machine, so it serves the
-#   greetd/DMS greeter before login and any session compositor after
-#   login (niri and Plasma Wayland alike). KMS requires cap_sys_admin,
-#   which the upstream module grants via a security wrapper when
-#   services.sunshine.capSysAdmin is enabled. The X11 architecture
+#   Sunshine serves the greetd/DMS greeter through KMS and the logged-in
+#   niri session through wlr-screencopy. The split follows the session
+#   boundary: the root greeter has no user Wayland socket, while the user
+#   service can capture niri directly without an XDG Portal prompt. KMS
+#   requires cap_sys_admin, which the upstream module grants via a security
+#   wrapper when services.sunshine.capSysAdmin is enabled. The X11 architecture
 #   was originally chosen to work around NVIDIA proprietary driver
 #   issues (Turing RTX 2060S, see docs/nvidia.md), when capture
 #   ran over XShm and the greeter's X server was the only pre-login
@@ -25,11 +26,10 @@
 #     - krfb (VNC): pure CPU compression, too laggy for cross-region
 #       use (HK <-> SZ).
 #
-#   Both the pre-login and post-login services capture via KMS and
-#   encode with the Intel Arc A380's media engines, need no third-party
-#   account/signaling server — connectivity rides on the existing
-#   Tailscale tailnet. See docs/remote-desktop.md for the full
-#   rationale, alternatives comparison, port map, and usage.
+#   Both services use the active GPU's hardware media engines, need no
+#   third-party account/signaling server, and ride on the existing Tailscale
+#   tailnet. See docs/remote-desktop.md for the full rationale, alternatives
+#   comparison, port map, and usage.
 #
 # How Sunshine runs before login (Windows-RDP-like experience):
 #   Two systemd services cooperate:
@@ -67,12 +67,17 @@ let
   fakeOutputEnabled = fakeOutput.enable;
   fakeOutputName = if fakeOutputEnabled then fakeOutput.name else "";
   fakeOutputIsVirtual = fakeOutputEnabled && fakeOutput.provider == "virtual";
+  greeterCapture = if cfg.greeterWaylandUser == null then "kms" else "wlr";
 
   # Declarative Sunshine settings. Setting services.sunshine.settings makes
   # the NixOS module generate a config file and pass it to Sunshine, which
-  # also takes the web UI out of the configuration path.
+  # also takes the web UI out of the configuration path. The user service
+  # uses niri's direct wlr-screencopy protocol so it never waits for an XDG
+  # Portal screen-share approval. The root greeter overrides this to KMS
+  # capture below because it does not inherit the user's Wayland session.
   sunshineSettings =
     {
+      capture = "wlr";
       vk_tune = 0;
     }
     // lib.optionalAttrs fakeOutputEnabled {
@@ -85,9 +90,7 @@ let
   sunshineConfigFile =
     (pkgs.formats.keyValue { }).generate "sunshine.conf" config.services.sunshine.settings;
 
-  # The greeter is a Wayland (niri) session under greetd and capture is
-  # pure KMS, so no X11 display/auth plumbing is needed here. HOME is
-  # pointed at the user's home (not root's) so the Sunshine pairing
+  # HOME is pointed at the user's home (not root's) so the Sunshine pairing
   # certificate is shared between the root service and the user service —
   # same UUID + certificate means Moonlight sees a single host regardless
   # of which service is currently streaming.
@@ -104,6 +107,29 @@ let
     export HOME="/home/${vars.username}"
     export XDG_CONFIG_HOME="$HOME/.config"
 
+    ${lib.optionalString (cfg.greeterWaylandUser != null) ''
+      greeter_uid="$(${pkgs.coreutils}/bin/id -u ${lib.escapeShellArg cfg.greeterWaylandUser})"
+      runtime_dir="/run/user/$greeter_uid"
+      wayland_display=""
+      deadline=$((SECONDS + 20))
+      while (( SECONDS < deadline )); do
+        for candidate in "$runtime_dir"/wayland-*; do
+          [ -S "$candidate" ] || continue
+          wayland_display="''${candidate##*/}"
+          break
+        done
+        [ -n "$wayland_display" ] && break
+        ${pkgs.coreutils}/bin/sleep 0.2
+      done
+      if [ -z "$wayland_display" ]; then
+        echo "sunshine-greeter: greeter Wayland socket did not appear under $runtime_dir" >&2
+        exit 1
+      fi
+      export XDG_RUNTIME_DIR="$runtime_dir"
+      export WAYLAND_DISPLAY="$wayland_display"
+      export XDG_SESSION_TYPE="wayland"
+    ''}
+
     real="$(for c in /sys/class/drm/card*-*; do
       [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
       name="''${c##*/}"
@@ -113,9 +139,9 @@ let
     output="''${real:-${fakeOutputName}}"
 
     if [ -n "$output" ]; then
-      exec ${pkgs.sunshine}/bin/sunshine ${sunshineConfigFile} "output_name=$output" "$@"
+      exec ${pkgs.sunshine}/bin/sunshine ${sunshineConfigFile} "capture=${greeterCapture}" "output_name=$output" "$@"
     fi
-    exec ${pkgs.sunshine}/bin/sunshine ${sunshineConfigFile} "$@"
+    exec ${pkgs.sunshine}/bin/sunshine ${sunshineConfigFile} "capture=${greeterCapture}" "$@"
   '';
 # Watchdog for the portal-race startup hang: Sunshine occasionally
 # hangs mid-init (port 47984 never binds) without exiting, so
@@ -213,6 +239,16 @@ in {
         };
       };
     };
+
+    greeterWaylandUser = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        User that owns the pre-login greeter's Wayland runtime directory.
+        When set, the greeter service waits for that user's wayland-* socket
+        and captures it with wlr-screencopy instead of root KMS capture.
+      '';
+    };
   };
   config = lib.mkIf cfg.enable {
     assertions = [
@@ -221,6 +257,15 @@ in {
         message = ''
           modules.capabilities.sunshine.fakeOutput.name must be set when
           fakeOutput.enable is true.
+        '';
+      }
+      {
+        assertion =
+          cfg.greeterWaylandUser == null
+          || builtins.hasAttr cfg.greeterWaylandUser config.users.users;
+        message = ''
+          modules.capabilities.sunshine.greeterWaylandUser must name an existing
+          system user when set.
         '';
       }
     ];
