@@ -18,11 +18,11 @@
 }:
 let
   pname = "zcode-cli";
-  version = "3.17.1";
+  version = "3.17.2";
 
   src = fetchurl {
     url = "https://github.com/zai-org/ZCode/archive/refs/tags/v${version}.tar.gz";
-    hash = "sha256-rVdp49ImZa0NcmfwkpQ7nXFa2901XK32bXupxFcldVA=";
+    hash = "sha256-g4Dwc4uVMi0fSkGz9b0O0ZU6F98KXFlF8aDmElq9/Js=";
   };
 
   # pnpm 10, not the nixpkgs default 12: upstream pins pnpm@10.33.2 and the
@@ -33,7 +33,7 @@ let
     pname = "${pname}";
     pnpm = pnpm_10;
     fetcherVersion = 4;
-    hash = "sha256-hrRDsoPZ1Tr6aLb1C0UrQp9IQozN6LbA6NFOVkriqpY=";
+    hash = "sha256-eKbMeutG3/G5jsGCxip//yFelT4pmRuLNi7p5NW5PS8=";
   };
 in
 stdenv.mkDerivation {

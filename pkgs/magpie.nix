@@ -18,7 +18,7 @@
 }:
 
 let
-  version = "0.1.2847";
+  version = "0.1.3266";
 
   # Upstream ships two Linux artifacts per release: the GUI build (this one,
   # dynamically linked against GTK 3 + WebKitGTK 4.1) and a static CLI build.
@@ -28,11 +28,11 @@ let
     {
       "x86_64-linux" = fetchurl {
         url = "https://github.com/yetone/magpie-releases/releases/download/v${version}/magpie-linux-amd64";
-        hash = "sha256-OzePRB9rU7ESFRZs1Lj6LVSC/oGejaIw0FuWQhJ+lo4=";
+        hash = "sha256-ANcbO+djEBNoDrEzKSputV2pNbprc8AyFcBygZTM/GE=";
       };
       "aarch64-linux" = fetchurl {
         url = "https://github.com/yetone/magpie-releases/releases/download/v${version}/magpie-linux-arm64";
-        hash = "sha256-63WnW26UW6a8qSQZ/Bi6lgO6Eq3dJ2g9l9Y/SDkpkPQ=";
+        hash = "sha256-lNb75ToTJjI7npoEJ60cJwrbYlUj6ePbN2ZuyML9Qv0=";
       };
     }
     .${stdenv.hostPlatform.system} or (throw "magpie: unsupported system ${stdenv.hostPlatform.system}");
