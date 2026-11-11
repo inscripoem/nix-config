@@ -76,6 +76,12 @@ let
   cfg = config.modules.capabilities.hermes;
   hermes = pkgs.hermes;
 
+  # The greeter wrapper polls the compositor's IPC for output readiness;
+  # use the same niri build the greeter session runs so the IPC protocol
+  # always matches. pkgs.niri is the fallback for hosts without the niri
+  # module imported.
+  niriBin = config.programs.niri.package or pkgs.niri;
+
   # The greeter runs as root outside any user session: with
   # greeterWaylandUser set it waits for that session's Wayland socket and
   # captures it with wlr-screencopy (KMS capture hits EGL_BAD_MATCH when
@@ -133,6 +139,35 @@ let
       export XDG_RUNTIME_DIR="$runtime_dir"
       export WAYLAND_DISPLAY="$wayland_display"
       export XDG_SESSION_TYPE="wayland"
+
+      # niri binds its Wayland socket before the DRM connector scan
+      # finishes, and Hermes initializes its wlr capture ONCE per process:
+      # an empty monitor list at startup (observed 2026-11-12 01:00 —
+      # Hermes connected 1 s after the greeter session opened and streamed
+      # "no display" until handoff) is sticky for every later client. Wait
+      # until the compositor's IPC reports at least one output before
+      # handing over; the binary below is the same niri the greeter runs.
+      ipc_socket=""
+      for candidate in "$runtime_dir"/niri.*.sock; do
+        [ -S "$candidate" ] || continue
+        ipc_socket="$candidate"
+        break
+      done
+      if [ -n "$ipc_socket" ]; then
+        export NIRI_SOCKET="$ipc_socket"
+        deadline_outputs=$((SECONDS + 120))
+        while : ; do
+          if ${niriBin}/bin/niri msg --json outputs 2>/dev/null \
+            | ${pkgs.gnugrep}/bin/grep -q '"'; then
+            break
+          fi
+          (( SECONDS < deadline_outputs )) || {
+            echo "hermes-greeter: greeter compositor reported no outputs within 120s" >&2
+            exit 1
+          }
+          ${pkgs.coreutils}/bin/sleep 0.5
+        done
+      fi
     ''}
 
     real="$(for c in /sys/class/drm/card*-*; do

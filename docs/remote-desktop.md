@@ -48,7 +48,11 @@ roadmap (Artemis/Hestia).
 1. greetd starts the Dux Greeter session on VT1 (a niri compositor running
    the greeter UI). System service `hermes-greeter` runs as root after
    `display-manager.service`, waits for the greeter user's Wayland socket
-   (deadline 180 s), and captures the greeter through `capture=wlr`.
+   (deadline 180 s), then waits until the compositor's IPC reports at
+   least one output (niri binds its socket before the DRM scan finishes,
+   and Hermes initializes its wlr capture once per process — starting
+   against an output-less socket streamed "no display" until handoff,
+   observed 2026-11-12), and captures the greeter through `capture=wlr`.
 2. Artemis/Moonlight connects and displays the greeter. The user logs in
    through Dux Greeter; PAM (`greetd` service) can unlock the desktop
    keyring normally.
