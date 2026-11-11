@@ -9,9 +9,9 @@
 # Options:
 #   --dry-run       Show what would change without modifying files.
 #   --only=<names>  Comma-separated subset of {workbuddy,cc-switch,magpie,
-#                   siyuan,ww-manager,notion-electron,zcode-cli,hermes,dsh,
+#                   siyuan,ww-manager,notion-electron,zcode-cli,hermes,hermes-kms,dsh,
 #                   dsh-orca-hooks,ene-fanctl,qq}. `notion` is accepted
-#                   as an alias for notion-electron. Defaults to all twelve;
+#                   as an alias for notion-electron. Defaults to all thirteen;
 #                   unknown names are an error.
 #   --verbose       Full per-package detail (the old multi-line format).
 #   -h, --help      Show this help.
@@ -182,7 +182,7 @@ done
 # Normalize aliases: `notion` → `notion-electron` (the package's pname),
 # and reject unknown names so a typo cannot silently check nothing.
 KNOWN_PKGS=(workbuddy cc-switch magpie siyuan ww-manager notion-electron
-            zcode-cli hermes dsh dsh-orca-hooks ene-fanctl qq)
+            zcode-cli hermes hermes-kms dsh dsh-orca-hooks ene-fanctl qq)
 if [[ -n "$ONLY" ]]; then
   IFS=, read -ra items <<< "$ONLY"
   normalized=""
@@ -1075,6 +1075,57 @@ if should_update "hermes"; then
     note "verifying build ..."
     nix build "$hm_attr" --no-link --option builders "" \
       || die "hermes v${hm_version} failed to build; hashes above were applied but the build is broken"
+  fi
+fi
+
+# ── hermes-kms ───────────────────────────────────────────────────────
+# MrOz59/Hermes-KMS, the out-of-tree virtual-display kernel module
+# (pkgs/hermes-kms/default.nix). No submodules, so a plain tarball
+# prefetch yields the fetchFromGitHub hash. The module currently cannot
+# drive an output under niri (Smithay multigpu requires a per-device GL
+# renderer; Mesa has no DRI driver for the virtual card) — the package is
+# kept current so the backend is one config flip away when that changes.
+
+if should_update "hermes-kms"; then
+  status_begin "hermes-kms"
+  hk_nix="$REPO_ROOT/pkgs/hermes-kms/default.nix"
+  hk_current=$(grep -m1 '^  version = ' "$hk_nix" | grep -oP '[\d.]+')
+
+  if command -v gh &>/dev/null; then
+    hk_version=$(gh api repos/MrOz59/Hermes-KMS/releases/latest --jq '.tag_name' | sed 's/^v//')
+  else
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+      hk_json=$(curl -sf --max-time 10 -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/MrOz59/Hermes-KMS/releases/latest" || true)
+    else
+      hk_json=$(curl -sf --max-time 10 "https://api.github.com/repos/MrOz59/Hermes-KMS/releases/latest" || true)
+    fi
+    if [[ -z "$hk_json" ]]; then
+      die "Failed to reach GitHub API. Check your network or set GITHUB_TOKEN."
+    fi
+    hk_version=$(echo "$hk_json" | jq -r '.tag_name' | sed 's/^v//')
+  fi
+
+  vnote "current : $hk_current"
+  vnote "latest  : $hk_version"
+
+  if [[ "$hk_version" == "$hk_current" ]]; then
+    pkg_up "hermes-kms" "$hk_current"
+  elif [[ "$DRY_RUN" == true ]]; then
+    pkg_dry "hermes-kms" "$hk_current → $hk_version"
+  else
+    pkg_bump "hermes-kms" "$hk_current → $hk_version"
+
+    note "prefetching hermes-kms v${hk_version} ..."
+    hk_url="https://github.com/MrOz59/Hermes-KMS/archive/refs/tags/v${hk_version}.tar.gz"
+    hk_hash=$(prefetch_hash "$hk_url") || die "hermes-kms prefetch failed"
+
+    hk_old=$(grep -m1 'hash = ' "$hk_nix" | grep -oP 'sha256-[^"]+')
+    update_nix_field "$hk_nix" "version" "$hk_version"
+    sed -i "s|hash = \"$hk_old\"|hash = \"$hk_hash\"|" "$hk_nix"
+
+    note "verifying build ..."
+    nix build ".#nixosConfigurations.briefcase.pkgs.hermes-kms" --no-link --option builders "" \
+      || die "hermes-kms v${hk_version} failed to build against the host kernel"
   fi
 fi
 

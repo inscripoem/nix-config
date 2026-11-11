@@ -47,6 +47,15 @@ let
         };
         modules.capabilities.hermes = {
           enable = true;
+          # hermes-kms virtual display: per-client resolution via the
+          # out-of-tree DRM/KMS module. Currently OFF: the module loads and
+          # Hermes adopts the card, but niri cannot drive it — Smithay's
+          # multigpu model requires a per-device EGL/GLES renderer and Mesa
+          # has no DRI driver for the virtual card (niri issue #4529 is the
+          # same failure class with ms912x; works on KWin/GNOME). Re-enable
+          # when niri gains a display-only fallback for render-capable
+          # virtual cards or upstream adds direct PRIME scanout.
+          virtualDisplay.enable = false;
           # Dux Greeter runs niri as dms-greeter. Use that session's direct
           # wlr-screencopy socket because root KMS capture hits
           # EGL_BAD_MATCH while importing the root capture frame on this host.

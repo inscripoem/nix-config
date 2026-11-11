@@ -76,6 +76,14 @@ let
   cfg = config.modules.capabilities.hermes;
   hermes = pkgs.hermes;
 
+  # Out-of-tree virtual-display kernel module, built against THIS host's
+  # kernel package set (kernelModuleMakeFlags carries the matching
+  # KBUILD_OUTPUT and toolchain flags and lives on the linuxPackages set,
+  # not on top-level pkgs).
+  hermesKms = pkgs.callPackage ../../../pkgs/hermes-kms {
+    inherit (config.boot.kernelPackages) kernel kernelModuleMakeFlags;
+  };
+
   # The greeter wrapper polls the compositor's IPC for output readiness;
   # use the same niri build the greeter session runs so the IPC protocol
   # always matches. pkgs.niri is the fallback for hosts without the niri
@@ -100,7 +108,11 @@ let
   # is gone: Hermes does not recognize the key.
   hermesSettings = {
     capture = "wlr";
-    virtual_display_backend = "none";
+    # `hermes_kms` streams a virtual connector created by the out-of-tree
+    # driver (per-client resolution, physical layout untouched); `none`
+    # streams an output the session already has. The backend only matters
+    # when a session asks for a virtual display.
+    virtual_display_backend = if cfg.virtualDisplay.enable then "hermes_kms" else "none";
   };
   hermesConfigFile =
     (pkgs.formats.keyValue { }).generate "hermes.conf" hermesSettings;
@@ -231,6 +243,17 @@ in
   options.modules.capabilities.hermes = {
     enable = lib.mkEnableOption "Moonlight/Artemis game streaming via Hermes";
 
+    virtualDisplay = {
+      enable = lib.mkEnableOption ''
+        the hermes-kms virtual-display backend: the out-of-tree DRM/KMS
+        module provides a connector that niri adopts as a normal hotplug
+        and Hermes drives at the client's negotiated resolution, leaving
+        the physical monitor layout untouched. Needs a reboot after
+        enabling (module load). Rollback: flip this off — the backend
+        falls back to streaming the session's own output.
+      '';
+    };
+
     greeterWaylandUser = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -262,7 +285,19 @@ in
     # package's udev rules (60-hermes.rules) grant the active-seat user
     # access and tag libvirtualhid-created HID parents.
     hardware.uinput.enable = true;
-    services.udev.packages = [ hermes ];
+    services.udev.packages =
+      [ hermes ] ++ lib.optionals cfg.virtualDisplay.enable [ hermesKms ];
+
+    # hermes-kms virtual display: static card at boot with the connector
+    # disconnected (`initial_enabled=0` — an unowned connected connector
+    # would extend the desktop onto a dead canvas), module loaded at boot,
+    # render-node udev rules from the driver package. niri adopts the
+    # connector as a normal monitor hotplug when a stream owns it.
+    boot.extraModulePackages = lib.mkIf cfg.virtualDisplay.enable [ hermesKms ];
+    boot.kernelModules = lib.mkIf cfg.virtualDisplay.enable [ "hermes_kms" ];
+    boot.extraModprobeConfig = lib.mkIf cfg.virtualDisplay.enable ''
+      options hermes_kms initial_enabled=0 outputs=1
+    '';
 
     environment.systemPackages = [
       hermes

@@ -77,12 +77,32 @@ handoff/logout), and restarting that state every five seconds caused a
 DRM/capture restart storm — the unit stays failed until the handoff
 explicitly starts it again.
 
-`virtual_display_backend = none` streams the session's own output; no EVDI
-or Hermes-KMS driver is installed. Upstream's `--prelogin` pre-login
-streaming is nightly-only and KDE+SDDM-tested; the handoff above stays
-until it is proven for greetd+niri.
+`virtual_display_backend = none` streams the session's own output.
+Upstream's `--prelogin` pre-login streaming is KDE+SDDM-tested; the
+handoff above stays until it is proven for greetd+niri (the subcommand
+itself exists in 0.7.0).
 
-## 3. Clipboard sync
+## 3. Virtual display (hermes-kms) — packaged, not usable under niri yet
+
+The out-of-tree DRM/KMS virtual-display driver is packaged
+([pkgs/hermes-kms](../pkgs/hermes-kms/default.nix), v0.4.1, builds against
+the host kernel) and wired behind
+`modules.capabilities.hermes.virtualDisplay.enable` — currently **off**.
+Verified working up to the compositor layer: the module loads with the
+connector disconnected, Hermes creates `HERMES-1` at the client's
+negotiated resolution, and niri sees the connector hotplug. It ends
+there: niri cannot drive the card. Smithay's multigpu model requires a
+per-device EGL/GLES renderer on every secondary DRM device with an
+enabled output, and Mesa has no DRI driver for the virtual card — niri
+logs `No supported plane buffer format found` three times and the output
+never lights up. The same failure class is niri issue #4529 (ms912x
+driver, reproduced on sway and cosmic-comp too); KWin and GNOME import
+the primary GPU's dmabuf directly into the plane and do work with this
+driver. Re-enable the option when niri gains a display-only fallback for
+render-capable virtual cards, upstream adds direct PRIME scanout, or a
+DRI driver for hermes-kms appears — the backend switch is one line.
+
+## 4. Clipboard sync
 
 Text-only, bidirectional, through the Apollo control-stream extension
 between Hermes and Artemis-family clients. The host side shells out to
@@ -97,7 +117,7 @@ moonlight-qt fork), or Hestia (Linux). Generic Moonlight streams video,
 audio, and input but has no Apollo extensions — no clipboard, no
 permissions UI.
 
-## 4. Client permissions (read this before "the stream is broken")
+## 5. Client permissions (read this before "the stream is broken")
 
 The FIRST client ever paired receives full permissions; every later
 pairing defaults to View Streams + List Apps only — no mouse, keyboard,
@@ -112,7 +132,7 @@ stopped (the running process rewrites that file on exit). Full-permission
 value used by this fleet's clients: `119480064`; a fresh pairing gets
 `50331648`.
 
-## 5. Network and pairing
+## 6. Network and pairing
 
 WiFi credentials are supplied by SOPS to NetworkManager system connections,
 so the network does not wait for a user keyring unlock. See [secrets](secrets.md)
@@ -142,7 +162,7 @@ Settings are declarative (`hermesSettings` in the capability module); the
 generated file is passed explicitly to both services. Review both command
 lines after changing capture or output settings.
 
-## 6. Troubleshooting and validation
+## 7. Troubleshooting and validation
 
 **Startup hang**: either service can hang mid-init without exiting (port
 47984 never binds), so `Restart=on-failure` never fires. A timer-driven

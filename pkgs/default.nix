@@ -4,6 +4,14 @@ final: prev: {
   hermes = final.callPackage ./hermes/default.nix {
     plasma-wayland-protocols = final.kdePackages.plasma-wayland-protocols;
   };
+  # Out-of-tree kernel module built against linuxPackages_latest (the
+  # briefcase kernel per base/kernel.nix). hermes.nix callPackages it again
+  # with the host's actual boot kernel packages when virtualDisplay is
+  # enabled; this overlay entry exists so the updater can build it.
+  hermes-kms = final.callPackage ./hermes-kms {
+    kernel = final.linuxPackages_latest.kernel;
+    kernelModuleMakeFlags = final.linuxPackages_latest.kernelModuleMakeFlags;
+  };
   siyuan = final.callPackage ./siyuan.nix { };
   workbuddy = final.callPackage ./workbuddy.nix { };
   "cc-switch" = final.callPackage ./cc-switch.nix { };
