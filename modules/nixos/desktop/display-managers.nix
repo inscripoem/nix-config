@@ -36,7 +36,7 @@
   # display :0, letting the user-level Sunshine XShm-capture it for the
   # remote handoff. KDE removed the X11 session upstream and nixpkgs now
   # ships only the Wayland "plasma" one. Sunshine switched to KMS capture
-  # (capSysAdmin, see capabilities/sunshine.nix), so every session is
+  # (the streaming capability, see capabilities/hermes.nix), so every session is
   # streamable; niri stays the default as the daily session.
   services.desktopManager.plasma6.enable = true;
   services.displayManager.defaultSession = "niri";
@@ -48,11 +48,11 @@
   # wrong desktop entry. No screen reader is used here; drop the package.
   services.orca.enable = false;
 
-  # No auto-login. Sunshine runs as a root system service
-  # (sunshine-greeter) that captures the greeter before anyone logs in —
-  # Moonlight connects, sees the DMS greeter, you type the password, and
-  # the session hands off to the user-level Sunshine service. This avoids
-  # the auto-login + keyring problem (KWallet / gnome-keyring never unlock
+  # No auto-login. Hermes runs as a root system service (hermes-greeter)
+  # that captures the greeter before anyone logs in — Artemis/Moonlight
+  # connects, sees the DMS greeter, you type the password, and the session
+  # hands off to the user-level hermes service. This avoids the
+  # auto-login + keyring problem (KWallet / gnome-keyring never unlock
   # without a PAM password, which breaks WiFi auto-connect and Vivaldi's
   # cookie store). See docs/remote-desktop.md.
 

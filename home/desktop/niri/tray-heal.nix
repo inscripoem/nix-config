@@ -9,7 +9,7 @@ let
   # omacom/omarchy#12214; replaying an already-registered item is a no-op).
   # Discovery covers both item styles: well-known
   # org.{kde,freedesktop}.StatusNotifierItem-* names (libappindicator/Qt
-  # apps such as sunshine) are listed by name, while Electron items export
+  # apps such as hermes) are listed by name, while Electron items export
   # /StatusNotifierItem on their unique bus names and are found by probing
   # every unique name for the object.
   trayHeal = pkgs.writeShellScript "tray-heal" ''

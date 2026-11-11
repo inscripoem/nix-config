@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # Update workbuddy, cc-switch, magpie, siyuan, ww-manager, notion-electron,
-# zcode-cli, dsh, dsh-orca-hooks and ene-fanctl to their latest upstream
-# versions, and align the qq version pin with the linuxqq-wayland-fix input.
-# `dsh` also moves the pinned deepseek-harness flake input, gated on the
+# zcode-cli, hermes, dsh, dsh-orca-hooks and ene-fanctl to their latest
+# upstream versions, and align the qq version pin with the linuxqq-wayland-fix
+# input. `dsh` also moves the pinned deepseek-harness flake input, gated on the
 # upstream TUI's peer range and a turn smoke test.
 # Usage:
 #   ./update-versions.sh [--dry-run] [--only=<names>] [--verbose]
 # Options:
 #   --dry-run       Show what would change without modifying files.
 #   --only=<names>  Comma-separated subset of {workbuddy,cc-switch,magpie,
-#                   siyuan,ww-manager,notion-electron,zcode-cli,dsh,
+#                   siyuan,ww-manager,notion-electron,zcode-cli,hermes,dsh,
 #                   dsh-orca-hooks,ene-fanctl,qq}. `notion` is accepted
-#                   as an alias for notion-electron. Defaults to all eleven;
+#                   as an alias for notion-electron. Defaults to all twelve;
 #                   unknown names are an error.
 #   --verbose       Full per-package detail (the old multi-line format).
 #   -h, --help      Show this help.
@@ -23,7 +23,9 @@
 #   followed by a one-line tally. Colors and the transient in-place
 #   "checking" label are TTY-only; piped output is plain lines.
 # Requirements: curl, jq, git, nix (flakes), nix-prefetch-url, npm, sed,
-# python3
+# python3. The hermes section additionally shells out to nixpkgs on demand
+# (nixpkgs#nodejs for the lockfile regen, nixpkgs#nix-prefetch-git for the
+# submodule-tree hashes) instead of relying on host tools.
 
 set -euo pipefail
 
@@ -180,7 +182,7 @@ done
 # Normalize aliases: `notion` → `notion-electron` (the package's pname),
 # and reject unknown names so a typo cannot silently check nothing.
 KNOWN_PKGS=(workbuddy cc-switch magpie siyuan ww-manager notion-electron
-            zcode-cli dsh dsh-orca-hooks ene-fanctl qq)
+            zcode-cli hermes dsh dsh-orca-hooks ene-fanctl qq)
 if [[ -n "$ONLY" ]]; then
   IFS=, read -ra items <<< "$ONLY"
   normalized=""
@@ -969,6 +971,110 @@ if should_update "qq"; then
     nix --extra-experimental-features 'nix-command flakes' flake update --flake "$REPO_ROOT" nixpkgs-qq
   elif [[ "$qq_target" != "$qq_current" ]]; then
     pkg_dry "qq" "$qq_current → $qq_target"
+  fi
+fi
+
+# ── hermes ───────────────────────────────────────────────────────────
+# MrOz59/Hermes (Apollo-derived streaming host), pkgs/hermes/default.nix.
+# Three pins move together on a bump:
+#   - the source tree, fetched WITH submodules (vendored static ffmpeg,
+#     moonlight-common-c, glad). nix-prefetch-url cannot fetch submodule
+#     trees, so this hash comes from nix-prefetch-git.
+#   - the libvirtualhid FetchContent commit, mirrored from
+#     cmake/compile_definitions/linux.cmake — read out of the NEW source so
+#     the pin stays in lockstep with upstream.
+#   - the vendored package-lock.json: upstream ships none (Arch resolves
+#     online at build time), so it is regenerated here from the new
+#     package.json, which also changes the ui npmDepsHash.
+
+if should_update "hermes"; then
+  status_begin "hermes"
+  hm_nix="$REPO_ROOT/pkgs/hermes/default.nix"
+  hm_lock="$REPO_ROOT/pkgs/hermes/package-lock.json"
+  hm_attr=".nixosConfigurations.briefcase.pkgs.hermes"
+  hm_current=$(grep -m1 '^  version = ' "$hm_nix" | grep -oP '[\d.]+')
+
+  if command -v gh &>/dev/null; then
+    hm_version=$(gh api repos/MrOz59/Hermes/releases/latest --jq '.tag_name' | sed 's/^v//')
+  else
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+      hm_json=$(curl -sf --max-time 10 -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/MrOz59/Hermes/releases/latest" || true)
+    else
+      hm_json=$(curl -sf --max-time 10 "https://api.github.com/repos/MrOz59/Hermes/releases/latest" || true)
+    fi
+    if [[ -z "$hm_json" ]]; then
+      die "Failed to reach GitHub API. Check your network or set GITHUB_TOKEN."
+    fi
+    hm_version=$(echo "$hm_json" | jq -r '.tag_name' | sed 's/^v//')
+  fi
+
+  vnote "current : $hm_current"
+  vnote "latest  : $hm_version"
+
+  if [[ "$hm_version" == "$hm_current" ]]; then
+    pkg_up "hermes" "$hm_current"
+  elif [[ "$DRY_RUN" == true ]]; then
+    pkg_dry "hermes" "$hm_current → $hm_version"
+  else
+    pkg_bump "hermes" "$hm_current → $hm_version"
+
+    hm_tmp=$(mktemp -d)
+
+    # 1. vendored npm lockfile, regenerated from the new package.json with
+    #    the same nodejs the build sandbox uses (buildNpmPackage default).
+    note "regenerating package-lock.json ..."
+    curl -sf "https://raw.githubusercontent.com/MrOz59/Hermes/v${hm_version}/package.json" \
+      -o "$hm_tmp/package.json" || die "could not download the v${hm_version} package.json"
+    (cd "$hm_tmp" && nix shell nixpkgs#nodejs -c npm install --package-lock-only --ignore-scripts >/dev/null 2>&1) \
+      || die "npm lockfile regeneration failed"
+    [[ -s "$hm_tmp/package-lock.json" ]] || die "npm wrote no package-lock.json"
+    cp "$hm_tmp/package-lock.json" "$hm_lock"
+
+    # 2. libvirtualhid commit + hash, read from the new source so the pin
+    #    cannot drift from upstream's cmake.
+    note "pinning libvirtualhid ..."
+    hm_vhid_rev=$(curl -sf "https://raw.githubusercontent.com/MrOz59/Hermes/v${hm_version}/cmake/compile_definitions/linux.cmake" \
+      | sed -n 's/.*GIT_TAG \([0-9a-f]\{40\}\).*/\1/p' | head -1)
+    [[ -n "$hm_vhid_rev" ]] || die "could not read libvirtualhid GIT_TAG from v${hm_version}"
+    hm_vhid_b32=$(nix shell nixpkgs#nix-prefetch-git -c nix-prefetch-git \
+      --url https://github.com/MrOz59/libvirtualhid.git --rev "$hm_vhid_rev" 2>/dev/null \
+      | jq -r .sha256) || die "libvirtualhid prefetch failed"
+    hm_vhid_sri=$(nix hash to-sri --extra-experimental-features nix-command --type sha256 "$hm_vhid_b32")
+    hm_old_vhid_rev=$(grep -m1 -A3 'repo = "libvirtualhid"' "$hm_nix" | grep -oP 'rev = "\K[0-9a-f]{40}')
+    hm_old_vhid_hash=$(grep -m1 -A5 'repo = "libvirtualhid"' "$hm_nix" | grep -oP 'hash = "\Ksha256-[^"]+')
+    sed -i "s|rev = \"$hm_old_vhid_rev\"|rev = \"$hm_vhid_rev\"|" "$hm_nix"
+    sed -i "s|hash = \"$hm_old_vhid_hash\"|hash = \"$hm_vhid_sri\"|" "$hm_nix"
+
+    # 3. source hash (submodule tree, same reason as above)
+    note "prefetching source with submodules ..."
+    hm_src_b32=$(nix shell nixpkgs#nix-prefetch-git -c nix-prefetch-git \
+      --url https://github.com/MrOz59/Hermes.git --rev "v${hm_version}" --fetch-submodules 2>/dev/null \
+      | jq -r .sha256) || die "Hermes source prefetch failed"
+    hm_src_sri=$(nix hash to-sri --extra-experimental-features nix-command --type sha256 "$hm_src_b32")
+    hm_old_src_hash=$(grep -m1 -A6 'repo = "Hermes"' "$hm_nix" | grep -oP 'hash = "\Ksha256-[^"]+')
+    sed -i "s|hash = \"$hm_old_src_hash\"|hash = \"$hm_src_sri\"|" "$hm_nix"
+
+    # 4. ui npmDepsHash: the lockfile changed, so the fixed-output hash
+    #    necessarily did too. Round-trip a build of the ui derivation and
+    #    read the `got:` line from the mismatch (the npm-deps drv name
+    #    contains hermes-ui, so this failure is unambiguous).
+    note "resolving ui npmDepsHash ..."
+    hm_got=$(nix build "$hm_attr.ui" --no-link --option builders "" 2>&1 \
+      | grep -oP 'got:\s+sha256-\S+' | head -1 | grep -oP 'sha256-\S+')
+    if [[ -z "$hm_got" ]]; then
+      die "could not read the ui npmDepsHash from the build error" \
+        "run: nix build ${hm_attr}.ui --no-link"
+    fi
+    hm_old_npm=$(grep -m1 'npmDepsHash = ' "$hm_nix" | grep -oP 'sha256-[^"]+')
+    sed -i "s|npmDepsHash = \"$hm_old_npm\"|npmDepsHash = \"$hm_got\"|" "$hm_nix"
+
+    rm -rf "$hm_tmp"
+
+    # 5. full verification build, local by repo policy (section 6 of
+    #    AGENTS.md) — a bump that does not build is not an update.
+    note "verifying build ..."
+    nix build "$hm_attr" --no-link --option builders "" \
+      || die "hermes v${hm_version} failed to build; hashes above were applied but the build is broken"
   fi
 fi
 

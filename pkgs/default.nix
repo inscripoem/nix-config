@@ -1,5 +1,9 @@
 final: prev: {
   harmonyos-sans = final.callPackage ./harmonyos-sans.nix { };
+  # plasma-wayland-protocols lives under kdePackages in nixpkgs, not top level.
+  hermes = final.callPackage ./hermes/default.nix {
+    plasma-wayland-protocols = final.kdePackages.plasma-wayland-protocols;
+  };
   siyuan = final.callPackage ./siyuan.nix { };
   workbuddy = final.callPackage ./workbuddy.nix { };
   "cc-switch" = final.callPackage ./cc-switch.nix { };

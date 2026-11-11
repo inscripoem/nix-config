@@ -2,13 +2,6 @@
 let
   cfg = config.programs.niri;
 
-  # Fake streaming output state, read through osConfig. `fakeOutputName` is
-  # empty when the fake output is disabled, so every consumer below also
-  # gates on `fakeOutputEnabled`.
-  sunshine = osConfig.modules.capabilities.sunshine;
-  fakeOutputEnabled = sunshine.fakeOutput.enable;
-  fakeOutputName = if fakeOutputEnabled then sunshine.fakeOutput.name else "";
-
   # Append DMS optional includes so Settings pages detect "initialized"
   # and any GUI-changed values in ~/.config/niri/dms/*.kdl take effect.
   # These files are owned by the DMS GUI and NOT managed by this flake:
@@ -37,160 +30,7 @@ let
     cp "$configBodyPath" $out
   '';
 
-  # State file (under XDG_STATE_HOME) written by stream-mode / desk-mode
-  # and read by the session-start restore script below.
-  fakeScreenStateFile = "sunshine/fake-screen";
 
-  # Shared handover logic for stream-mode / desk-mode.
-  # Both directions move workspaces EXPLICITLY: `niri msg output off` does
-  # NOT migrate them (verified 2026-10-30 — they stay on the disabled
-  # output; only a physical disconnect triggers niri's auto-migration), so
-  # relying on auto-migration strands them on the dark screen.
-  fakeScreenLib = pkgs.writeText "fake-screen-lib.sh" ''
-    fake="${fakeOutputName}"
-    state_file="''${XDG_STATE_HOME:-$HOME/.local/state}/${fakeScreenStateFile}"
-    niri="${cfg.package}/bin/niri"
-    jq="${pkgs.jq}/bin/jq"
-
-    # Fail loudly when the niri IPC socket is unreachable (e.g. SSH
-    # without the session env): the jq calls below would otherwise
-    # iterate over empty input and report a cryptic null error.
-    if ! "$niri" msg --json outputs >/dev/null 2>&1; then
-      uid="$(id -u)"
-      echo "stream/desk: cannot reach niri. In an SSH shell run:" >&2
-      echo "  export XDG_RUNTIME_DIR=/run/user/$uid NIRI_SOCKET=\$(ls /run/user/$uid/niri.*.sock | head -1)" >&2
-      exit 1
-    fi
-
-    fake_enabled() {
-      "$niri" msg --json outputs 2>/dev/null | "$jq" -e --arg f "$fake" 'has($f)' >/dev/null 2>&1
-    }
-
-    # Explicitly move every workspace not on $1 onto $1.
-    move_all_to() {
-      "$niri" msg --json workspaces 2>/dev/null \
-        | "$jq" -r --arg t "$1" '.[] | select(.output != $t) | .id' \
-        | while IFS= read -r ws; do
-            [ -n "$ws" ] && "$niri" msg action move-workspace-to-monitor --reference "$ws" "$1"
-          done
-    }
-
-    enabled_real_outputs() {
-      "$niri" msg --json outputs 2>/dev/null | "$jq" -r --arg f "$fake" 'keys[] | select(. != $f)'
-    }
-
-    # Physically connected outputs except the fake one. sysfs reports them
-    # regardless of niri's enabled state; niri's JSON only lists enabled
-    # outputs, so re-enabling needs this view.
-    connected_real_outputs() {
-      for c in /sys/class/drm/card*-*; do
-        [ "$(cat "$c/status" 2>/dev/null)" = connected ] || continue
-        name="''${c##*/}"
-        name="''${name#*-}"
-        [ "$name" = "$fake" ] || echo "$name"
-      done
-    }
-
-    save_state() {
-      mkdir -p "$(dirname "$state_file")"
-      printf '%s\n' "$1" > "$state_file"
-    }
-
-    # Dynamic alignment (B): match the fake output's logical size to the
-    # first enabled real output's logical size, using the fake's largest
-    # mode. Real 1080p -> 4K @ scale 2; real 4K -> 4K @ scale 1; real
-    # 1440p -> 4K @ scale 1.5. Scale is rounded to quarter steps and
-    # clamped to [1, 4]; no enabled real output (headless) keeps the
-    # configured fallback pin. This is what makes a monitor swap a
-    # zero-config event: alignment is computed at stream time, never
-    # hardcoded.
-    align_fake_to_desk() {
-      local dims
-      dims=$("$niri" msg --json outputs 2>/dev/null | "$jq" -r \
-        --arg f "$fake" '
-        to_entries[] | select(.key != $f) | .value.logical |
-        "\(.width) \(.height)"' | head -n1)
-      [ -n "$dims" ] || return 0
-      local lw lh
-      read -r lw lh <<< "$dims"
-      [ -n "$lw" ] && [ "$lw" -gt 0 ] 2>/dev/null || return 0
-
-      local mode_arg scale
-      read -r mode_arg scale < <("$niri" msg --json outputs 2>/dev/null | "$jq" -r \
-        --arg f "$fake" --argjson lw "$lw" --argjson lh "$lh" '
-        .[$f].modes | max_by(.width * .height) |
-        "\(.width)x\(.height) " +
-        ((.width / $lw * 4 | round) / 4 |
-         if . < 1 then 1 elif . > 4 then 4 else . end | tostring)')
-      [ -n "$mode_arg" ] || return 0
-
-      # Partial mode names (no @refresh) are accepted: verified live
-      # 2026-10-30, niri matches by resolution and picks the best refresh.
-      "$niri" msg output "$fake" mode "$mode_arg"
-      "$niri" msg output "$fake" scale "$scale"
-    }
-
-    # Going remote: fake canvas on, aligned to the desk's logical size,
-    # every workspace moved onto it, real outputs off, fake anchored at
-    # the logical origin. One active output means the cursor cannot
-    # escape the streamed picture.
-    #
-    # The origin anchor is NOT cosmetic: Sunshine's absolute mouse maps
-    # against the desktop span it enumerates (offset + logical size of
-    # every advertised output), while niri maps the ABS device over the
-    # ACTIVE layout span. The two only agree when the captured output
-    # sits at (0,0) — verified live 2026-10-31: a fake parked at x=1920
-    # with the real output disabled kept the stream cursor mis-mapped
-    # even across a Sunshine restart; anchoring it at the origin fixed
-    # it after a client reconnect.
-    do_stream() {
-      "$niri" msg output "$fake" on
-      sleep 0.3
-      align_fake_to_desk
-      sleep 0.3
-      move_all_to "$fake"
-      for out in $(enabled_real_outputs); do
-        "$niri" msg output "$out" off
-      done
-      "$niri" msg output "$fake" position set 0 0
-      save_state on
-    }
-
-    # Back at the desk: real outputs on (from sysfs), the first one
-    # anchored at the origin (the fake held that slot while streaming),
-    # every workspace moved onto it, fake canvas off. No real monitor
-    # connected is a hard no-op — never strand the only screen.
-    do_desk() {
-      reals=$(connected_real_outputs)
-      if [ -z "$reals" ]; then
-        echo "desk-mode: no real monitor connected, nothing to do" >&2
-        exit 1
-      fi
-      for out in $reals; do
-        "$niri" msg output "$out" on
-      done
-      sleep 0.3
-      "$niri" msg output "$(printf '%s\n' $reals | head -1)" position set 0 0
-      sleep 0.3
-      move_all_to "$(printf '%s\n' $reals | head -1)"
-      fake_enabled && "$niri" msg output "$fake" off
-      save_state off
-    }
-  '';
-
-  # Session-start state restore: the niri config pin re-enables the fake
-  # output on every login; if the user last toggled it off, disable it
-  # again shortly after startup. Referencing osConfig here is safe on
-  # non-streaming hosts — the binding is only used under the gated
-  # spawn-at-startup entry, and Nix never forces unused bindings.
-  fakeScreenInit = pkgs.writeShellScript "fake-screen-init" ''
-    fake="${fakeOutputName}"
-    state_file="''${XDG_STATE_HOME:-$HOME/.local/state}/${fakeScreenStateFile}"
-    [ -f "$state_file" ] || exit 0
-    [ "$(cat "$state_file" 2>/dev/null)" = "off" ] || exit 0
-    sleep 1
-    exec "${cfg.package}/bin/niri" msg output "$fake" off
-  '';
 in
 {
   imports = [
@@ -438,13 +278,6 @@ in
         "Mod+Shift+P".action."power-off-monitors" = [];
       };
 
-      spawn-at-startup = lib.mkAfter (lib.optionals (sunshine.enable && fakeOutputEnabled) [
-        # Restore the persisted fake-output on/off state after login (the
-        # config pin above re-enables the fake output on every session
-        # start); see fakeScreenInit in the let block.
-        { command = [ "${fakeScreenInit}" ]; }
-      ]);
-
       xwayland-satellite = {
         path = "${pkgs.xwayland-satellite}/bin/xwayland-satellite";
       };
@@ -478,57 +311,8 @@ in
         # app-services inherit it too.
         "QT_QPA_PLATFORMTHEME" = "gtk3";
       };
-
-      # Fake streaming output (kernel-forced EDID, hosts with the Sunshine
-      # capability — see modules/nixos/capabilities/sunshine.nix). This
-      # pin is only the HEADLESS FALLBACK: stream-mode dynamically aligns
-      # the fake output's logical size to whatever the real monitor runs
-      # at stream time (see fakeScreenLib), so swapping monitors needs no
-      # config change. The EDID keeps a 4K preferred timing as alignment
-      # headroom (1080p desk -> 4K @ scale 2, etc.). Gated on the
-      # capability and named from its option, so non-streaming desktops
-      # carry none of this — even if their real monitor happens to sit on
-      # a connector with the same name. DMS's GUI-managed include
-      # dms/outputs.kdl lands last and wins if the user manages this
-      # output through the DMS display settings.
-      outputs = lib.mkIf (sunshine.enable && fakeOutputEnabled) {
-        "${fakeOutputName}" = {
-          mode = {
-            width = 1920;
-            height = 1080;
-            refresh = 60.0;
-          };
-        };
-      };
-
     };
   };
-
-  # Session handover entry points between the real monitor and the fake
-  # streaming output (core logic in fakeScreenLib). Semantics:
-  #   stream-mode: going remote — fake canvas on, dynamically aligned to
-  #     the desk's logical size, workspaces moved onto it explicitly
-  #     (`output off` does not migrate), desk screen off. One active
-  #     output = the cursor cannot escape the streamed picture.
-  #   desk-mode: back at the desk — real outputs re-enabled via sysfs,
-  #     workspaces moved back, fake canvas off. No real monitor is a
-  #     hard no-op.
-  # Recovery if the stream dies in stream-mode (desk screen dark):
-  # plug the monitor into ANY other free port (a never-disabled connector
-  # lights up immediately), re-login (the greeter always enables every
-  # connected output), or SSH: NIRI_SOCKET=$(ls /run/user/1000/niri.*.sock)
-  # + niri msg output <name> on. The disabled state is session-scoped and
-  # never persisted; only stream-mode ever disables a real output.
-  home.packages = lib.mkIf (sunshine.enable && fakeOutputEnabled) [
-    (pkgs.writeShellScriptBin "stream-mode" ''
-      . ${fakeScreenLib}
-      do_stream
-    '')
-    (pkgs.writeShellScriptBin "desk-mode" ''
-      . ${fakeScreenLib}
-      do_desk
-    '')
-  ];
 
   # Override config file source to append DMS optional includes.
   xdg.configFile.niri-config = lib.mkForce {

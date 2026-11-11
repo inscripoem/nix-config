@@ -1,17 +1,26 @@
 # Remote desktop on briefcase
 
-Sunshine streams the greeter login screen and the active desktop to
-Moonlight. Both the pre-login greeter and the logged-in user service use niri's
-direct `wlr-screencopy` path. This avoids an XDG Portal screen-share approval
-that cannot be clicked on a headless output and avoids the KMS DMA-BUF import
-failure observed as `EGL_BAD_MATCH (0x3009)` on this host. Tailscale provides
-remote connectivity.
+Hermes streams the greeter login screen and the active desktop to
+Moonlight / Artemis / Hestia. Both the pre-login greeter and the logged-in
+user service use niri's direct `wlr-screencopy` path. This avoids an XDG
+Portal screen-share approval that cannot be clicked on a headless output and
+avoids the KMS DMA-BUF import failure observed as `EGL_BAD_MATCH (0x3009)`
+on this host. Tailscale provides remote connectivity.
+
+Hermes replaced Sunshine on 2026-11-11 after a pilot verified input, video
+quality, and bidirectional text clipboard sync against the existing client
+fleet. The swap was direct — the Sunshine capability module was deleted, not
+kept behind a runtime switch — because `~/.config/sunshine` (old state) and
+`~/.config/hermes` (current state) are independent directories and Hermes
+seeds its pairing certificate from the Sunshine one on first start, so a
+rollback is just `git revert` + `nhs switch`.
 
 ## 1. Configuration
 
 | Source | Responsibility |
 |---|---|
-| [Sunshine capability](../modules/nixos/capabilities/sunshine.nix) | System/user service handoff, polkit rule, firewall integration, declarative Sunshine settings (`capture`, `vk_tune`, `output_name`), fake-output switch |
+| [Hermes capability](../modules/nixos/capabilities/hermes.nix) | System/user service handoff, polkit rule, firewall ports, declarative settings (`capture`, `virtual_display_backend`), greeter wrapper, watchdog, uinput + udev rules, wl-clipboard for clipboard sync |
+| [Hermes package](../pkgs/hermes/default.nix) | Upstream 0.7.0 source build; modeled on nixpkgs' sunshine derivation; updated by `scripts/update-versions.sh --only=hermes` |
 | [Display managers](../modules/nixos/desktop/display-managers.nix) | greetd + Dux Greeter (niri greeter session) and default `niri` session |
 | [WiFi profiles](../modules/nixos/capabilities/wifi-profiles.nix) | NetworkManager connections available before login |
 | [Tailscale capability](../modules/nixos/capabilities/tailscale.nix) | Tailnet connectivity |
@@ -24,154 +33,82 @@ DMS-native login screen inside a niri greeter session). See
 `modules/nixos/desktop/display-managers.nix` for the session-enumeration
 notes (XDG_DATA_DIRS via greetd's source_profile handling).
 
+Why Hermes over the alternatives (host side): KRDP has no NixOS host path
+and is Wayland-only; RustDesk has no NixOS *host* module (only the relay
+server) and its unattended service needs a sudo+setuid wrapper under
+NixOS; Parsec has no Linux host at all; krfb is CPU-only and too laggy for
+HK<->SZ. Sunshine itself lost to its own fork lineage on the pilot's three
+criteria: clipboard sync (Artemis control-stream extension, host side via
+wl-copy/wl-paste), image quality at equal codec/bitrate (VBR with
+single-frame VBV, zero-copy GBM/dmabuf capture), and the reference-client
+roadmap (Artemis/Hestia).
+
 ## 2. Service handoff
 
 1. greetd starts the Dux Greeter session on VT1 (a niri compositor running
-   the greeter UI). System service `sunshine-greeter` runs as root after
-   `display-manager.service` and captures the greeter through KMS.
-2. Moonlight connects and displays the greeter. The user logs in through
-   Dux Greeter; PAM (`greetd` service) can unlock the desktop keyring
-   normally.
+   the greeter UI). System service `hermes-greeter` runs as root after
+   `display-manager.service`, waits for the greeter user's Wayland socket
+   (deadline 180 s), and captures the greeter through `capture=wlr`.
+2. Artemis/Moonlight connects and displays the greeter. The user logs in
+   through Dux Greeter; PAM (`greetd` service) can unlock the desktop
+   keyring normally.
 3. greetd starts the chosen graphical session (niri, or Plasma Wayland),
-   which brings up user service `sunshine` with the cap_sys_admin security
-   wrapper. Its `ExecStartPre` stops `sunshine-greeter`, then the user
-   service takes over streaming and audio. Both services use
-   `capture=wlr`; the greeter wrapper waits for the greeter user's niri
-   Wayland socket before starting Sunshine.
-   (The removed `plasmax11` default used to share SDDM's X display so both
-   services captured the same X server over XShm; that path died with the
-   upstream Plasma X11 session removal.)
-4. On logout, the user service's `ExecStopPost` starts `sunshine-greeter`
+   which brings up user service `hermes`. Its `ExecStartPre` stops
+   `hermes-greeter`, then the user service takes over streaming and
+   audio.
+4. On logout, the user service's `ExecStopPost` starts `hermes-greeter`
    again.
 
-Both services use the same user's Sunshine configuration directory, sharing
-pairing identity. Expect a short disconnect during handoff; previous sessions
-measured about 5–8 seconds, but reconnect behavior depends on the client.
-A polkit rule allows members of `users` to manage the specific system service.
+Both services use the same user's Hermes configuration directory, sharing
+pairing identity and web-UI credentials. Expect a short disconnect during
+handoff; reconnect behavior depends on the client. A polkit rule allows
+members of `users` to manage the specific system service.
 
-`capSysAdmin` remains enabled for KMS fallback. Both Sunshine services
-normally use niri's non-interactive wlr-screencopy backend.
+The greeter wrapper probes the first connected DRM connector (mirroring
+niri's alphabetically-first placement of the greeter UI) and passes it as
+`output_name`; an unmatched probe degrades to Hermes' first-monitor
+default. The greeter unit sets `RestartPreventExitStatus = 1`: the wrapper
+exits 1 when the greeter session has no Wayland socket (user-session
+handoff/logout), and restarting that state every five seconds caused a
+DRM/capture restart storm — the unit stays failed until the handoff
+explicitly starts it again.
 
-## 3. Fake streaming output
+`virtual_display_backend = none` streams the session's own output; no EVDI
+or Hermes-KMS driver is installed. Upstream's `--prelogin` pre-login
+streaming is nightly-only and KDE+SDDM-tested; the handoff above stays
+until it is proven for greetd+niri.
 
-`modules.capabilities.sunshine.fakeOutput` selects the arrangement:
+## 3. Clipboard sync
 
-| State | Kernel parameters | niri mode pin | stream/desk commands | Sunshine captures |
-|---|---|---|---|---|
-| `enable = true`, `provider = "virtual"` | `video=<name>:e` + `drm.edid_firmware=<name>:<edid>` | fake output pinned to 1920x1080 | available | the fake connector |
-| `enable = true`, `provider = "physical"` | none — the dummy plug supplies its EDID | fake output pinned to 1920x1080 | available | the connector carrying the plug |
-| `enable = false` | none | none | removed | the first connected output, at its own mode |
+Text-only, bidirectional, through the Apollo control-stream extension
+between Hermes and Artemis-family clients. The host side shells out to
+`wl-copy` / `wl-paste` (wl-clipboard, installed system-wide by the
+capability module); niri provides the wlr data-control protocol they talk
+to. The 64 KiB cap and `text/plain` type mean images and file transfers do
+not sync — copy text, or use a real file-transfer channel.
 
-`edid` overrides the injected EDID for the `virtual` provider; `null` uses
-the built-in `sunshine-fake-edid.bin`. Sunshine's own settings are
-declarative (`services.sunshine.settings`), so `output_name` follows the
-switch and the web UI no longer edits the configuration file.
+On the client side, clipboard sync requires an Artemis-family client:
+Artemis (Android), Artemis Desktop (Windows/macOS/Linux, wjbeckett's
+moonlight-qt fork), or Hestia (Linux). Generic Moonlight streams video,
+audio, and input but has no Apollo extensions — no clipboard, no
+permissions UI.
 
-The current WX 5100 configuration sets `fakeOutput.enable = false` and leaves
-the connector unpinned. It captures the first connected output, which is the
-physical KTC monitor during bring-up. The `virtual` provider notes below are
-retained for the Arc A380 profile and are not active on the WX 5100.
+## 4. Client permissions (read this before "the stream is broken")
 
-Streaming needs a lit CRTC: a GPU with nothing connected keeps no display
-pipeline active, so a headless host has no framebuffer to capture at all.
-Instead of a hardware dummy plug, the reserved port is force-enabled at
-the DRM level and fed a generated EDID (`sunshine-fake-edid.bin`:
-preferred 3840x2160@60 — the CEA-861 VIC 97 timing — plus a
-1920x1080@60 standard timing) through the `video=` + `drm.edid_firmware`
-kernel params. Every compositor and Sunshine see one constant "monitor",
-so the streamed picture never drifts with whatever is plugged in on the
-other ports.
+The FIRST client ever paired receives full permissions; every later
+pairing defaults to View Streams + List Apps only — no mouse, keyboard,
+launch, or clipboard permission. The symptom looks like a broken stream:
+the picture freezes (no input → no desktop damage → damage-driven capture
+emits no frames) and input is dead, while a full-permission client on the
+same host works fine.
 
-**The fake port must be HDMI, not DisplayPort.** A forced DP connector
-has no DPCD — there is no physical sink to report link capabilities —
-so i915 validates every mode against the fallback link and only
-640x480 survives (EDID load and parse are fine: the connector exposes
-the injected EDID and its identity; the rejection happens at mode
-validation). HDMI has no DPCD dependency. Verified live on the A380,
-2026-10-28.
+Fix per client: web UI (`https://HOST:47990`) → Clients → grant; or patch
+the `perm` field in `~/.config/hermes/hermes_state.json` while Hermes is
+stopped (the running process rewrites that file on exit). Full-permission
+value used by this fleet's clients: `119480064`; a fresh pairing gets
+`50331648`.
 
-**The EDID must also carry a CEA-861 extension with an HDMI Forum
-VSDB.** Without it the kernel never sets `display_info.max_tmds_clock`
-and i915 caps the sink at the 165 MHz DVI baseline
-(intel_hdmi.c `hdmi_port_clock_limit`): 1080p60 (148.5 MHz) survives
-but 4K60 (594 MHz) is rejected — the generator's CEA extension block
-(HDMI VSDB + HF-VSDB declaring a 600 MHz Max TMDS Character Rate,
-SCDC deliberately not present since no sink answers I2C reads) lifts
-the cap to the source's own limit. Both blocks are plain tag-3
-vendor-specific blocks distinguished by OUI, not extended-tag blocks.
-
-Port roles:
-
-| Port | Role |
-|---|---|
-| DP-1..DP-3, HDMI-A-2 | real monitors (true EDID, native modes) |
-| HDMI-A-1 | reserved fake output — never plug a real monitor in here; the forced EDID shadows it |
-
-Routing by scenario:
-
-| Scenario | Behavior |
-|---|---|
-| monitor present, local login | greeter UI on the real monitor (niri auto-placement: alphabetically-first connected output first) |
-| monitor present, remote login | `sunshine-greeter` probes the first connected DRM connector and streams that output |
-| headless, remote login | the fake output is the only one; the greeter runs on it at 1080p |
-| logged in, remote desktop | user session pins the fake output at the same 1080p the real monitor runs; Sunshine's output selection must be `HDMI-A-1` |
-
-The EDID binary is regenerated with
-`modules/nixos/capabilities/sunshine-fake-edid.py` (validate with
-`edid-decode`). The EDID keeps a 4K preferred timing as alignment
-headroom; the greeter pins the fake output at 1080p (pre-login only),
-and the daily session's alignment is computed at stream time (see
-below), so a monitor swap needs no config change. The greeter session
-has no idle daemon, so nothing ever DPMS-blanks it — the pre-login
-stream stays live indefinitely.
-
-`stream-mode` and `desk-mode` are the handover entry points. Both
-move workspaces explicitly: `niri msg output off` does NOT migrate
-them — only a physical disconnect does — so neither relies on
-auto-migration.
-
-- **stream-mode (going remote)**: enables the fake output, dynamically
-  aligns its logical size to the real monitor's current logical size
-  (real 1080p -> 4K @ scale 2; real 4K -> 4K @ scale 1; computed at
-  stream time, so swapping monitors needs no config change), moves
-  every workspace onto it, then disables the desk screen — one active
-  output, so the cursor cannot escape the streamed picture.
-- **desk-mode (back at the desk)**: re-enables the connected real
-  outputs (discovered via sysfs), moves every workspace back onto the
-  first one, then disables the fake canvas. No real monitor connected
-  is a hard no-op.
-
-The mode is recorded under `~/.local/state/sunshine/fake-screen`; a
-session-start hook (`fake-screen-init`, spawned by niri) restores
-"off" after a relogin, since the config pin re-enables the output on
-every session start.
-
-**Recovery if the stream dies while in stream-mode** (the desk screen
-is session-disabled in that state). In order of preference:
-
-1. **Plug the monitor into a different free port**: a never-disabled
-   connector lights up immediately — run `desk-mode` from a terminal or
-   spotlight on it to finish the handback.
-2. **SSH over Tailscale** (works from a phone): point `niri msg` at
-   the session socket — `export XDG_RUNTIME_DIR=/run/user/1000;
-   NIRI_SOCKET=$(ls /run/user/1000/niri.*.sock | head -1)` then
-   `niri msg output HDMI-A-1 on`.
-3. **Reboot**: a fresh boot always comes up with every output on —
-   the disabled state is session-scoped and never persisted.
-
-The desk monitor's disabled state is session-scoped by construction:
-nothing persists it, and nothing except stream-mode ever disables a
-real output.
-
-After changing GPU, re-verify the connector name with `niri msg outputs`.
-The `modules.capabilities.sunshine.fakeOutput` option is the single source of
-truth when a fake output is enabled. The kernel parameters, greeter
-configuration, wrapper probe, and session layer all derive from it, while the
-session layer gates on `sunshine.enable`. With `fakeOutput.enable = false`,
-no connector is stored and no mode is pinned. The WX 5100 profile therefore
-survives connector renumbering.
-
-## 4. Network and pairing
+## 5. Network and pairing
 
 WiFi credentials are supplied by SOPS to NetworkManager system connections,
 so the network does not wait for a user keyring unlock. See [secrets](secrets.md)
@@ -180,72 +117,67 @@ for the current fields and recipient setup.
 After the user activates the configuration:
 
 1. Confirm Ethernet or WiFi and Tailscale are available before login.
-2. Open Sunshine's management UI at `https://HOST:47990` and set its credentials.
-3. Add the host's Tailscale address in Moonlight and approve its pairing PIN
-   through Sunshine's UI.
-4. Connect to the greeter, log in, and reconnect after handoff if necessary.
+2. Open Hermes' management UI at `https://HOST:47990` and set its
+   credentials (first start migrated Sunshine's web-UI credentials).
+3. Add the host's Tailscale address in the client and approve its pairing
+   PIN through Hermes' UI.
+4. Connect to the greeter, log in, and reconnect after handoff if
+   necessary. Then check §4 — a freshly paired client is view-only.
 
-Sunshine UI credentials manage the server; Moonlight uses pairing, and the
-greeter still requires the operating-system login password. Note the greeter
-session has no fcitx5, so the password must be typeable on a plain US
-keyboard layout.
+Hermes UI credentials manage the server; clients use pairing, and the
+greeter still requires the operating-system login password. Note the
+greeter session has no fcitx5, so the password must be typeable on a plain
+US keyboard layout.
 
-`services.sunshine.openFirewall` manages the streaming ports. Port 47990 is
-the HTTPS management UI, not the HTTPS streaming-control port at 47984.
-Use the upstream module for the full port list rather than duplicating it here.
+Firewall ports (module-managed): TCP 47984 (HTTPS pairing/API), 47989
+(HTTP/RTSP), 47990 (HTTPS web UI), 48010 (RTSP); UDP 47998/47999/48000
+(video, control, audio). mDNS discovery rides the lan class's avahi
+instance.
 
-Sunshine settings are declarative through `services.sunshine.settings`. The
-generated file is passed explicitly to both services; review both command
+Settings are declarative (`hermesSettings` in the capability module); the
+generated file is passed explicitly to both services. Review both command
 lines after changing capture or output settings.
 
-With the current fake output disabled, the user service captures the first
-connected output at its native mode. The greeter wrapper probes the first
-connected DRM connector at every start. A physical dummy plug needs no
-connector configuration when it is the only connected sink. Only simultaneous
-monitor and dummy use needs an explicit selection rule; until that rule is
-implemented, disconnect the unused sink instead of pinning a connector name.
+## 6. Troubleshooting and validation
 
-## 5. Troubleshooting and validation
-
-**Startup race hang**: Sunshine occasionally hangs mid-init during
-login (the RemoteDesktop-portal error in its log is the fingerprint) —
-the process stays alive but port 47984 never binds, so Moonlight
-cannot connect. A timer-driven watchdog (`sunshine-watchdog.timer`,
-every 2 min) restarts whichever service — user or greeter — is active,
-portless, and older than 120 s (normal init ~33 s). Recovery is
-automatic within ~4 min; the journal line to look for is
+**Startup hang**: either service can hang mid-init without exiting (port
+47984 never binds), so `Restart=on-failure` never fires. A timer-driven
+watchdog (`hermes-watchdog.timer`, every 2 min) restarts whichever
+service — user or greeter — is active, portless, and older than 120 s.
+Recovery is automatic within ~4 min; the journal line to look for is
 `watchdog: ... hung portless past 120s, restarting`. Manual recovery:
-`systemctl --user start sunshine`. A service that is *inactive* is
-left alone by design — auto-restarting cannot fix a broken unit; check
-the unit file and the last evaluation instead.
+`systemctl --user start hermes`. A service that is *inactive* is left
+alone by design — auto-restarting cannot fix a broken unit; check the
+unit file and the last evaluation instead. After the greeter wrapper
+exits 1 (no Wayland socket), `hermes-greeter` stays *failed* by design
+(`RestartPreventExitStatus = 1`) until the handoff starts it.
 
-At the greeter, inspect the system service; inside the desktop, inspect the
-user service:
+At the greeter, inspect the system service; inside the desktop, inspect
+the user service:
 
 ```sh
-systemctl status sunshine-greeter
-journalctl -b -u sunshine-greeter
-systemctl --user status sunshine
-journalctl --user -b -u sunshine
+systemctl status hermes-greeter
+journalctl -b -u hermes-greeter
+systemctl --user status hermes
+journalctl --user -b -u hermes
 ```
 
 Greeter-side problems go to `journalctl -b -u greetd` and, with
 `logs.save` enabled, `/tmp/dms-greeter.log` (greeter compositor + UI).
 Check the display backend, port conflicts, and polkit handoff if capture
 fails. Check NetworkManager/Tailscale separately if SSH is also
-unreachable. Inspect Sunshine logs for the chosen hardware encoder.
+unreachable. Hermes' own log lives at `~/.config/hermes/hermes.log`; the
+encoder probe lines ("Trying encoder [nvenc]" → CUDA errors on this
+AMD-only host) are expected noise. `GET /api/clipboard/status` reports
+whether the clipboard helper is reachable.
 
-After changing GPU, display manager, or capture mode, test the complete sequence:
-boot → remote greeter → login → desktop/audio → logout → remote greeter.
-Also test reconnect after reboot. Avoid assuming a desktop-only test covers it.
+After changing GPU, display manager, or capture mode, test the complete
+sequence: boot → remote greeter → login → desktop/audio → logout → remote
+greeter. Also test reconnect after reboot. Avoid assuming a desktop-only
+test covers it.
 
-The virtual fake output adds its own matrix. `video=` and
-`drm.edid_firmware` are boot-time parameters, so a `nixos-rebuild switch`
-alone does not light the connector up; reboot first. Read the actual connector
-from `niri msg outputs` instead of assuming a stable `DP-x` name. Verify the
-complete sequence: boot → remote greeter → login → desktop/audio → logout →
-remote greeter. Repeat after reboot because connector numbering and capture
-ownership both matter.
-
-References: [Sunshine NixOS module](https://github.com/NixOS/nixpkgs/blob/nixos-unstable/nixos/modules/services/networking/sunshine.nix),
-[Sunshine boot autostart](https://app.lizardbyte.dev/2024-10-16-autostart-sunshine-on-boot-without-auto-login/).
+References: [Hermes](https://github.com/MrOz59/Hermes),
+[Hermes compatibility matrix](https://github.com/MrOz59/Hermes/blob/main/docs/compatibility.md),
+[niri verified to adopt the Apollo-lineage virtual-display path](https://github.com/MrOz59/Hermes/blob/main/docs/compatibility.md)
+(Hermes classifies niri as a wlroots compositor; wlr-output-management v4
+matches niri's advertised version), [Artemis Desktop](https://github.com/wjbeckett/artemis).

@@ -1,7 +1,7 @@
 {
   imports = [
     ./gaming.nix
-    ./sunshine.nix
+    ./hermes.nix
     ./1password.nix
     ./remote-builder.nix
     ./nixbuild-net.nix

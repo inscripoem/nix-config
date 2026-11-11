@@ -172,7 +172,7 @@ let
       systemctl --user restart dms.service
       # A watcher restart drops every registration it held. fcitx5 re-registers
       # on its own; tray-heal replays the rest on the apps' behalf — both
-      # well-known SNI names (sunshine etc.) and Electron items found by
+      # well-known SNI names (hermes etc.) and Electron items found by
       # probing unique bus names for a live /StatusNotifierItem object.
       ${trayHeal} >/dev/null 2>&1 &
     }
@@ -224,7 +224,7 @@ let
   # omacom/omarchy#12214; replaying an already-registered item is a no-op).
   # Discovery covers both item styles: well-known
   # org.{kde,freedesktop}.StatusNotifierItem-* names (libappindicator/Qt
-  # apps such as sunshine) are listed by name, while Electron items export
+  # apps such as hermes) are listed by name, while Electron items export
   # /StatusNotifierItem on their unique bus names and are found by probing
   # every unique name for the object.
   trayHeal = pkgs.writeShellScript "tray-heal" ''

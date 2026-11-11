@@ -45,17 +45,10 @@ let
           aagl.honkers-railway-launcher.enable = true;
           # aagl.sleepy-launcher.enable = true;  # Zenless Zone Zero
         };
-        modules.capabilities.sunshine = {
+        modules.capabilities.hermes = {
           enable = true;
-          # The WX 5100 has four DisplayPort outputs. A physical monitor or
-          # dummy plug supplies its own EDID, so no connector is reserved or
-          # pinned. With one connected sink, the user service captures that
-          # output at its native mode.
-          fakeOutput = {
-            enable = false;
-          };
           # Dux Greeter runs niri as dms-greeter. Use that session's direct
-          # wlr-screencopy socket because Sunshine's KMS path hits
+          # wlr-screencopy socket because root KMS capture hits
           # EGL_BAD_MATCH while importing the root capture frame on this host.
           greeterWaylandUser = "dms-greeter";
         };
@@ -72,9 +65,11 @@ let
         modules.capabilities.oom-guard.enable = true;
         modules.capabilities.btrfs-scrub = {
           enable = true;
-          # "/" covers the root filesystem's subvolumes; /games is the
-          # separate data volume on the repurposed old disk.
-          fileSystems = [ "/" "/games" ];
+          # "/" covers the root filesystem's subvolumes. The separate
+          # /games volume is omitted while its disk is physically removed
+          # for the hard-freeze experiment (docs/hard-hang-cstate.md);
+          # add "/games" back when the disk returns.
+          fileSystems = [ "/" ];
         };
         # NCT6798 fan duty + ENE 6K7750 ARGB (Maxsun B760M D4 hardware).
         modules.capabilities.fan-argb.enable = true;

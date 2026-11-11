@@ -37,14 +37,11 @@ in
       postInstall = (old.postInstall or "")
         + installThemeIcons [ "Tela-circle" "Tela-circle-dark" "Tela-circle-light" ] "scalable/apps"
         # Alias names the apps ask for onto Tela's own art: ardour9 is
-        # Ardour's versioned Icon=, sunshine's desktop file uses the fully
-        # qualified dev.lizardbyte.app.Sunshine while Tela ships "sunshine".
+        # Ardour's versioned Icon=.
         + ''
           for v in Tela-circle Tela-circle-dark Tela-circle-light; do
             cp "$out/share/icons/''${v}/scalable/apps/ardour.svg" \
                "$out/share/icons/''${v}/scalable/apps/ardour9.svg"
-            cp "$out/share/icons/''${v}/scalable/apps/sunshine.svg" \
-               "$out/share/icons/''${v}/scalable/apps/dev.lizardbyte.app.Sunshine.svg"
           done
         '';
     }))
