@@ -156,10 +156,106 @@ EXCERIA G2 2 TB, firmware ECFA17.3) was created 2026-10-30 19:10, and the
 19:16 freeze happened on that installation, so the old system disk cannot be
 the common cause.
 
-smartd still reports `Self-Test Log error count increased from 0 to 1` for
-both NVMe drives, including the new one. An aborted self-test caused by an
-unclean reboot also produces such an entry, so this needs `smartctl -a` to
-separate a real media failure from an artifact of the freezes.
+smartd reports `Self-Test Log error count increased from 0 to 1` for one NVMe
+drive at every boot. An aborted self-test caused by an unclean reboot also
+produces such an entry, so separating a real media failure from an artifact
+of the freezes needed `smartctl -l selftest`. Resolved 2026-11-11: it is a
+stale entry on the retired 1 TB disk — see
+[Storage experiment (2026-11-11)](#storage-experiment-2026-11-11).
+
+## Storage experiment (2026-11-11)
+
+The boot started 2026-11-10 11:28:14. The journal stopped at 2026-11-11
+02:40:06 and the forensics sampler fsynced its last row at 02:40:31, so the
+machine died within two seconds of that sample. Uptime 15h12m. No stream had
+been connected since 01:10:17, and the journal holds no panic, MCE, AER, NVMe
+timeout, or btrfs error.
+
+The sampler (`/var/log/gpu-watch/last.log`; it survives a freeze and rotates
+at 2 MiB) shows the machine was idle at the instant it stopped:
+
+| Item | Value at 02:40:31 |
+|---|---|
+| load1 | 1.1 |
+| C1 residency | ~95% of wall time (C2 and above are capped off) |
+| CPU / GPU temperature | 43 °C / 44 °C |
+| GPU clock | lowest DPM level, 300 MHz |
+| NVMe temperatures | 49.9 °C / 62.9 °C |
+
+The second drive had sat at 46.9 °C for the previous seven hours, then
+reached 63.9 °C at 02:30:13 — two minutes after that boot's short self-test
+started (02:28:22).
+
+### The daily self-test window
+
+smartd tests both NVMe drives once per day. All three early-morning freezes
+in this series fall 12–40 minutes after that test:
+
+| Freeze | Short self-test started | Interval |
+|---|---|---|
+| 2026-11-07 02:32:15 | 02:05:23 | 27 min |
+| 2026-11-10 03:31:18 | 02:22:18 (complete reported 02:52:18) | 39 min |
+| 2026-11-11 02:40:06 | 02:28:22 | 12 min |
+
+The two freezes outside that window (2026-11-07 16:49:45 and 2026-11-08
+21:36:33) had no self-test within hours, so the window does not explain
+every incident on its own.
+
+### The self-test log message is a stale entry
+
+`smartctl -l selftest` on both drives, 2026-11-11:
+
+| Drive | Log entries | Anomalies |
+|---|---|---|
+| 2 TB EXCERIA G2, S/N `84SA10FWKQJP` (`/`, `/home`, `/nix`, swap) | 13 | none |
+| 1 TB EXCERIA, S/N `Y03A617IK2V2` (`/games`) | 20 | one `Completed: failed segments` |
+
+The single anomaly is entry 15 on the 1 TB drive: segment 2, no failing LBA,
+power-on hour 22926 — 344 power-on hours (about 15 daily tests) before the
+newest entry, with every test since clean. smartd has no state directory
+(`/var/lib/smartmontools` does not exist), so it re-derives that same stale
+count at every boot and prints `increased from 0 to 1` again. It is not
+evidence of a failure at freeze time.
+
+Drive enumeration also swaps between boots: the 1 TB drive is `nvme1` in most
+boots and `nvme0` in the 2026-11-07 11:33 and 16:52 boots. Identify drives by
+serial number, not by `nvmeN`.
+
+### PCIe topology
+
+| Drive | Root port | ACPI path | Attachment |
+|---|---|---|---|
+| 2 TB EXCERIA G2 | `00:06.0` | `\_SB_.PC00.PEG0` | CPU-side M.2 |
+| 1 TB EXCERIA | `00:1a.0` | `\_SB_.PC00.RP25` | PCH root port |
+
+The same PCH owns the USB controllers (keyboard and mouse), the CNVi Wi-Fi
+device, and the eSPI controller that hosts the iTCO watchdog. A root port
+wedged in the PCH fabric therefore explains three long-standing symptoms at
+once: dead USB input, a host unreachable over Tailscale and ICMP, and a
+watchdog that sometimes never resets the board.
+
+### The change
+
+Single hardware change: the 1 TB `/games` disk is removed from its M.2 slot.
+The volume is empty, so nothing is lost. Two deliberate non-changes:
+
+- OneDrive is back on. Disabling it was a separate I/O hypothesis and is no
+  longer one of the tested variables.
+- smartd keeps its scheduled self-tests. The remaining 2 TB drive still gets
+  one every day, which leaves a daily full-surface read alive as a control.
+
+Config consequences: `/games` carries `nofail`, and `/games` is dropped from
+`modules.capabilities.btrfs-scrub.fileSystems`, so the absent device cannot
+delay the boot or fail a monthly timer.
+
+| Outcome | Conclusion |
+|---|---|
+| Freezes stop | The 1 TB disk or PCH root port `00:1a.0` is implicated |
+| Freezes continue in 02:00–03:00 | The daily read burst on the remaining drive, or the platform, is implicated; next single change is to stop the scheduled self-tests |
+| Freezes move to other hours | Neither; return to the Wi-Fi and externally reachable service paths |
+
+Rollback: put the disk back and add `"/games"` to the scrub list. Keeping
+`nofail` is harmless either way.
 
 ## Mitigation parameters (as of 2026-11-01)
 
