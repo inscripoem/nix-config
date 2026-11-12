@@ -1,0 +1,121 @@
+diff --git a/src/backend/tty.rs b/src/backend/tty.rs
+index 3629a15..5d17b7b 100644
+--- a/src/backend/tty.rs
++++ b/src/backend/tty.rs
+@@ -19,6 +19,7 @@ use niri_config::{Config, OutputName};
+ use niri_ipc::{HSyncPolarity, VSyncPolarity};
+ use smithay::backend::allocator::dmabuf::Dmabuf;
+ use smithay::backend::allocator::format::FormatSet;
++use smithay::backend::allocator::Format;
+ use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
+ use smithay::backend::allocator::Fourcc;
+ use smithay::backend::drm::compositor::{DrmCompositor, FrameFlags, PrimaryPlaneElement};
+@@ -1256,6 +1257,37 @@ impl Tty {
+         }
+     }
+ 
++    /// Degrade a secondary device with a render node to display-only: drop
++    /// its render node and switch to the primary device's allocator, so
++    /// scanout buffers are allocated on the primary GPU and imported into
++    /// the plane directly.
++    ///
++    /// This is for virtual display drivers that expose DRIVER_RENDER and a
++    /// render node for their own UAPI (e.g. Hermes-KMS), but have no Mesa
++    /// DRI driver: the compositor cannot initialize a GL renderer on them,
++    /// and every plane format negotiation fails. Such devices can still
++    /// scan out primary-allocated buffers, exactly like devices without a
++    /// render node.
++    fn degrade_device_to_display_only(&mut self, node: &DrmNode) -> anyhow::Result<()> {
++        if *node == self.primary_node {
++            bail!("refusing to degrade the primary device");
++        }
++        let primary_allocator = self
++            .devices
++            .get(&self.primary_node)
++            .context("missing primary device")?
++            .allocator
++            .clone();
++        let device = self.devices.get_mut(node).context("missing device")?;
++        let render_node = device
++            .render_node
++            .context("device has no render node, already display-only")?;
++        debug!("degrading device {node} to display-only (dropping render node {render_node})");
++        device.render_node = None;
++        device.allocator = primary_allocator;
++        Ok(())
++    }
++
+     fn connector_connected(
+         &mut self,
+         niri: &mut Niri,
+@@ -1465,6 +1497,34 @@ impl Tty {
+         .iter()
+         .copied();
+ 
++        // In display-only mode the allocator hands out linear buffers, but
++        // GPU renderers usually advertise only tiled dmabuf render formats
++        // (radeonsi does not list Linear at all). Synthesize the
++        // (code, Linear) entries the swapchain needs instead of relying on
++        // them being advertised.
++        let mut render_formats = render_formats;
++        if device.render_node.is_none() {
++            // 8-bit codes only: 10-bit linear dmabufs are commonly not
++            // importable by hardware VAAPI encoders (and a virtual display
++            // gains nothing from them). Argb8888 first — its opaque pair
++            // AR24 is what hardware pipelines import most readily.
++            let linear_extra = [
++                Fourcc::Argb8888,
++                Fourcc::Xrgb8888,
++                Fourcc::Abgr8888,
++            ]
++            .into_iter()
++            .map(|code| Format {
++                code,
++                modifier: Modifier::Linear,
++            });
++            render_formats = render_formats.into_iter().chain(linear_extra).collect();
++            debug!(
++                "display-only probe on {}: render_formats={render_formats:?}",
++                connector_name
++            );
++        }
++
+         // Create the compositor.
+         let res = DrmCompositor::new(
+             OutputModeSource::Auto(output.downgrade()),
+@@ -2597,8 +2657,34 @@ impl Tty {
+         to_connect.sort_unstable_by(|a, b| a.3.compare(&b.3));
+ 
+         for (node, connector, crtc, _name) in to_connect {
+-            if let Err(err) = self.connector_connected(niri, node, connector, crtc) {
++            let connected = self.connector_connected(niri, node, connector.clone(), crtc);
++            let Err(err) = connected else {
++                continue;
++            };
++
++            // A secondary device whose renderer cannot support any plane
++            // format is usually a virtual display driver that exposes
++            // DRIVER_RENDER and a render node for its own UAPI (e.g.
++            // Hermes-KMS), while Mesa has no DRI driver to allocate buffers
++            // from it. Such a device can still scan out buffers allocated on
++            // the primary GPU: degrade it to display-only and try once more.
++            // Restricted to format-negotiation failures so unrelated errors
++            // keep the plain dropped-connector behavior.
++            if !err
++                .chain()
++                .any(|cause| cause.to_string().contains("No supported plane buffer format"))
++            {
+                 warn!("error connecting connector: {err:?}");
++                continue;
++            }
++
++            let retried = self
++                .degrade_device_to_display_only(&node)
++                .and_then(|()| self.connector_connected(niri, node, connector, crtc));
++            if let Err(retry_err) = retried {
++                warn!(
++                    "error connecting connector: {err:?}; retry after degrading to display-only also failed: {retry_err:?}"
++                );
+             }
+         }
+ 

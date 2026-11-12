@@ -88,19 +88,30 @@ The out-of-tree DRM/KMS virtual-display driver is packaged
 ([pkgs/hermes-kms](../pkgs/hermes-kms/default.nix), v0.4.1, builds against
 the host kernel) and wired behind
 `modules.capabilities.hermes.virtualDisplay.enable` — currently **off**.
-Verified working up to the compositor layer: the module loads with the
-connector disconnected, Hermes creates `HERMES-1` at the client's
-negotiated resolution, and niri sees the connector hotplug. It ends
-there: niri cannot drive the card. Smithay's multigpu model requires a
-per-device EGL/GLES renderer on every secondary DRM device with an
-enabled output, and Mesa has no DRI driver for the virtual card — niri
-logs `No supported plane buffer format found` three times and the output
-never lights up. The same failure class is niri issue #4529 (ms912x
-driver, reproduced on sway and cosmic-comp too); KWin and GNOME import
-the primary GPU's dmabuf directly into the plane and do work with this
-driver. Re-enable the option when niri gains a display-only fallback for
-render-capable virtual cards, upstream adds direct PRIME scanout, or a
-DRI driver for hermes-kms appears — the backend switch is one line.
+The compositor runs a patched niri
+([pkgs/niri-hermes-fallback.patch](../pkgs/niri-hermes-fallback.patch)):
+a secondary DRM device whose renderer cannot support any plane format is
+degraded to display-only (primary allocator, linear buffers) instead of
+dropping the connector, and 8-bit linear render formats are synthesized
+because radeonsi's EGL does not list Linear among its dmabuf render
+formats. The primary GPU is pinned to the WX 5100 via the
+`render-drm-device` debug option in this host's home config (Smithay
+picks card0 — the virtual card — as primary otherwise).
+
+Progress with the full stack enabled (2026-11-12): the module loads, the
+pin holds, the degradation fires, `HERMES-1` is created at the client's
+negotiated resolution and becomes a real niri output (xwayland-satellite
+and DMS both see it), niri renders into the linear buffer and presents —
+scanout works. Two capture-path failures remain inside the
+hermes/hermes-kms dmabuf chain, both on the re-exported linear scanout
+buffer: zero-copy fails in radeonsi EGL import (`EGL_BAD_ALLOC 0x3003`),
+and the CPU-copy path fails `mmap EPERM` on the buffer the driver hands
+back. Neither is addressable from niri or from configuration; the driver
+repo ships a dedicated test (`hermes-imported-scanout-test`) for this
+exact flow. Re-enable the switch when upstream fixes the imported-object
+export/mmap handling (or niri gains direct PRIME scanout). The Artemis
+virtual-display toggle must stay off while the switch is off: sessions
+that request a virtual display fail with 503 instead of falling back.
 
 ## 4. Clipboard sync
 

@@ -418,6 +418,13 @@ in
       startLimitIntervalSec = 500;
       startLimitBurst = 5;
 
+      # Both hermes-kms capture paths currently die on the re-exported
+      # linear scanout buffer under niri (zero-copy: radeonsi EGL import
+      # fails EGL_BAD_ALLOC 0x3003; CPU-copy: mmap EPERM — see
+      # docs/remote-desktop.md section 3). Once the driver-side mmap/export
+      # handling is fixed, upstream's HERMES_KMS_FORCE_CPU_COPY=1 is the
+      # escape hatch to exercise the CPU-copy path.
+
       serviceConfig = {
         ExecStart = "${hermes}/bin/hermes ${hermesConfigFile}";
         ExecStartPre = [
@@ -428,6 +435,13 @@ in
           "${pkgs.systemd}/bin/systemctl start hermes-greeter.service"
         ];
         Restart = "on-failure";
+        # Hermes aborts itself 10 s after SIGTERM when a client session is
+        # still attached ("Fatal: 10 seconds passed ... Forcing shutdown",
+        # SIGTRAP, observed 2026-11-12 02:53 during an `nhs` restart). The
+        # abort writes a core dump and marks the unit `core-dump` for a
+        # condition the process cannot recover from anyway. Stop it with
+        # SIGKILL one second earlier so the teardown path ends cleanly.
+        TimeoutStopSec = "9s";
         RestartSec = "5s";
       };
     };

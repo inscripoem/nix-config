@@ -17,9 +17,20 @@ let
     libdisplay-info_0_2 =
       niri.inputs.nixpkgs-stable.legacyPackages.${prev.stdenv.hostPlatform.system}.libdisplay-info_0_2;
   };
+  # Patched niri-unstable (the compositor the niri module runs): a
+  # secondary DRM device whose per-device renderer cannot support any plane
+  # format (virtual display drivers exposing DRIVER_RENDER for their own
+  # UAPI, e.g. Hermes-KMS) falls back to display-only instead of dropping
+  # the connector. See pkgs/niri-hermes-fallback.patch.
+  niriHermesFallbackOverlay = final: prev: {
+    niri-unstable = prev.niri-unstable.overrideAttrs (old: {
+      patches = (old.patches or [ ]) ++ [ ../pkgs/niri-hermes-fallback.patch ];
+    });
+  };
   niriOverlays = [
     niriCompatOverlay
     niri.overlays.niri
+    niriHermesFallbackOverlay
   ];
 
   # Host declaration table — class/capability model.
@@ -48,13 +59,14 @@ let
         modules.capabilities.hermes = {
           enable = true;
           # hermes-kms virtual display: per-client resolution via the
-          # out-of-tree DRM/KMS module. Currently OFF: the module loads and
-          # Hermes adopts the card, but niri cannot drive it — Smithay's
-          # multigpu model requires a per-device EGL/GLES renderer and Mesa
-          # has no DRI driver for the virtual card (niri issue #4529 is the
-          # same failure class with ms912x; works on KWin/GNOME). Re-enable
-          # when niri gains a display-only fallback for render-capable
-          # virtual cards or upstream adds direct PRIME scanout.
+          # out-of-tree DRM/KMS module. Currently OFF: the compositor side
+          # works (niri-hermes-fallback.patch degrades the card to
+          # display-only, output creation and scanout verified), but both
+          # hermes-kms capture paths die on the re-exported linear scanout
+          # buffer (radeonsi EGL import EGL_BAD_ALLOC; CPU-copy mmap EPERM)
+          # — sessions requesting a virtual display fail 503 instead of
+          # falling back. See docs/remote-desktop.md section 3. Re-enable
+          # once hermes-kms fixes the imported-object export/mmap handling.
           virtualDisplay.enable = false;
           # Dux Greeter runs niri as dms-greeter. Use that session's direct
           # wlr-screencopy socket because root KMS capture hits
