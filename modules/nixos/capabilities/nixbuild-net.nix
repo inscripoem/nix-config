@@ -2,11 +2,23 @@
 #
 # Opt-in per host through `modules.capabilities.nixbuild-net.enable`, so
 # only hosts that should spend the account's CPU budget configure the
-# builder and pull in the SSH key. Unlike remote-build-client this keeps
-# local capacity: nix-daemon prefers the remote builder and falls back to
-# local jobs when it is unreachable or saturated. `nhsl` (force local) and
-# `nhsr` (force remote) override the choice for one switch; see
-# home/core/shell.nix.
+# builder and pull in the SSH key. The builder entry lands in
+# /etc/nix/machines, which NixOS writes whenever nix.buildMachines is
+# non-empty — independent of nix.distributedBuilds.
+#
+# nix.distributedBuilds deliberately stays false. Nix's built-in default
+# `builders = @/etc/nix/machines` would schedule every build remotely;
+# leaving the option false makes nixpkgs write an empty `builders` to
+# nix.conf and override that default. Plain switches (`nhs`) therefore
+# build locally only and spend no CPU budget by default. Remote is
+# opt-in per invocation through home/core/shell.nix:
+#
+#   nhs   local only (default)
+#   nhsr  remote-first; local jobs pick up what the builder cannot take
+#         (unreachable, saturated, missing system or feature)
+#   nhsc  strict remote (--max-jobs 0); an unreachable builder fails the
+#         switch loudly instead of silently loading this machine
+#   nhsf  local-first; retries through nhsr after a failed local switch
 #
 # The private key lives in secrets/nixbuild.yaml and decrypts to
 # /run/secrets at activation, readable only by root (owner of nix-daemon).
@@ -55,8 +67,6 @@ in
       hostNames = [ "eu.nixbuild.net" ];
       publicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPIQCZc54poJ8vqawd8TraNryQeJnvH1eLpIDgbiqymM";
     };
-
-    nix.distributedBuilds = true;
 
     # Let the builder substitute instead of rebuilding what a cache already
     # holds: CPU time is what this account pays for.

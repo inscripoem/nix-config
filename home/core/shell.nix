@@ -8,13 +8,24 @@ let
     "nh darwin switch -- --show-trace"
   else
     "nh os switch -- --show-trace";
+  # Builders stay off by default: the nixbuild-net capability keeps
+  # nix.distributedBuilds false, so nix.conf overrides Nix's built-in
+  # `builders = @/etc/nix/machines` default and `nhs` builds locally only.
+  # The aliases below opt a single switch into nixbuild.net through
+  # /etc/nix/machines, which the capability still writes. See
+  # docs/nixbuild-net.md.
+  #
+  #   nhsr  remote-first: local jobs pick up what the builder cannot take
+  #         (unreachable, saturated, missing system or feature)
+  #   nhsc  strict remote: with --max-jobs 0 an unreachable builder fails
+  #         the switch loudly instead of silently loading this machine
+  #   nhsf  local-first: retries through nhsr when the local switch fails
+  #         (e.g. OOM kill)
+  nhsRemoteArgs = "--option builders \"@/etc/nix/machines\"";
   shellAliases = lib.mapAttrs (_: value: lib.mkDefault value) ({
     nhs = switchCommand;
-    # Force local-only or remote-only builds for one switch. `nhs` itself
-    # keeps Nix's normal remote-first local-fallback scheduling.
-    nhsc = "${switchCommand} --max-jobs 0";
-    nhsl = "${switchCommand} --builders \"\"";
-    nhsr = "${switchCommand} --max-jobs 0";
+    nhsr = "${switchCommand} ${nhsRemoteArgs}";
+    nhsc = "${switchCommand} ${nhsRemoteArgs} --max-jobs 0";
     ze = if isDarwin then "zed ." else "zeditor .";
   } // lib.optionalAttrs isDarwin {
     bs = "brew search";
@@ -22,6 +33,16 @@ let
     bif = "brew install --formula";
     bu = "brew update && brew upgrade && brew cleanup";
   });
+
+  # nhsf is a function rather than an alias so arguments reach both runs
+  # (an alias would append them to the retry command only).
+  nhsFallbackFunction = ''
+    nhsf() {
+      ${switchCommand} "$@" || ${switchCommand} ${nhsRemoteArgs} "$@"
+    }
+  '';
+  nhsFallbackFunctionFish =
+    "${switchCommand} $argv || ${switchCommand} ${nhsRemoteArgs} $argv";
   darwinPaths = lib.unique ([
     "${config.home.profileDirectory}/bin"
     "${config.home.homeDirectory}/.nix-profile/bin"
@@ -66,7 +87,7 @@ in
   programs.bash = {
     enable = true;
     enableCompletion = true;
-    bashrcExtra = if isDarwin then ''
+    bashrcExtra = (if isDarwin then ''
       ${darwinEnvironment}
 
       # macOS Bash 3.2 cannot load Home Manager's modern interactive setup.
@@ -75,6 +96,10 @@ in
       fi
     '' else ''
       export PATH="$PATH:$HOME/bin"
+    '') + ''
+
+      # nhsf: local-first switch with a remote retry (docs/nixbuild-net.md).
+      ${nhsFallbackFunction}
     '';
     profileExtra = lib.optionalString isDarwin darwinEnvironment;
     inherit shellAliases;
@@ -189,6 +214,9 @@ in
           atuin-up-search atuin-up-search-vicmd atuin-up-search-viins
         )
       '')
+
+      # nhsf: local-first switch with a remote retry (docs/nixbuild-net.md).
+      nhsFallbackFunction
     ];
   };
 
@@ -199,6 +227,8 @@ in
     # fish completions.
     generateCompletions = false;
     inherit shellAliases;
+    # Body only: HM wraps it in `function nhsf ... end`.
+    functions.nhsf.body = nhsFallbackFunctionFish;
     shellInit = lib.optionalString isDarwin ''
       if not set -q __NIX_CONFIG_DARWIN_ENV_SOURCED
         if test -x ${brewPrefix}/bin/brew

@@ -2,8 +2,14 @@
 
 [nixbuild.net](https://docs.nixbuild.net/) runs Nix derivations on hardware the
 service operates. The local nix-daemon ships the closure over SSH, the remote
-side builds it and returns the results. Jobs that cannot be scheduled remotely
-stay local; only the derivations sent there leave the machine.
+side builds it and returns the results.
+
+The builder is registered but remote scheduling stays off by default: the
+capability keeps `nix.distributedBuilds` false, so nixpkgs writes an empty
+`builders` value into nix.conf and overrides Nix's built-in default
+`builders = @/etc/nix/machines`. Plain switches (`nhs`) build locally only and
+spend none of the account's CPU budget; remote work is opt-in per invocation
+through the aliases in `home/core/shell.nix`.
 
 ## Quota
 
@@ -25,7 +31,7 @@ The admin shell is `ssh eu.nixbuild.net`; `usage`, `builds`, `ssh-keys` and
 | Capability module | [nixbuild-net.nix](../modules/nixos/capabilities/nixbuild-net.nix) |
 | Encrypted key | `secrets/nixbuild.yaml` → `nixbuildnet_builder_ed25519` |
 | Host switch | `modules.capabilities.nixbuild-net.enable` (enabled on briefcase) |
-| Per-switch override | `nhsl` (local only), `nhsr` (remote only) |
+| Per-switch override | `nhsr` (remote-first), `nhsc` (strict remote), `nhsf` (local-first retry) |
 
 The module writes root's SSH client configuration for `eu.nixbuild.net`
 (`ServerAliveInterval 60`, the decrypted `IdentityFile`), the service host key
@@ -37,6 +43,25 @@ Builds print `on 'ssh://eu.nixbuild.net'` when a derivation runs remotely.
 Enabling the capability on another host is a one-line change in
 `outputs/default.nix`; all hosts share the account, so the CPU budget does not
 grow with the number of clients.
+
+## Scheduling
+
+| Alias | Runs | When the builder cannot take a job |
+|---|---|---|
+| `nhs` | local only | not applicable (default) |
+| `nhsr` | nixbuild.net first | local jobs build it (unreachable, saturated, or the derivation needs a system/feature the service lacks) |
+| `nhsc` | nixbuild.net only (`--max-jobs 0`) | the switch fails with `local builds are disabled (max-jobs = 0)` instead of silently loading this machine |
+| `nhsf` | local first | the switch is retried through `nhsr` (e.g. after an OOM kill) |
+
+Nix schedules in one direction only: the build hook ranks the entries of
+`/etc/nix/machines` by load and speed factor and hands the job to one of them,
+declining to local when none can take it. A busy local machine never pushes
+work to a builder, and local load is invisible to that comparison.
+`preferLocalBuild` derivations stay local in every mode.
+
+Darwin hosts have the capability disabled, so `/etc/nix/machines` is absent
+there: `nhsr` and `nhsf` degrade to local builds, while `nhsc` fails because
+nothing can take the job.
 
 ## Key handling
 
